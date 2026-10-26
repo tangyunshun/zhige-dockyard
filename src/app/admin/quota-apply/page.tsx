@@ -132,6 +132,9 @@ export default function QuotaApplyPage() {
       toast.success(res.message || "已处理");
       setDialog({ open: false, row: null, action: "APPROVE" });
       await load();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+      }
     } catch (e) {
       toast.error((e as Error)?.message || "审批失败");
     } finally {

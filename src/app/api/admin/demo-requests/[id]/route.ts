@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 const ALLOWED_STATUS = ["pending", "contacted", "closed"] as const;
 
@@ -44,6 +44,8 @@ export async function PATCH(
       where: { id },
       data: { status },
     });
+
+    await writeAuditLog(authResult.user?.id || null, "demo:handle", { id, oldStatus: exists.status, newStatus: status }, null, null, request);
 
     return NextResponse.json({ success: true, request: updated });
   } catch (error: any) {

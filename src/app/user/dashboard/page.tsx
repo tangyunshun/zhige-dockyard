@@ -248,14 +248,14 @@ export default function UserDashboardPage() {
 
   const user = dashboardData?.userInfo;
 
-  // 确保账号名称展示纯净用户名（如 test-01 而不是 test-01@163.com）
+  // 确保账号名称展示纯净用户名（如 test-01 而不是 test-01@163.com）；信息缺失时用中性兜底，禁止展示测试账号名
   const rawName = user?.name?.trim();
   const accountName =
     rawName && !rawName.includes("@")
       ? rawName
       : user?.email
       ? user.email.split("@")[0]
-      : "test-01";
+      : "用户";
 
   // 最近审计活动严格限制只展示前 5 条
   const displayActivities = (dashboardData?.recentActivities || []).slice(0, 5);

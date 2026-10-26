@@ -8,7 +8,7 @@ interface StepUpAuthModalProps {
   isOpen: boolean;
   title: string;
   message: string;
-  action: "delete_workspace" | "cancel_account";
+  action: "delete_workspace" | "cancel_account" | "transfer_workspace" | "change_email";
   onConfirm: (verifyToken: string) => void;
   onCancel: () => void;
 }

@@ -20,7 +20,7 @@ export const MAX_MARKUP_BPS = 100_000;
 
 export const PRICE_SOURCES = ["UNVERIFIED", "OBSERVED_ONLY", "VERIFIED"] as const;
 export type PriceSource = (typeof PRICE_SOURCES)[number];
-export const PRICE_STATUSES = ["UNCONFIGURED", "FREE", "OBSERVED_ONLY", "VERIFIED"] as const;
+export const PRICE_STATUSES = ["UNCONFIGURED", "FREE", "OBSERVED_ONLY", "VERIFIED", "USER_DECLARED"] as const;
 export type PriceStatus = (typeof PRICE_STATUSES)[number];
 
 /** 成本/售价字段名（供应成本与用户售价严格分开） */

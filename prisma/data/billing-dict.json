@@ -1,0 +1,30 @@
+{
+  "fields": {
+    "type": "类型",
+    "status": "状态",
+    "direction": "变动方向",
+    "keyword": "关键词",
+    "workspaceId": "空间",
+    "componentId": "组件"
+  },
+  "values": {
+    "all": "全部",
+    "CONSUME": "组件执行扣点",
+    "REFUND": "退款",
+    "RECHARGE": "充值",
+    "OFFLINE_RECHARGE": "线下充值",
+    "GIFT_REGISTER": "注册赠送",
+    "MEMBERSHIP_GRANT": "会员发放",
+    "GIFT_EXPIRE": "赠送过期",
+    "MANUAL_ADJUST": "手动调整",
+    "TOKEN_RECHARGE": "算力充值",
+    "PLAN_UPGRADE": "空间套餐扩容",
+    "MEMBERSHIP": "会员订阅",
+    "SUCCESS": "成功",
+    "PENDING": "处理中",
+    "FAILED": "失败",
+    "REFUNDED": "已退款",
+    "EXPIRED": "超时未付"
+  },
+  "words": {}
+}

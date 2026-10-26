@@ -35,6 +35,7 @@ export type PointScope = "WALLET" | "PERSONAL_GIFT" | "PERSONAL_DEDUCTION" | "WO
 export type LedgerType =
   | "GIFT_REGISTER"
   | "GIFT_EXPIRE"
+  | "GIFT_BONUS"
   | "RECHARGE"
   | "OFFLINE_RECHARGE"
   | "MEMBERSHIP_GRANT"

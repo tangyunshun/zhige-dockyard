@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { PRICE_SOURCES, resolvePriceStatus, yuanPerMillionToMicros } from "@/lib/model-pricing";
 import { rejectIfDeploymentEnabled } from "@/lib/model-deployment-guard";
 
@@ -189,6 +189,9 @@ export async function POST(
         priceVersion: 1,
       },
     });
+
+    await writeAuditLog(auth.user?.id || "", "model_pricing:period_create", { deploymentId, name: rest.name, kind: rest.kind, enabled: rest.enabled, priceStatus: status }, null, null, request);
+
     return NextResponse.json({ success: true, data: row }, { status: 201 });
   } catch (error) {
     console.error("[model-pricing-period] 创建失败:", (error as Error)?.message);

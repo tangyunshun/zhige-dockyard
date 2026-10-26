@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import {
   adminResolveSettlementReview,
   TokenSettlementError,
@@ -90,6 +90,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       actualPoints,
       auditRemark,
     });
+
+    await writeAuditLog(
+      auth.user?.id || "admin",
+      "token_settlement:resolve",
+      { taskId, action, actualPoints: actualPoints != null ? String(actualPoints) : null, status: result.status, auditRemark },
+      null,
+      null,
+      request
+    );
 
     return NextResponse.json({
       success: true,

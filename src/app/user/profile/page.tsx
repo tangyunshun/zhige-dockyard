@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
-import { normalizeUserRole } from "@/lib/role-utils";
+import React, { useState, useEffect } from "react";
+import { normalizeUserRole, isAdminRole } from "@/lib/role-utils";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
   User,
@@ -19,7 +19,6 @@ import {
   Crown,
   Calendar,
 } from "lucide-react";
-import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import { getEmailSuggestions } from "@/lib/validators";
@@ -28,7 +27,7 @@ import { useAppContext } from "@/contexts/AppContext";
 /**
  * 严格且优雅的邮箱规范验证函数
  */
-export function validateEmailFormat(email: string): { valid: boolean; error?: string } {
+function validateEmailFormat(email: string): { valid: boolean; error?: string } {
   const trimmed = email.trim();
   if (!trimmed) {
     return { valid: false, error: "登录邮箱不能为空" };
@@ -93,6 +92,8 @@ export default function UserProfilePage() {
   const [originalPhone, setOriginalPhone] = useState("");
   const [originalEmail, setOriginalEmail] = useState("");
   const [smsCode, setSmsCode] = useState("");
+  // 修改登录邮箱的二次身份验证弹窗（后端 change_email 场景强制校验）
+  const [showEmailStepUp, setShowEmailStepUp] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [smsMessage, setSmsMessage] = useState<string | null>(null);
@@ -409,15 +410,13 @@ export default function UserProfilePage() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent, verifyTokenArg?: string) => {
+    e?.preventDefault();
 
     if (!formData.name.trim()) {
       setNameError("用户昵称不能为空");
       return;
-    }
-
-    const currentPhoneTrimmed = (formData.phone || "").trim();
+    }    const currentPhoneTrimmed = (formData.phone || "").trim();
     if (currentPhoneTrimmed && !/^1[3-9]\d{9}$/.test(currentPhoneTrimmed)) {
       setPhoneError("手机号不规范，请输入规范的 11 位有效手机号码");
       return;
@@ -449,6 +448,12 @@ export default function UserProfilePage() {
       }
     }
 
+    // 登录邮箱是登录凭据：变更必须先过二次身份验证（后端 change_email 场景强制校验）
+    if (isEmailChanged && !verifyTokenArg) {
+      setShowEmailStepUp(true);
+      return;
+    }
+
     try {
       setSaving(true);
       setPhoneError(null);
@@ -468,6 +473,7 @@ export default function UserProfilePage() {
           email: currentEmailTrimmed,
           phone: currentPhoneTrimmed,
           smsCode: isPhoneChanged ? smsCode.trim() : undefined,
+          verifyToken: verifyTokenArg || undefined,
         }),
       });
 
@@ -526,6 +532,12 @@ export default function UserProfilePage() {
         loadUserInfo();
       } else {
         const error = await res.json();
+        // 二次验证令牌缺失/过期：重新拉起验证弹窗
+        if (error.error === "SEC_AUTH_REQUIRED" || error.error === "SEC_AUTH_INVALID") {
+          setShowEmailStepUp(true);
+          toast.error(error.message || "请完成二次身份验证后再保存");
+          return;
+        }
         const errText = error.error || error.message || "更新个人资料失败";
         if (errText.includes("邮箱")) {
           setEmailError(errText);
@@ -607,17 +619,14 @@ export default function UserProfilePage() {
     );
   }
 
-  const isAdmin =
-    userInfo?.role &&
-    ["admin", "super_admin", "superadmin", "ADMIN", "SUPERADMIN", "SUPER_ADMIN"].includes(
-      userInfo.role
-    );
+  // 复用全局角色归一化工具，杜绝大小写变体漏判（漏判会让管理员看到"申请注销"入口）
+  const isAdmin = userInfo?.role ? isAdminRole(userInfo.role) : false;
 
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
       <div>
-        <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-1">个人设置</h1>
+        <h1 className="text-2xl font-black text-slate-800 tracking-tight mb-1">个人资料</h1>
         <p className="text-xs text-slate-500 font-medium">维护个人档案、头像与账户安全凭据</p>
       </div>
 
@@ -735,7 +744,7 @@ export default function UserProfilePage() {
                     if (formData.name?.trim()) s += 25;
                     if (formData.email?.trim()) s += 25;
                     if (formData.phone?.trim()) s += 25;
-                    return Math.max(10, s);
+                    return s;
                   })()}%`,
                 }}
               />
@@ -765,7 +774,9 @@ export default function UserProfilePage() {
                   <CheckCircle className={`w-3.5 h-3.5 ${formData.email ? "text-emerald-500" : "text-slate-300"}`} />
                   认证主登录邮箱
                 </span>
-                <span className="text-[10px] font-bold text-emerald-600">已认证</span>
+                <span className={`text-[10px] font-bold ${formData.email ? "text-emerald-600" : "text-slate-400"}`}>
+                  {formData.email ? "已认证" : "未绑定"}
+                </span>
               </div>
               <div className="flex items-center justify-between py-1 text-slate-600">
                 <span className="flex items-center gap-1.5 text-[11px]">
@@ -1504,6 +1515,20 @@ export default function UserProfilePage() {
           </div>
         </div>
       )}
+      {/* 二次身份验证弹窗（邮箱变更） */}
+      <StepUpAuthModal
+        isOpen={showEmailStepUp}
+        title="修改登录邮箱验证"
+        message="登录邮箱是重要的登录凭据，修改前需验证账号密码以确认是您本人操作。"
+        action="change_email"
+        onConfirm={(token) => {
+          setShowEmailStepUp(false);
+          handleSubmit(undefined, token);
+        }}
+        onCancel={() => {
+          setShowEmailStepUp(false);
+        }}
+      />
       {/* 二次身份验证弹窗 */}
       <StepUpAuthModal
         isOpen={showStepUpModal}

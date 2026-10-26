@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 import { useExportMaxRows } from "@/lib/use-export-max-rows";
+import MountComponentsModal from "./MountComponentsModal";
 
 interface Stage {
   id: string;
@@ -123,6 +124,10 @@ export default function AdminStagesPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingStage, setEditingStage] = useState<Stage | null>(null);
+
+  // 新增阶段后「是否挂载组件」询问流程：pendingStage 非空即弹出询问；确认挂载后打开挂载弹窗
+  const [pendingStage, setPendingStage] = useState<{ key: string; name: string } | null>(null);
+  const [showMountModal, setShowMountModal] = useState(false);
 
   // 列表筛选条件
   const [filters, setFilters] = useState({
@@ -497,6 +502,10 @@ export default function AdminStagesPage() {
         toast.success(editingStage ? "阶段配置已更新" : "新建阶段分类成功");
         setShowCreateModal(false);
         loadStages();
+        // 新增阶段成功后，询问是否立即挂载组件（编辑阶段不触发）
+        if (!editingStage && data?.data?.key) {
+          setPendingStage({ key: data.data.key, name: data.data.name || formData.name.trim() });
+        }
       } else {
         toast.error(data.error || "保存失败，请检查输入");
       }
@@ -1635,6 +1644,57 @@ export default function AdminStagesPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 新增阶段后：「是否立即挂载组件」询问弹窗 */}
+      {pendingStage && !showMountModal && (
+        <div className="fixed inset-0 z-[9997] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#2b6cb0] to-[#3182ce] flex items-center justify-center mx-auto shadow-md">
+                <Package className="w-6 h-6 text-white" />
+              </div>
+              <h2 className="text-base font-black text-slate-800 mt-4">阶段「{pendingStage.name}」已创建</h2>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                是否立即为该阶段移动组件？未挂载任何组件的新阶段在前端（组件大厅等）不会显示。
+              </p>
+              <div className="flex items-center gap-2.5 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setPendingStage(null)}
+                  className="flex-1 px-4 h-10 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                >
+                  暂不挂载
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowMountModal(true)}
+                  className="flex-1 px-4 h-10 rounded-xl text-xs font-bold bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] hover:from-[#3182ce] hover:to-[#4299e1] text-white shadow-xs cursor-pointer transition-all"
+                >
+                  去移动组件
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 挂载组件弹窗 */}
+      {pendingStage && showMountModal && (
+        <MountComponentsModal
+          stageKey={pendingStage.key}
+          stageName={pendingStage.name}
+          stages={stages}
+          onClose={() => {
+            setShowMountModal(false);
+            setPendingStage(null);
+          }}
+          onMounted={() => {
+            setShowMountModal(false);
+            setPendingStage(null);
+            loadStages();
+          }}
+        />
       )}
 
       {/* ==================== 2. 高级业务操作确认与安全阻断模态框 (ActionModal) ==================== */}

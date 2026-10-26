@@ -25,7 +25,7 @@ import {
   ComponentContractSnapshot,
   ContractLifecycle,
 } from "./types";
-import { validateComponentContract } from "./validators";
+import { validateComponentContract, assertPromptCoversRequiredSections } from "./validators";
 import { assertNoModelBindingFields } from "./capabilities";
 import { buildComponentContractSnapshot } from "./snapshot";
 
@@ -220,6 +220,9 @@ export async function createDraftContract(params: {
   // 3. 纯领域完整校验
   const validated = validateComponentContract(contract);
 
+  // 3.1 【P2 事故防线】Prompt 模板必须覆盖必填章节（起草期拦截，见 validators 注释）
+  assertPromptCoversRequiredSections(validated);
+
   // 4. 校验元信息一致性
   if (validated.componentId !== componentId) {
     throw new ComponentContractError(
@@ -326,6 +329,9 @@ export async function updateDraftContract(params: {
 
   // 4. 纯领域完整校验
   const validated = validateComponentContract(contract);
+
+  // 4.1 【P2 事故防线】Prompt 模板必须覆盖必填章节（修改草稿期拦截，见 validators 注释）
+  assertPromptCoversRequiredSections(validated);
 
   // 5. 校验元信息一致性
   if (validated.componentId !== componentId) {
@@ -458,6 +464,10 @@ export async function publishContract(params: {
   // 校验模型绑定与纯领域规则
   assertCleanContractStructure(toPublishContract);
   const validated = validateComponentContract(toPublishContract);
+
+  // 【P2 事故防线】发布前最后一道闸：Prompt 模板必须覆盖必填章节，
+  // 拦截"先起草后补模板"绕过起草期校验的路径（见 validators 注释）
+  assertPromptCoversRequiredSections(validated);
 
   let clientIp: string | null = null;
   if (request) {

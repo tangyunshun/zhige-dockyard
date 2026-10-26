@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import {
   getPlatformDefaultDeploymentId,
   setPlatformDefaultDeploymentId,
@@ -62,9 +62,17 @@ export async function PUT(request: NextRequest) {
     if (raw !== null && typeof raw !== "string") {
       return NextResponse.json({ success: false, error: "deploymentId 必须为字符串或 null" }, { status: 400 });
     }
+    const before = await getPlatformDefaultDeploymentId();
     const next = typeof raw === "string" ? raw.trim() : null;
     await setPlatformDefaultDeploymentId(next && next.length > 0 ? next : null);
     const after = await getPlatformDefaultDeploymentId();
+
+    await writeAuditLog(auth.user?.id || "", "model_deployment:set_default", {
+      before: before ?? null,
+      after: after ?? null,
+      cleared: next === null,
+    }, null, null, request);
+
     return NextResponse.json({ success: true, deploymentId: after ?? null });
   } catch (e) {
     const err = e as { status?: number; message?: string };
@@ -84,7 +92,13 @@ export async function DELETE(request: NextRequest) {
     if (!auth.authorized) {
       return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     }
+    const before = await getPlatformDefaultDeploymentId();
     await setPlatformDefaultDeploymentId(null);
+
+    await writeAuditLog(auth.user?.id || "", "model_deployment:clear_default", {
+      before: before ?? null,
+    }, null, null, request);
+
     return NextResponse.json({ success: true, deploymentId: null });
   } catch (e) {
     console.error("[admin/model-deployments/default] 清除平台默认模型失败:", e);

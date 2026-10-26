@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
+import { writeAuditLog, requirePlatformPermission } from "@/lib/security";
 
 /**
  * GET /api/admin/membership/levels
@@ -142,6 +143,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "无权访问" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 membership:manage 一致）
+    const permCheck = await requirePlatformPermission(request, "membership:manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限创建会员等级" }, { status: 403 });
+    }
+
     const body = await request.json();
     const {
       name,
@@ -209,6 +216,8 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(authResult.user!.id, "membership:level_create", { name, nameZh, priceMonthly, priceYearly, isActive }, null, null, request);
 
     const serializedLevel = {
       ...level,

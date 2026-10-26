@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
+import { getInvitePolicy, checkInviteEligibility } from "@/lib/invitation-policy";
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,6 +37,45 @@ export async function POST(request: NextRequest) {
 
     // 归档 / 停用空间禁止写入（硬只读）
     await assertWorkspaceWritable(invitation.workspaceId);
+
+    // 0. 个人空间不支持成员协作，任何邀请加入一律拒绝
+    if (invitation.workspace.type !== "ENTERPRISE") {
+      return NextResponse.json({ error: "个人空间不支持成员邀请与加入" }, { status: 400 });
+    }
+
+    // 0.1 已作废的邀请码直接拒绝（不依赖过期时间间接失效）
+    if (invitation.status === "REVOKED") {
+      return NextResponse.json({ error: "邀请码已作废" }, { status: 400 });
+    }
+
+    // 0.2 邀请策略强制执行（与预检 verify 同源，防止绕过预检直调 join）：
+    //     邮箱域名白名单 + 平台管理员开关
+    const policy = await getInvitePolicy();
+    const joiner = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true, role: true },
+    });
+    const eligibility = checkInviteEligibility(joiner, policy);
+    if (!eligibility.ok) {
+      return NextResponse.json({ error: eligibility.error }, { status: 403 });
+    }
+
+    // 0.3 每码使用次数上限（按 JOIN_WORKSPACE 日志计数；0=不限）
+    if (policy.maxUsesPerCode > 0) {
+      const joinedCount = await prisma.operationlog.count({
+        where: {
+          action: "JOIN_WORKSPACE",
+          workspaceId: invitation.workspaceId,
+          details: { path: ["invitationCode"], equals: invitation.code },
+        },
+      });
+      if (joinedCount >= policy.maxUsesPerCode) {
+        return NextResponse.json(
+          { error: `该邀请码的使用次数已达上限（${policy.maxUsesPerCode} 人），请联系空间所有者重新生成` },
+          { status: 403 }
+        );
+      }
+    }
 
     // 1. 检查有效期
     if (invitation.expiresAt && new Date() > invitation.expiresAt) {

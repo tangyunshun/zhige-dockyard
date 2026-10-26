@@ -205,6 +205,9 @@ export default function AdminRefundRequestsPage() {
       );
       setModal(null);
       await load();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+      }
     } catch (e) {
       toast.error((e as Error)?.message || "裁决失败");
     } finally {

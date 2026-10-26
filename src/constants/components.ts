@@ -104,6 +104,10 @@ export interface ComponentDefinition {
   keywords?: string[];  // 智能搜索关键词
   usageCount?: number;  // 全网累计调用次数
   isDefault?: boolean;  // 新空间默认装配标记
+  // 目录行时间戳与真实评分统计（服务端从 component_catalog / component_stats 下发）
+  createdAt?: string;
+  averageRating?: number;  // 评分均值（1-5，无评分为 0）
+  ratingCount?: number;    // 评分人数（无评分为 0）
 }
 
 /**

@@ -1,6 +1,7 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 /**
  * 批量强制用户下线API
@@ -53,6 +54,8 @@ export async function POST(request: NextRequest) {
     });
 
     console.log(`[批量强制下线] 管理员 ${adminId} 强制 ${result.count} 个用户下线`);
+
+    await writeAuditLog(adminId, "user:batch_logout", { count: result.count, requested: targetUserIds.length }, null, null, request);
 
     return NextResponse.json({
       success: true,

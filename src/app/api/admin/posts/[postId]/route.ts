@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 岗位详情 API
@@ -72,6 +72,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(adminId, "post:update", { postId, name: updatedPost.name }, null, null, request);
 
     console.log(
       `[更新岗位] 管理员 ${adminId} 更新了岗位 ${postId}`
@@ -156,6 +158,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     await prisma.workspacepost.delete({
       where: { id: postId },
     });
+
+    await writeAuditLog(adminId, "post:delete", { postId }, null, null, request);
 
     console.log(
       `[删除岗位] 管理员 ${adminId} 删除了岗位 ${postId}`

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import {
   TokenSettlementError,
   RefundAccountNotFoundError,
@@ -147,6 +147,15 @@ export async function POST(request: NextRequest) {
       expectedSettlementVersion,
       expectedStatus,
     });
+
+    await writeAuditLog(
+      auth.user?.id || "admin",
+      "token_settlement:reconcile",
+      { taskId, action, reason, applied: result.applied, idempotent: result.idempotent, status: result.status },
+      null,
+      null,
+      request
+    );
 
     return NextResponse.json({
       success: true,

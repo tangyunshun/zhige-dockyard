@@ -37,6 +37,21 @@ export default function WorkspaceMembersPage() {
   const [inputQuotaValue, setInputQuotaValue] = useState<string>("");
   const [savingQuota, setSavingQuota] = useState(false);
 
+  // 个人空间门禁：成员管理仅企业空间可用，直连 URL 一律拒绝渲染
+  const [isPersonalSpace, setIsPersonalSpace] = useState(false);
+  useEffect(() => {
+    if (!workspaceId) return;
+    const authToken = getAuthToken();
+    fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d?.workspace?.type === "PERSONAL") setIsPersonalSpace(true);
+      })
+      .catch(() => {});
+  }, [workspaceId]);
+
   useEffect(() => {
     if (workspaceId) {
       loadMembers();
@@ -253,6 +268,12 @@ export default function WorkspaceMembersPage() {
 
   return (
     <WorkspaceInternalLayout>
+      {isPersonalSpace ? (
+        <div className="max-w-4xl mx-auto text-center py-16 space-y-3">
+          <p className="text-sm font-black text-slate-700">个人空间不支持成员管理</p>
+          <p className="text-xs text-slate-400">成员协作是企业空间专属功能，可升级为企业空间后使用。</p>
+        </div>
+      ) : (
       <div className="max-w-4xl mx-auto space-y-6 text-left font-sans">
         
         {/* 顶部标题栏 */}
@@ -447,6 +468,7 @@ export default function WorkspaceMembersPage() {
         )}
 
       </div>
+      )}
 
       {/* 成员个人算力额度设置 Modal */}
       {editingQuotaMember && (

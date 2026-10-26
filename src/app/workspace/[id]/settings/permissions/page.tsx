@@ -67,6 +67,8 @@ export default function WorkspacePermissionsPage() {
   const [permissionMatrix, setPermissionMatrix] = useState<PermissionMatrix>({});
   const [workspaceType, setWorkspaceType] = useState<'personal' | 'enterprise'>('personal');
   const [userRole, setUserRole] = useState<'Owner' | 'Admin' | 'Member' | 'Viewer'>('Owner');
+  // 个人空间门禁：岗位权限矩阵仅企业空间可用
+  const [isPersonalSpace, setIsPersonalSpace] = useState(false);
 
   // 新建岗位模态框状态
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -154,6 +156,17 @@ export default function WorkspacePermissionsPage() {
   useEffect(() => {
     const checkPermissions = async () => {
       try {
+        // 先取空间真实类型：个人空间直接拒绝渲染岗位权限配置
+        const typeRes = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
+          headers: { Authorization: `Bearer ${getAuthToken()}` },
+        });
+        if (typeRes.ok) {
+          const typeData = await typeRes.json();
+          if (typeData?.workspace?.type === "PERSONAL") {
+            setIsPersonalSpace(true);
+            return;
+          }
+        }
         setWorkspaceType('enterprise');
         setUserRole('Owner');
         await loadWorkspacePosts();
@@ -490,6 +503,17 @@ export default function WorkspacePermissionsPage() {
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-slate-600 font-medium">加载权限配置中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isPersonalSpace) {
+    return (
+      <div className="min-h-screen bg-[#f0f8ff] flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <p className="text-sm font-black text-slate-700">个人空间不支持岗位权限配置</p>
+          <p className="text-xs text-slate-400">岗位与组件权限矩阵是企业空间专属功能，可升级为企业空间后使用。</p>
         </div>
       </div>
     );

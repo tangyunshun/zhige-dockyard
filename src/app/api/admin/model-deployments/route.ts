@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { ALLOWED_MODEL_CAPABILITIES } from "@/lib/component-contract/capabilities";
 import { MODEL_INPUT_LIMITS, validateModelNumericFields } from "@/lib/model-endpoint";
 
@@ -129,6 +129,9 @@ export async function POST(request: NextRequest) {
         enabled: body.enabled !== false,
       },
     });
+
+    await writeAuditLog(auth.user?.id || "", "model_deployment:create", { providerId, modelId, displayName, enabled: body.enabled !== false }, null, null, request);
+
     return NextResponse.json({ success: true, data: row }, { status: 201 });
   } catch (error) {
     const code = (error as { code?: string })?.code;

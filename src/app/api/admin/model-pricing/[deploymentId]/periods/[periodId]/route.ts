@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { PRICE_SOURCES, resolvePriceStatus, yuanPerMillionToMicros } from "@/lib/model-pricing";
 import { rejectIfDeploymentEnabled } from "@/lib/model-deployment-guard";
 
@@ -152,6 +152,9 @@ export async function PATCH(
     set.priceCacheWriteMicrosPerMillion = micros.priceCacheWrite;
 
     const row = await prisma.modelpricingperiod.update({ where: { id: periodId }, data: set });
+
+    await writeAuditLog(auth.user?.id || "", "model_pricing:period_update", { periodId, name: current.name, kind: current.kind, enabled: set.enabled ?? current.enabled }, null, null, request);
+
     return NextResponse.json({ success: true, data: row });
   } catch (error) {
     console.error("[model-pricing-period] 更新失败:", (error as Error)?.message);
@@ -176,6 +179,9 @@ export async function DELETE(
       return NextResponse.json({ success: false, error: "时段价格不存在" }, { status: 404 });
     }
     await prisma.modelpricingperiod.delete({ where: { id: periodId } });
+
+    await writeAuditLog(auth.user?.id || "", "model_pricing:period_delete", { periodId, name: current.name }, null, null, request);
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[model-pricing-period] 删除失败:", (error as Error)?.message);

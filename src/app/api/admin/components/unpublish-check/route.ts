@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -235,7 +235,7 @@ export async function POST(request: NextRequest) {
         content: `尊敬的空间管理者：您所在工作空间装配载入的组件 ${compNames} 已被平台管理员执行下架操作。\n\n下架说明：${finalReason}\n\n下架后工作空间内将暂停该组件的调度与任务执行。如有任何疑问或业务需求，请及时联系平台管理员或服务支持人员。`,
         type: "system",
         popupOnLogin: true,
-        link: "/user/workspace-hub",
+        link: "/workspace-hub",
         createdAt: new Date(),
       }));
 
@@ -244,6 +244,13 @@ export async function POST(request: NextRequest) {
       });
       notificationCount = createResult.count;
     }
+
+    await writeAuditLog(authResult.user?.id || "", "component:unpublish_check", {
+      ids,
+      forced: force,
+      loadedWorkspacesCount: loadedInfo.totalLoadedCount,
+      notificationCount,
+    }, null, null, request);
 
     return NextResponse.json({
       success: true,

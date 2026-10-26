@@ -16,13 +16,23 @@
 export type PaymentMode = "MOCK" | "REAL";
 export type PaymentChannel = "WECHAT_PAY" | "ALIPAY";
 
-/** 当前支付模式：显式声明优先；未配置真实凭证时一律降级为模拟（不会偷偷收真钱） */
+/** 当前支付模式：显式声明优先。
+ * fail-closed：生产环境未显式配置 PAYMENT_MODE 时按 REAL 处理（真实网关未接入则拒绝下单），
+ * 绝不静默降级 MOCK——否则漏配环境变量 = 任何登录用户可零成本给自己无限充值算力点。
+ * 仅非生产环境（开发/联调）在未配置时降级为模拟。 */
 export function resolvePaymentMode(): PaymentMode {
   const raw = (process.env.PAYMENT_MODE || "").trim().toLowerCase();
-  if (raw === "real") {
-    return isRealGatewayConfigured() ? "REAL" : "MOCK";
+  if (raw === "mock") {
+    return "MOCK";
   }
-  return "MOCK";
+  if (raw === "real") {
+    // 显式声明 real 但凭证不全：返回 REAL 并由 createCharge 抛错拒绝下单（fail-closed），
+    // 绝不静默降级 MOCK——否则声明真实收款却漏配凭证 = 任何登录用户可零成本无限充值。
+    return "REAL";
+  }
+  // 未显式声明：生产环境 fail-closed 按 REAL（真实网关未接入则下单被拒），
+  // 仅非生产（开发/联调）降级 MOCK 供充值链路自测。
+  return process.env.NODE_ENV === "production" ? "REAL" : "MOCK";
 }
 
 /** 真实凭证是否齐备（按渠道分别校验，只需目标渠道齐备即可） */
@@ -49,6 +59,8 @@ export interface CreateChargeParams {
   amountCents: number;
   subject: string;
   channel: PaymentChannel;
+  /** 支付截止时间（透传给网关做超时关闭，与本地订单生命周期一致） */
+  expiresAt?: Date | null;
 }
 
 export interface CreateChargeResult {
@@ -64,7 +76,7 @@ export interface CreateChargeResult {
  * 创建一笔收款（不会立即入账，入账必须发生在支付回调确认之后）。
  * 这是「不能选完支付方式就加点数」的关键约束：下单与入账彻底分离。
  */
-export function createCharge(params: CreateChargeParams): CreateChargeResult {
+export async function createCharge(params: CreateChargeParams): Promise<CreateChargeResult> {
   const mode = resolvePaymentMode();
 
   if (mode === "MOCK") {
@@ -85,10 +97,48 @@ export function createCharge(params: CreateChargeParams): CreateChargeResult {
     );
   }
 
-  // TODO: 凭证到位后在此接入真实网关（微信支付 native 下单 / 支付宝当面付），
-  // 需产出网关支付链接或二维码链接 + 回调验签所需的 platformCertificate。
-  // 注意：真实退款必须复用同一网关能力，禁止在管理后台"直接加钱"冒充退款。
+  // 真实网关：微信 Native 扫码 / 支付宝电脑网站支付。
+  // 下单只拿「收银台载体」（二维码链接 / 官方收银台跳转 URL），绝不入账；入账只发生在验签回调之后。
+  if (params.channel === "WECHAT_PAY") {
+    const { createNativeOrder } = await import("@/lib/payment/wechatpay");
+    const native = await createNativeOrder({
+      orderNo: params.orderNo,
+      amountCents: params.amountCents,
+      description: params.subject,
+      expiresAt: params.expiresAt ?? null,
+    });
+    if (!native.ok || !native.codeUrl) {
+      throw new Error(native.error || "微信下单失败");
+    }
+    // 前端用 /user/pay/qr 页面渲染二维码并轮询订单状态
+    return {
+      mode: "REAL",
+      channel: params.channel,
+      payUrl: `/user/pay/qr?orderNo=${encodeURIComponent(params.orderNo)}`,
+      gatewayPayload: { codeUrl: native.codeUrl },
+    };
+  }
+
+  if (params.channel === "ALIPAY") {
+    const { buildPagePayUrl } = await import("@/lib/payment/alipay");
+    const page = buildPagePayUrl({
+      orderNo: params.orderNo,
+      amountCents: params.amountCents,
+      subject: params.subject,
+      expiresAt: params.expiresAt ?? null,
+    });
+    if (!page.ok || !page.url) {
+      throw new Error(page.error || "支付宝下单失败");
+    }
+    return {
+      mode: "REAL",
+      channel: params.channel,
+      payUrl: page.url,
+      gatewayPayload: null,
+    };
+  }
+
   throw new Error(
-    `真实支付网关尚未接入（${params.channel}）。请完成网关 SDK 接入后再切换到 PAYMENT_MODE=real。`,
+    `真实支付网关尚未支持该渠道（${params.channel}）。`,
   );
 }

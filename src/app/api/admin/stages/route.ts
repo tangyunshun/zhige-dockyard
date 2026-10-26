@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 统一管理员鉴权：返回 null 表示通过，否则返回错误响应
@@ -287,6 +287,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(permCheck.user?.id || null, "stage:create", { key: created.key, name: created.name }, null, null, request);
+
     return NextResponse.json({
       success: true,
       data: created,
@@ -306,6 +308,10 @@ async function handleUpdateStage(request: NextRequest) {
   try {
     const denied = await requireAdmin(request);
     if (denied) return denied;
+
+    // 取操作人用于审计（仅审计使用，不改变鉴权逻辑）
+    const au = await validateUser(request.headers.get("Authorization"), request);
+    const operatorId = au.user?.id || null;
 
     const { searchParams } = new URL(request.url);
     let stageId = searchParams.get("id");
@@ -349,6 +355,8 @@ async function handleUpdateStage(request: NextRequest) {
       where: { key: stageId },
       data,
     });
+
+    await writeAuditLog(operatorId, "stage:update", { stageId, changed: Object.keys(data) }, null, null, request);
 
     return NextResponse.json({
       success: true,
@@ -405,6 +413,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.componentcategory.delete({ where: { key: stageId } });
+
+    await writeAuditLog(permCheck.user?.id || null, "stage:delete", { stageId }, null, null, request);
 
     return NextResponse.json({
       success: true,

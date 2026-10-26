@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { isPlatformAdminRole, requirePlatformPermission  } from "@/lib/security";
+import { isPlatformAdminRole, requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { expireExpiredGrants } from "@/lib/credit-service";
 
 /**
@@ -34,7 +34,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "越权警告：仅平台管理员可触发清算" }, { status: 403 });
     }
 
+    const now = new Date();
+    const buckets = await prisma.pointgrant.count({
+      where: { status: "ACTIVE", remaining: { gt: 0 }, expiresAt: { lte: now } },
+    });
     const cleared = await expireExpiredGrants({});
+
+    await writeAuditLog(auth.user?.id || "", "points:expire", {
+      buckets,
+      clearedPoints: cleared,
+    }, null, null, request);
+
     return NextResponse.json({
       success: true,
       message: `全局到期清算完成，共清零 ${cleared} 算力点`,

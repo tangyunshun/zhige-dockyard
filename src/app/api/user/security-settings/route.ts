@@ -87,6 +87,13 @@ export async function PUT(request: NextRequest) {
       userId,
     );
 
+    // 安全开关变更必须留痕（防拿到会话后静默关闭 2FA 再执行高危操作）
+    const { writeAuditLog } = await import("@/lib/security");
+    await writeAuditLog(userId, "user:security_settings_update", {
+      twoFactorEnabled,
+      loginAlertEnabled,
+    }, null, null, request).catch(() => {});
+
     const rows = await prisma.$queryRawUnsafe<
       { twoFactorEnabled: number; loginAlertEnabled: number }[]
     >(`SELECT twoFactorEnabled, loginAlertEnabled FROM userpreference WHERE userId = ?`, userId);

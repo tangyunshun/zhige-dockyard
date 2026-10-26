@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 // 获取系统通知与消息推送历史流水
 export async function GET(request: NextRequest) {
@@ -175,6 +175,11 @@ export async function DELETE(request: NextRequest) {
         id: { in: idsToDelete },
       },
     });
+
+    await writeAuditLog(authCheck.user?.id || "", "notification:history_delete", {
+      ids: idsToDelete,
+      deletedCount: result.count,
+    }, null, null, request);
 
     return NextResponse.json({
       success: true,

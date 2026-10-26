@@ -1,6 +1,7 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,8 @@ export async function POST(request: NextRequest) {
         lastForcedLogoutAt: null,
       },
     });
+
+    await writeAuditLog(userId, "user:clear_session", { targetUserId }, null, null, request);
 
     console.log(
       `[清除会话 API] 已清除用户 ${targetUserId} 的会话令牌`,

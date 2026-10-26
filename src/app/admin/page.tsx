@@ -50,6 +50,7 @@ interface DashboardData {
   totalTenants: number; // 总租户数
   activeTenants: number; // 活跃租户数
   pendingReviews: number; // 待审核申请数
+  pendingPostSubmissions?: number; // 待审核的企业空间新增岗位提报数
 
   // 财务与订单聚合统计
   financialSummary?: {
@@ -399,7 +400,7 @@ export default function AdminDashboard() {
       icon: TrendingUp,
       label: "活跃工作空间",
       value: data.activeWorkspaces,
-      subLabel: `近7天活跃 / 企业团队 ${data.activeTenants} 家`,
+      subLabel: `近7天活跃 / 企业团队 ${data.activeTenants} 个`,
       badgeText: "活跃监测",
       path: "/admin/workspaces",
       color: "text-[#8b5cf6]",
@@ -764,7 +765,7 @@ export default function AdminDashboard() {
               {/* 域 1: 工作空间与多租户管控 */}
               <div 
                 className="p-4 rounded-xl bg-slate-50/70 hover:bg-emerald-50/30 border border-slate-200/80 hover:border-emerald-200 transition-all flex flex-col justify-between gap-3 group"
-                title={`空间与多租户管控\n空间总数: ${data.totalWorkspaces} 个\n企业空间: ${data.enterpriseWorkspaces} 个\n多租户: ${data.totalTenants} 家`}
+                title={`空间与多租户管控\n空间总数: ${data.totalWorkspaces} 个\n企业空间: ${data.enterpriseWorkspaces} 个\n企业租户: ${data.totalTenants} 个`}
               >
                 <div>
                   <div className="flex items-center justify-between mb-1">
@@ -781,9 +782,9 @@ export default function AdminDashboard() {
                     </div>
                     <span 
                       className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-200/60 shrink-0"
-                      title={`认证企业工作空间: ${data.enterpriseWorkspaces} 个`}
+                      title={`平台工作空间总数（含个人空间与企业空间）: ${data.totalWorkspaces} 个`}
                     >
-                      企业空间 {data.enterpriseWorkspaces} 个
+                      全部空间 {data.totalWorkspaces} 个
                     </span>
                   </div>
                   <p 
@@ -797,8 +798,8 @@ export default function AdminDashboard() {
                       空间总数: <strong className="text-slate-800 font-bold text-sm">{data.totalWorkspaces}</strong> 个
                     </span>
                     <span className="text-slate-300">|</span>
-                    <span title={`企业租户空间: ${data.totalTenants} 家`}>
-                      企业租户: <strong className="text-slate-800 font-bold text-sm">{data.totalTenants}</strong> 家
+                    <span title={`企业租户空间: ${data.totalTenants} 个`}>
+                      企业租户: <strong className="text-slate-800 font-bold text-sm">{data.totalTenants}</strong> 个
                     </span>
                   </div>
                 </div>
@@ -1296,8 +1297,24 @@ export default function AdminDashboard() {
                   核心系统服务状态
                 </h3>
               </div>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/60 whitespace-nowrap">
-                全链路正常
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${
+                  serviceTotal === 0
+                    ? "bg-slate-100 text-slate-500 border-slate-200"
+                    : allServicesNormal
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200/60"
+                      : systemServices.some((s) => s.status === "down")
+                        ? "bg-red-50 text-red-700 border-red-200/60"
+                        : "bg-amber-50 text-amber-700 border-amber-200/60"
+                }`}
+              >
+                {serviceTotal === 0
+                  ? "暂无数据"
+                  : allServicesNormal
+                    ? "全链路正常"
+                    : systemServices.some((s) => s.status === "down")
+                      ? "存在服务异常"
+                      : "部分服务需关注"}
               </span>
             </div>
 
@@ -1587,7 +1604,7 @@ export default function AdminDashboard() {
                         systemServices.reduce((acc, s) => acc + (s.latencyMs || 0), 0) / serviceTotal
                       )
                     : 0}{" "}
-                  <span className="text-xs font-mono font-normal text-slate-400">ms (优秀)</span>
+                  <span className="text-xs font-mono font-normal text-slate-400">ms</span>
                 </div>
               </div>
             </div>

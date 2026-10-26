@@ -293,13 +293,20 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 关键词搜索（支持匹配 action / resource / ipAddress / details）
+    // 关键词搜索（支持匹配 action / resource / ipAddress / details.description，与搜索框文案一致）
     if (keyword) {
-      const keywordFilter = [
+      const keywordFilter: any[] = [
         { action: { contains: keyword } },
         { resource: { contains: keyword } },
         { ipAddress: { contains: keyword } },
       ];
+      // MySQL JSON 字段文本检索：对 details 里的 description/message 做模糊匹配
+      keywordFilter.push({
+        details: { path: ["$.description"], string_contains: keyword },
+      } as any);
+      keywordFilter.push({
+        details: { path: ["$.message"], string_contains: keyword },
+      } as any);
       if (where.OR) {
         where.AND = [{ OR: where.OR }, { OR: keywordFilter }];
         delete where.OR;
@@ -467,7 +474,24 @@ export async function GET(request: NextRequest) {
   }
 }
 
+// 安全敏感动作关键字：命中这些关键字的审计日志不允许用户自行删除
+// （登录/密码/支付/退款/转让/注销/踢出/二次验证等属合规溯源记录，用户侧只读）
+const PROTECTED_ACTION_PATTERN =
+  /password|login|logout|pay|recharge|refund|transfer|deletion|delete[-_ ]?account|kick|stepup|verify/i;
+
+// 过滤掉受保护日志，返回可删除的 id 集合
+async function filterDeletable(userId: string, candidateIds: string[]) {
+  if (candidateIds.length === 0) return { deletable: [] as string[], protectedCount: 0 };
+  const rows = await prisma.operationlog.findMany({
+    where: { id: { in: candidateIds }, userId },
+    select: { id: true, action: true },
+  });
+  const deletable = rows.filter((r) => !PROTECTED_ACTION_PATTERN.test(r.action || "")).map((r) => r.id);
+  return { deletable, protectedCount: rows.length - deletable.length };
+}
+
 // DELETE - 删除用户个人操作日志（支持单条删除与批量删除，严格限制 userId 隔离）
+// 合规约束：安全敏感类日志（登录/支付/改密/转让/注销等）禁止当事人删除，仅可删除普通操作日志
 export async function DELETE(request: NextRequest) {
   try {
     const auth = await validateUser(request.headers.get("Authorization"), request);
@@ -483,36 +507,55 @@ export async function DELETE(request: NextRequest) {
     if (cleanExpired) {
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
-      const result = await prisma.operationlog.deleteMany({
+      const stale = await prisma.operationlog.findMany({
         where: { userId, createdAt: { lt: oneYearAgo } },
+        select: { id: true, action: true },
       });
-      return NextResponse.json({
-        success: true,
-        message: `成功清理已超期（大于1年）的操作日志共 ${result.count} 条`,
-        count: result.count,
-      });
-    }
-
-    // 模式 2：批量删除（严格限定 userId 属于当前用户）
-    if (Array.isArray(ids) && ids.length > 0) {
+      const deletable = stale.filter((r) => !PROTECTED_ACTION_PATTERN.test(r.action || "")).map((r) => r.id);
       const result = await prisma.operationlog.deleteMany({
-        where: {
-          id: { in: ids },
-          userId, // 强制隔离，防止越权
-        },
+        where: { id: { in: deletable } },
       });
-
       return NextResponse.json({
         success: true,
-        message: `成功删除选中的 ${result.count} 条操作审计日志`,
+        message: `成功清理已超期（大于1年）的普通操作日志共 ${result.count} 条（安全类日志受保护保留）`,
         count: result.count,
       });
     }
 
-    // 模式 3：单条删除（严格限定 userId 属于当前用户）
+    // 模式 2：批量删除（严格限定 userId 属于当前用户；安全类日志拒绝删除）
+    if (Array.isArray(ids) && ids.length > 0) {
+      const { deletable, protectedCount } = await filterDeletable(userId, ids.map(String));
+      if (deletable.length === 0) {
+        return NextResponse.json(
+          { error: "所选日志均为安全敏感记录（登录/支付/改密/转让等），受合规保护不可删除" },
+          { status: 403 },
+        );
+      }
+      const result = await prisma.operationlog.deleteMany({
+        where: { id: { in: deletable }, userId },
+      });
+
+      return NextResponse.json({
+        success: true,
+        message: protectedCount > 0
+          ? `成功删除 ${result.count} 条普通操作日志；${protectedCount} 条安全敏感日志受保护未删除`
+          : `成功删除选中的 ${result.count} 条操作审计日志`,
+        count: result.count,
+      });
+    }
+
+    // 模式 3：单条删除（严格限定 userId 属于当前用户；安全类日志拒绝删除）
     const targetId = id || new URL(request.url).searchParams.get("id");
     if (!targetId) {
       return NextResponse.json({ error: "缺少待删除日志记录的 ID" }, { status: 400 });
+    }
+
+    const { deletable: singleDeletable } = await filterDeletable(userId, [String(targetId)]);
+    if (singleDeletable.length === 0) {
+      return NextResponse.json(
+        { error: "该日志为安全敏感记录（登录/支付/改密/转让等），受合规保护不可删除" },
+        { status: 403 },
+      );
     }
 
     const result = await prisma.operationlog.deleteMany({

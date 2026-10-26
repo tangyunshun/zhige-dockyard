@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { grantPoints } from "@/lib/credit-service";
 
 /**
@@ -48,6 +48,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         where: { id },
         data: { status: "REJECTED", adminId, adminRemark: remark, resolvedAt: new Date() },
       });
+      await writeAuditLog(adminId, "refund:resolve", { id, action: "REJECT", remark }, null, null, request);
       return NextResponse.json({ success: true, data: { status: "REJECTED" } });
     }
 
@@ -87,6 +88,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         resolvedAt: new Date(),
       },
     });
+
+    await writeAuditLog(adminId, "refund:resolve", { id, action: "APPROVE", points, refundLedgerId: grant.ledgerId, userId: req.userId }, null, null, request);
 
     return NextResponse.json({ success: true, data: { status: "APPROVED", refundLedgerId: grant.ledgerId, refunded: points, updated } });
   } catch (error) {

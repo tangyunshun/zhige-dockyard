@@ -780,22 +780,45 @@ const INITIAL_PERMISSIONS_CATALOG: PermissionGroupItem[] = [
     ],
   },
   {
-    group: "财务结算管理模块 (Finance)",
+    // 与生产库已收敛的账务分组保持一致：账务(billing:*) + 结算(finance:*) 同属一个财务模块，
+    // 冷启动即带齐账务三权限（它们被结算/退款/导出等真实接口依赖，缺失会导致新环境财务功能无权可用）
+    group: "账务管理模块 (Billing)",
     moduleRoute: "/admin/finance",
-    description: "平台资金流入流出对账、开发者收益提现清算与对公发票管理",
+    description: "账务与结算管理：算力点流水、充值/退款订单、押金结算与账务对账等资金类数据处理（含导出与结算裁决）",
     keys: [
+      {
+        key: "billing:read",
+        label: "查看账务数据",
+        desc: "查看押金结算、退款记录与账务对账报表",
+        moduleName: "账务管理",
+        level: "read",
+      },
+      {
+        key: "billing:manage",
+        label: "账务管理操作",
+        desc: "押金结算、退款审批、账务对账等资金类管理操作",
+        moduleName: "账务管理",
+        level: "high",
+      },
+      {
+        key: "billing:export",
+        label: "导出账务数据",
+        desc: "导出算力点流水 / 充值订单 / 退款工单 / 结算记录四类资金数据",
+        moduleName: "账务管理",
+        level: "high",
+      },
       {
         key: "finance:read",
         label: "查看财务对账看板",
         desc: "查看支付通道日结账单、创作者收益池与待结算提现申请",
-        moduleName: "财务结算",
+        moduleName: "账务管理",
         level: "read",
       },
       {
         key: "finance:settle",
         label: "执行收益提现打款复核",
         desc: "复核创作者提现账号与金额，标记打款完成或原路驳回",
-        moduleName: "财务结算",
+        moduleName: "账务管理",
         level: "high",
       },
     ],

@@ -434,9 +434,13 @@ export async function DELETE(request: NextRequest) {
     }
 
     // 删除工作空间 (级联删除相关数据)
-    await prisma.workspace.delete({
-      where: { id: workspaceId },
-    });
+    // 空间模型策略表与 workspace 无外键级联，必须在同一事务内显式清理，否则残留孤儿策略行
+    await prisma.$transaction([
+      prisma.workspace_model_policy.deleteMany({ where: { workspaceId: workspaceId } }),
+      prisma.workspace.delete({
+        where: { id: workspaceId },
+      }),
+    ]);
 
     // 统一审计：记录彻底解散/删除空间（极高危可审计）
     void writeAuditLog(

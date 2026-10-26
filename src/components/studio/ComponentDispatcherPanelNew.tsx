@@ -569,18 +569,14 @@ export default function ComponentDispatcherPanel({
           })
         );
 
-        // B. 一次性获取所有空间算力配额
+        // B. 一次性获取所有空间算力配额（无 quota 数据的空间不伪造余额，显示为 0 由用户自行充值）
         try {
           const res = await fetch("/api/user/workspace-hub/quota", { headers });
           if (res.ok) {
             const resData = await res.json();
             if (resData.success && resData.data?.workspaces) {
               resData.data.workspaces.forEach((w: any) => {
-                if (w.quota) {
-                  quotaMap[w.id] = Number(w.quota.tokenBalance);
-                } else if (w.type === "PERSONAL") {
-                  quotaMap[w.id] = 100;
-                }
+                quotaMap[w.id] = w.quota ? Number(w.quota.tokenBalance) : 0;
               });
             }
           }
@@ -744,6 +740,19 @@ export default function ComponentDispatcherPanel({
                 </div>
               </div>
               
+              {/* 真实评分统计（component_stats.averageRating，由使用者评分重算；无评分显示"暂无评分"） */}
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                <Star className="w-3.5 h-3.5 text-amber-400" />
+                {(comp.averageRating ?? 0) > 0 ? (
+                  <span>
+                    评分 {comp.averageRating!.toFixed(1)} / 5
+                    <span className="text-slate-400 font-medium ml-1">（{comp.ratingCount ?? 0} 位真实使用者评分）</span>
+                  </span>
+                ) : (
+                  <span className="text-slate-400">暂无评分（评分来自真实执行过该组件的用户）</span>
+                )}
+              </div>
+
               <p className="text-[11px] text-slate-600 font-semibold leading-relaxed">
                 {comp.description}
               </p>

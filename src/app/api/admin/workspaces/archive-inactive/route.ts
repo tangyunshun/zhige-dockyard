@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 /**
  * POST /api/admin/workspaces/archive-inactive
@@ -66,6 +67,8 @@ export async function POST(request: NextRequest) {
         },
       });
     }
+
+    await writeAuditLog(authResult.user!.id, "workspace:archive_inactive", { count: archivedIds.length, workspaceIds: archivedIds }, null, null, request);
 
     // 查询所有所有者邮箱
     const ownerIds = Array.from(new Set(inactiveWorkspaces.map((ws) => ws.ownerId)));

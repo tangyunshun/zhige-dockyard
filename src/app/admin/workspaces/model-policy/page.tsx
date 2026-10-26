@@ -205,6 +205,10 @@ export default function WorkspaceModelPolicyPage() {
   const [wsTotalPages, setWsTotalPages] = useState(1);
   const [wsLoading, setWsLoading] = useState(false);
   const [wsPageSize, setWsPageSize] = useState(20);
+  // 模型白名单分页（前端分页：模型清单已一次性加载，按页切片渲染，避免长列表撑爆右侧面板）
+  const [modelPage, setModelPage] = useState(1);
+  // 每页 6 款（2 列 × 3 行）：与右侧面板可视高度匹配，不留半行空缺；可选 12 / 24
+  const [modelPageSize, setModelPageSize] = useState(6);
   const [selectedWorkspace, setSelectedWorkspace] = useState<WorkspaceItem | null>(null);
   // 历史脏数据标记：默认模型曾被移出白名单（默认 ∉ 白名单）。加载时自动并回白名单并提示，需保存生效。
   const [orphanDefault, setOrphanDefault] = useState(false);
@@ -368,6 +372,23 @@ export default function WorkspaceModelPolicyPage() {
 
   // 过滤已在后端按 search/type 完成，前端直接展示当前页结果
   const filteredWorkspaces = workspaces;
+
+  // 模型白名单分页切片（clamp 防止列表缩短后页码越界）
+  const modelTotalPages = Math.max(1, Math.ceil(whitelistDeployments.length / modelPageSize));
+  const safeModelPage = Math.min(modelPage, modelTotalPages);
+  const pagedDeployments = useMemo(
+    () =>
+      whitelistDeployments.slice(
+        (safeModelPage - 1) * modelPageSize,
+        safeModelPage * modelPageSize,
+      ),
+    [whitelistDeployments, safeModelPage, modelPageSize],
+  );
+
+  // 切换空间后模型分页回到第一页
+  useEffect(() => {
+    setModelPage(1);
+  }, [selectedWs]);
 
   // 优先从当前页找，找不到（已翻页/搜索离开）则回退到上次选中的空间缓存，保证右侧配置不空白
   const currentWorkspace = useMemo(
@@ -801,7 +822,7 @@ export default function WorkspaceModelPolicyPage() {
 
                   {/* 模型网格 */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-1">
-                    {whitelistDeployments.map((d) => {
+                    {pagedDeployments.map((d) => {
                       const isChecked = allowed.includes(d.id);
                       const isDefault = defaultId === d.id;
                       return (
@@ -921,6 +942,78 @@ export default function WorkspaceModelPolicyPage() {
                           <Server className="w-3.5 h-3.5" />
                           <span>前往模型注册表</span>
                         </Link>
+                      </div>
+                    )}
+
+                    {/* 模型分页控件（与左侧空间分页同款紧凑样式） */}
+                    {whitelistDeployments.length > 0 && (
+                      <div className="col-span-full pt-1 flex items-center justify-between flex-wrap gap-2 select-none">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">
+                            共 <strong className="font-mono text-slate-800 font-bold">{whitelistDeployments.length}</strong> 款
+                          </span>
+                          <select
+                            value={modelPageSize}
+                            onChange={(e) => {
+                              setModelPageSize(Number(e.target.value));
+                              setModelPage(1);
+                            }}
+                            className="px-1.5 py-0.5 bg-white border border-slate-200/90 rounded text-[11px] font-bold text-slate-600 cursor-pointer outline-none hover:border-slate-300 focus:border-[#3182ce] shadow-2xs transition-all"
+                            title="每页条数"
+                          >
+                            <option value={6}>6/页</option>
+                            <option value={12}>12/页</option>
+                            <option value={24}>24/页</option>
+                          </select>
+                          <span className="text-[11px] text-slate-400 font-medium whitespace-nowrap">
+                            第 {(safeModelPage - 1) * modelPageSize + 1}-
+                            {Math.min(safeModelPage * modelPageSize, whitelistDeployments.length)} 款
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            disabled={safeModelPage <= 1}
+                            onClick={() => setModelPage(1)}
+                            className="w-[26px] h-[26px] rounded bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200/80 flex items-center justify-center cursor-pointer transition-all shadow-2xs active:scale-95"
+                            title="首页"
+                          >
+                            <ChevronsLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={safeModelPage <= 1}
+                            onClick={() => setModelPage(safeModelPage - 1)}
+                            className="w-[26px] h-[26px] rounded bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200/80 flex items-center justify-center cursor-pointer transition-all shadow-2xs active:scale-95"
+                            title="上一页"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
+                          <div className="px-2 py-0.5 bg-white border border-slate-200/80 rounded text-[11px] font-mono font-bold text-slate-700 shadow-2xs flex items-center">
+                            <span className="text-[#3182ce]">{safeModelPage}</span>
+                            <span className="text-slate-300 mx-1">/</span>
+                            <span>{modelTotalPages}</span>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={safeModelPage >= modelTotalPages}
+                            onClick={() => setModelPage(safeModelPage + 1)}
+                            className="w-[26px] h-[26px] rounded bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200/80 flex items-center justify-center cursor-pointer transition-all shadow-2xs active:scale-95"
+                            title="下一页"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={safeModelPage >= modelTotalPages}
+                            onClick={() => setModelPage(modelTotalPages)}
+                            className="w-[26px] h-[26px] rounded bg-white hover:bg-slate-100 text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed border border-slate-200/80 flex items-center justify-center cursor-pointer transition-all shadow-2xs active:scale-95"
+                            title="末页"
+                          >
+                            <ChevronsRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
                     )}
                   </div>

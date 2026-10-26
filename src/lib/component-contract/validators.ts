@@ -694,6 +694,47 @@ export function validateExecutionPlan(plan: ComponentExecutionPlan): void {
 }
 
 /**
+ * 【P2 事故防线】起草 / 修改 / 发布前的 Prompt 模板必填章节前置校验。
+ *
+ * 背景：qualityPolicy.requiredSections 是执行期模型输出的质量门禁——validateModelOutput
+ * 会逐项要求输出文本包含该章节（支持 | 分隔多选一）。若 Prompt 模板没有写明这些章节要求，
+ * 模型输出大概率缺失章节 → 输出校验必败 → 任务全部失败退款（C07 v1.1.0 七连败全额退款事故）。
+ *
+ * 规则：全部 executionPlan.steps[].promptTemplate 合并后，必须逐字包含 requiredSections
+ * 的每一项（每项支持 | 分隔多选一，任一命中即通过），与运行时输出门禁同一匹配语义。
+ *
+ * 作用域：仅在起草（createDraftContract）、修改草稿（updateDraftContract）、
+ * 发布（publishContract）三个写入入口显式调用；刻意不进入 validateComponentContract，
+ * 避免执行期快照校验追溯历史存量版本（60 个既有组件合同不受影响）。
+ */
+export function assertPromptCoversRequiredSections(contract: ComponentContract): void {
+  const sections = contract?.qualityPolicy?.requiredSections;
+  if (!Array.isArray(sections) || sections.length === 0) {
+    return;
+  }
+
+  const steps = contract?.executionPlan?.steps;
+  const mergedTemplates = Array.isArray(steps)
+    ? steps
+        .map((s) => (s && typeof s.promptTemplate === "string" ? s.promptTemplate : ""))
+        .join("\n")
+    : "";
+
+  for (const sec of sections) {
+    if (typeof sec !== "string") continue;
+    const options = sec.split("|").map((s) => s.trim()).filter(Boolean);
+    if (options.length === 0) continue;
+    const matched = mergedTemplates.length > 0 && options.some((opt) => mergedTemplates.includes(opt));
+    if (!matched) {
+      throw new ComponentContractError(
+        "PROMPT_MISSING_REQUIRED_SECTION",
+        `Prompt 模板未包含必填章节 [${sec}]，执行时模型输出将无法通过质量门禁导致任务全部失败退款，请先在模板中写明该章节要求`
+      );
+    }
+  }
+}
+
+/**
  * 校验组件输入材料（严格根据合同定义）
  */
 export function validateComponentInput(

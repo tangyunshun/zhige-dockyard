@@ -260,8 +260,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!workspaceId) return;
     const seq = ++boundReqSeqRef.current;
     const authToken = typeof window !== "undefined" ? localStorage.getItem("auth_token") : null;
-    // [临时诊断] 便于复现时核对刷新时序
-    console.log(`[AppContext] refreshBoundComponents 发起: ws=${workspaceId} seq=${seq}`);
 
     // 8 秒超时控制，避免网络响应卡死
     const controller = new AbortController();

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 function serializePlan(plan: any) {
   const maxComponents = Number(plan.maxComponents ?? 0);
@@ -154,6 +154,19 @@ export async function PUT(request: NextRequest, context?: any) {
       },
     });
 
+    await writeAuditLog(
+      authCheck.user?.id || "",
+      "workspace_plan:update",
+      {
+        key,
+        old: { name: existing.name, priceMonthly: Number(existing.priceMonthly), isActive: existing.isActive },
+        new: { name: plan.name, priceMonthly: Number(plan.priceMonthly), isActive: plan.isActive },
+      },
+      null,
+      null,
+      request
+    );
+
     return NextResponse.json({
       success: true,
       data: serializePlan(plan),
@@ -220,6 +233,8 @@ export async function DELETE(request: NextRequest, context?: any) {
     }
 
     await prisma.workspaceplan.delete({ where: { key } });
+
+    await writeAuditLog(authCheck.user?.id || "", "workspace_plan:delete", { key }, null, null, request);
 
     return NextResponse.json({
       success: true,

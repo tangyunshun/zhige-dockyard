@@ -57,6 +57,13 @@ interface ActivityStatistics {
   today: number;
 }
 
+// 安全敏感动作判定：与后端 /api/user/activities DELETE 的保护名单同口径，
+// 登录/支付/改密/转让/注销等合规溯源记录不允许当事人删除（按钮隐藏 + 批量剔除）
+const PROTECTED_ACTION_PATTERN =
+  /password|login|logout|pay|recharge|refund|transfer|deletion|delete[-_ ]?account|kick|stepup|verify/i;
+const isProtectedActivity = (a?: { action?: string } | null) =>
+  !!a && PROTECTED_ACTION_PATTERN.test(a.action || "");
+
 // 常见业务字段转中文对照表，彻底杜绝 message, deleted, userId 等英文原样暴露
 const FIELD_TRANSLATIONS: Record<string, string> = {
   message: "操作说明",
@@ -373,13 +380,19 @@ export default function UserActivitiesPage() {
     });
   };
 
-  // 触发批量删除
+  // 触发批量删除（自动剔除受合规保护的安全敏感日志）
   const handleTriggerBatchDelete = () => {
-    if (selectedIds.length === 0) return;
+    const deletable = selectedIds.filter(
+      (id) => !isProtectedActivity(activities.find((a) => a.id === id)),
+    );
+    if (deletable.length === 0) {
+      toast.error("所选日志均为安全敏感记录（登录/支付/改密/转让等），受合规保护不可删除");
+      return;
+    }
     setConfirmDelete({
       open: true,
       type: "batch",
-      count: selectedIds.length,
+      count: deletable.length,
     });
   };
 
@@ -388,9 +401,12 @@ export default function UserActivitiesPage() {
     setDeleting(true);
     try {
       const authToken = getAuthToken();
+      const deletableSelected = selectedIds.filter(
+        (id) => !isProtectedActivity(activities.find((a) => a.id === id)),
+      );
       const payload =
         confirmDelete.type === "batch"
-          ? { ids: selectedIds }
+          ? { ids: deletableSelected }
           : { id: confirmDelete.id };
 
       const res = await fetch("/api/user/activities", {
@@ -976,16 +992,18 @@ export default function UserActivitiesPage() {
                       <span>详情</span>
                     </button>
 
-                    {/* 鲜红且显眼的单项删除按钮（图标+文字“删除”，一目了然） */}
-                    <button
-                      type="button"
-                      onClick={() => handleTriggerSingleDelete(activity.id)}
-                      className="h-8 px-2.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95"
-                      title="删除此条操作记录"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>删除</span>
-                    </button>
+                    {/* 单项删除按钮：安全敏感日志（登录/支付/改密/转让等）受合规保护，不可删除 */}
+                    {!isProtectedActivity(activity) && (
+                      <button
+                        type="button"
+                        onClick={() => handleTriggerSingleDelete(activity.id)}
+                        className="h-8 px-2.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95"
+                        title="删除此条操作记录"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>删除</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );

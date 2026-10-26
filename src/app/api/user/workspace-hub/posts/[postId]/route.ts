@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { hasPermission, PermissionAction, ResourceType } from "@/constants/roles";
 
 /**
@@ -168,6 +169,9 @@ export async function DELETE(
       return NextResponse.json({ error: "无权移除空间岗位，需要空间所有者或管理员权限" }, { status: 403 });
     }
 
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
+
     // 查找目标岗位
     const post = await prisma.workspacepost.findFirst({
       where: {
@@ -183,10 +187,11 @@ export async function DELETE(
       return NextResponse.json({ error: "岗位不存在或已被移除" }, { status: 404 });
     }
 
-    // 门禁 1：空间所有者永久锁定，绝对禁止移除
-    if (post.isSystem || post.name.trim() === "空间所有者") {
+    // 门禁 1：空间所有者/空间管理员永久锁定，绝对禁止移除
+    // （受限组件计算与成员角色管理均依赖这两个根基岗位存在，误删会导致权限矩阵失真）
+    if (post.isSystem || post.name.trim() === "空间所有者" || post.name.trim() === "空间管理员") {
       return NextResponse.json(
-        { error: "【空间所有者】为企业空间最高特权根基岗位，系统强制锁定，绝对禁止移除" },
+        { error: "【空间所有者/空间管理员】为企业空间根基岗位，系统强制锁定，绝对禁止移除" },
         { status: 400 }
       );
     }

@@ -224,6 +224,76 @@ export default function UserSubAccountsPage() {
     }
   };
 
+  // 空间授权弹窗
+  const [authTarget, setAuthTarget] = useState<SubAccount | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authSubmitting, setAuthSubmitting] = useState(false);
+  const [mySpaces, setMySpaces] = useState<{ id: string; name: string }[]>([]);
+  const [authRows, setAuthRows] = useState<Record<string, string>>({}); // workspaceId -> role
+  const [authPick, setAuthPick] = useState<{ workspaceId: string; role: "MEMBER" | "ADMIN" }>({ workspaceId: "", role: "MEMBER" });
+
+  // 打开授权弹窗：拉取我的企业空间 + 该子账号当前授权
+  const openAuthorize = async (acc: SubAccount) => {
+    setAuthTarget(acc);
+    setAuthLoading(true);
+    setAuthPick({ workspaceId: "", role: "MEMBER" });
+    try {
+      const [wsRes, authRes] = await Promise.all([
+        fetch("/api/workspace/list", { headers: authHeaders(), cache: "no-store" }),
+        fetch(`/api/user/sub-accounts/authorize?subUserId=${encodeURIComponent(acc.id)}`, {
+          headers: authHeaders(),
+          cache: "no-store",
+        }),
+      ]);
+      const wsJson = await wsRes.json();
+      setMySpaces(
+        (wsJson.workspaces || [])
+          .filter((w: any) => w.type === "ENTERPRISE" && w.role === "OWNER")
+          .map((w: any) => ({ id: w.id, name: w.name })),
+      );
+      const authJson = await authRes.json();
+      if (authRes.ok) {
+        const rows: Record<string, string> = {};
+        (authJson.authorizations || []).forEach((a: any) => {
+          rows[a.workspaceId] = a.role;
+        });
+        setAuthRows(rows);
+      } else {
+        toast.error(authJson.error || "读取授权状态失败");
+      }
+    } catch (e) {
+      console.error("读取授权状态失败:", e);
+      toast.error("读取授权状态失败");
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  // 授权 / 调整角色 / 取消授权
+  const submitAuthorize = async (workspaceId: string, role: "MEMBER" | "ADMIN", revoke = false) => {
+    if (!authTarget) return;
+    setAuthSubmitting(true);
+    try {
+      const res = await fetch("/api/user/sub-accounts/authorize", {
+        method: revoke ? "DELETE" : "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ subUserId: authTarget.id, workspaceId, role }),
+      });
+      const json = await res.json();
+      if (res.ok && json.success) {
+        toast.success(json.message || "操作成功");
+        await openAuthorize(authTarget);
+      } else {
+        toast.error(json.error || "操作失败");
+      }
+    } catch (e) {
+      console.error("授权操作失败:", e);
+      toast.error("网络异常，操作未完成");
+    } finally {
+      setAuthSubmitting(false);
+    }
+  };
+
   const stats = {
     total: subAccounts.length,
     active: subAccounts.filter((a) => a.status === "active").length,
@@ -378,6 +448,13 @@ export default function UserSubAccountsPage() {
                                 title="查看操作记录"
                               >
                                 <History className="w-3.5 h-3.5" /> 活动
+                              </button>
+                              <button
+                                onClick={() => openAuthorize(acc)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                                title="配置可进入的企业空间"
+                              >
+                                <Building2 className="w-3.5 h-3.5" /> 空间授权
                               </button>
                               <button
                                 onClick={() => { setResetError(null); setNewPassword(""); setResetTarget(acc); }}
@@ -617,6 +694,93 @@ export default function UserSubAccountsPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 空间授权弹窗 */}
+      {authTarget && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+          onClick={() => setAuthTarget(null)}
+        >
+          <div
+            className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6 space-y-4 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-800">空间授权 — {authTarget.name}</h3>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  授权后子账号即可登录并进入对应企业空间（真实成员关系，与其他成员同权限体系）。
+                </p>
+              </div>
+              <button onClick={() => setAuthTarget(null)} className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer">×</button>
+            </div>
+
+            {authLoading ? (
+              <p className="text-xs text-slate-400 text-center py-6">加载中…</p>
+            ) : (
+              <>
+                {mySpaces.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-6">您还没有名下企业空间，无法授权。</p>
+                ) : (
+                  <div className="space-y-2">
+                    {mySpaces.map((w) => {
+                      const role = authRows[w.id];
+                      return (
+                        <div key={w.id} className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200 bg-slate-50/60">
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 truncate">{w.name}</p>
+                            <p className="text-[10px] text-slate-400 mt-0.5">
+                              {role ? `已授权（${role === "ADMIN" ? "管理员" : "成员"}）` : "未授权"}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {role ? (
+                              <>
+                                <button
+                                  onClick={() => submitAuthorize(w.id, role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                                  disabled={authSubmitting}
+                                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-[#2b6cb0] hover:bg-blue-100 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  调整为{role === "ADMIN" ? "成员" : "管理员"}
+                                </button>
+                                <button
+                                  onClick={() => submitAuthorize(w.id, "MEMBER", true)}
+                                  disabled={authSubmitting}
+                                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  取消授权
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <select
+                                  value={authPick.workspaceId === w.id ? authPick.role : "MEMBER"}
+                                  onChange={(e) => setAuthPick({ workspaceId: w.id, role: e.target.value as "MEMBER" | "ADMIN" })}
+                                  className="text-[11px] border border-slate-200 rounded-lg px-2 py-1.5 bg-white cursor-pointer"
+                                >
+                                  <option value="MEMBER">成员</option>
+                                  <option value="ADMIN">管理员</option>
+                                </select>
+                                <button
+                                  onClick={() => submitAuthorize(w.id, authPick.workspaceId === w.id ? authPick.role : "MEMBER")}
+                                  disabled={authSubmitting}
+                                  className="px-2.5 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  授权
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </div>
       )}

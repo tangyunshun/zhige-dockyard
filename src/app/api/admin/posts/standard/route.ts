@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import {
   getStandardPostsFromDB,
   getPostNameAliasMap,
@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(authCheck.user?.id || "", "post:create", { id: row.id, name: row.name }, null, null, request);
+
     return NextResponse.json({
       success: true,
       post: rowToItem(row),
@@ -215,6 +217,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(authCheck.user?.id || "", "post:update", { id, name: row.name, status: row.status }, null, null, request);
+
     return NextResponse.json({
       success: true,
       post: rowToItem(row),
@@ -260,6 +264,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.platformstandardpost.delete({ where: { id } });
+
+    await writeAuditLog(authCheck.user?.id || "", "post:delete", { id }, null, null, request);
 
     return NextResponse.json({
       success: true,

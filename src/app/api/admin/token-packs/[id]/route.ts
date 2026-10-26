@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requirePlatformPermission, isPlatformAdminRole } from "@/lib/security";
+import { requirePlatformPermission, isPlatformAdminRole, writeAuditLog } from "@/lib/security";
 import { getTokenPackModel, updateTokenPackMemoryCache, removeTokenPackMemoryCache, markTokenPackDeleted } from "@/lib/token-pack-service";
 import { pointsToYuan } from "@/lib/point-rate";
 
@@ -92,6 +92,8 @@ export async function PUT(
       }
     }
 
+    await writeAuditLog(auth.user.id, "token_pack:update", { id, name, points, price, isActive }, null, null, request);
+
     return NextResponse.json({
       success: true,
       message: "恭喜！算力加油包修改成功保存落库",
@@ -135,6 +137,12 @@ export async function DELETE(
       return NextResponse.json({ error: "越权警告：仅系统超级管理员可删除算力加油包" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 token_pack:manage 一致）
+    const permCheck = await requirePlatformPermission(request, "token_pack:manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限删除算力加油包" }, { status: 403 });
+    }
+
     const { id } = await params;
     removeTokenPackMemoryCache(id);
 
@@ -153,6 +161,8 @@ export async function DELETE(
 
     // 持久化删除标记，避免预置包在下一次列表加载时被自动补回
     await markTokenPackDeleted(prisma, id);
+
+    await writeAuditLog(auth.user.id, "token_pack:delete", { id }, null, null, request);
 
     return NextResponse.json({
       success: true,

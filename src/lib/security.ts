@@ -843,7 +843,7 @@ export async function requireWorkspacePermission(
  * 记录统一的高危审计日志并持久化至 operationlog
  */
 export async function writeAuditLog(
-  userId: string,
+  userId: string | null,
   action: string,
   details: any,
   workspaceId?: string | null,
@@ -861,7 +861,7 @@ export async function writeAuditLog(
     await prisma.operationlog.create({
       data: {
         id: randomId,
-        userId,
+        userId: userId ?? "",
         workspaceId: workspaceId || null,
         action,
         resource: action.split(":")[0] || "system",

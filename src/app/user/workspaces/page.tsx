@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
+import StepUpAuthModal from "@/components/StepUpAuthModal";
 
 interface Workspace {
   id: string;
@@ -54,6 +55,8 @@ export default function UserWorkspacesPage() {
   const [filterType, setFilterType] = useState<"ALL" | "PERSONAL" | "ENTERPRISE">("ALL");
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // 删除空间二次身份验证（后端 delete_workspace 场景强制校验）
+  const [showDeleteStepUp, setShowDeleteStepUp] = useState(false);
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [editFormData, setEditFormData] = useState({ name: "", description: "" });
   const [editNameError, setEditNameError] = useState<string | null>(null);
@@ -150,7 +153,7 @@ export default function UserWorkspacesPage() {
     setShowDeleteConfirm(true);
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (verifyToken?: string) => {
     if (!selectedWorkspace) return;
 
     try {
@@ -158,7 +161,11 @@ export default function UserWorkspacesPage() {
       const authToken = getAuthToken();
       const res = await fetch(`/api/user/workspaces?id=${selectedWorkspace.id}`, {
         method: "DELETE",
-        headers: { Authorization: `Bearer ${authToken}` },
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ verifyToken: verifyToken || "" }),
       });
 
       if (res.ok) {
@@ -168,6 +175,12 @@ export default function UserWorkspacesPage() {
         setSelectedWorkspace(null);
       } else {
         const error = await res.json();
+        // 高危操作需二次身份验证：确认弹窗通过后拉起密码验证
+        if (error.error === "SEC_AUTH_REQUIRED" || error.error === "SEC_AUTH_INVALID") {
+          setShowDeleteConfirm(false);
+          setShowDeleteStepUp(true);
+          return;
+        }
         toast.error(error.message || "删除空间失败");
       }
     } catch (error) {
@@ -639,7 +652,7 @@ export default function UserWorkspacesPage() {
               </button>
               <button
                 type="button"
-                onClick={confirmDelete}
+                onClick={() => confirmDelete()}
                 disabled={submitting}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-50"
               >
@@ -649,6 +662,19 @@ export default function UserWorkspacesPage() {
           </div>
         </div>
       )}
+
+      {/* 删除空间二次身份验证弹窗 */}
+      <StepUpAuthModal
+        isOpen={showDeleteStepUp}
+        title="删除空间身份验证"
+        message="删除工作空间属于高危且不可逆的操作，请输入账号密码完成验证。"
+        action="delete_workspace"
+        onConfirm={(token) => {
+          setShowDeleteStepUp(false);
+          confirmDelete(token);
+        }}
+        onCancel={() => setShowDeleteStepUp(false)}
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 /**
  * 海量用户标识批量解析接口（替代逐个粘贴）
@@ -110,6 +111,8 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await resolveIdentifiers(identifiers);
+
+    await writeAuditLog(guard.admin.id, "user:import_identifiers", { inputCount: identifiers.length, matchedCount: result.matched.length, unmatchedCount: result.unmatched.length }, null, null, request);
 
     return NextResponse.json({
       success: true,

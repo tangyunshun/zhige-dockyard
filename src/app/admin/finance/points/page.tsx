@@ -20,6 +20,8 @@ import {
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 import { useExportMaxRows } from "@/lib/use-export-max-rows";
+// 算力点类型中文来自数据库字典（system_config.billing_display_dict），前端不内置
+import { setBillingDicts, lookupBillingValueLabel } from "@/lib/billing-display-dict";
 
 interface LedgerRow {
   id: string;
@@ -120,16 +122,25 @@ export default function AdminPointsLedgerPage() {
     }
   }, [typeFilter, page]);
 
-  const POINT_TYPE_LABEL: Record<string, string> = {
-    CONSUME: "组件执行扣点",
-    REFUND: "退款",
-    RECHARGE: "充值",
-    OFFLINE_RECHARGE: "线下充值",
-    GIFT_REGISTER: "注册赠送",
-    MEMBERSHIP_GRANT: "会员发放",
-    GIFT_EXPIRE: "赠送过期",
-    MANUAL_ADJUST: "手动调整",
-  };
+  // 加载账单显示字典（来源：数据库 system_config.billing_display_dict），驱动算力点类型中文的数据库渲染
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch("/api/user/billing-dict", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && d.success && d.data) setBillingDicts(d.data);
+      } catch {
+        // 字典缺失回退原始枚举值，不阻塞
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const handleExportExcel = useCallback(async () => {
     if (!isSuperAdmin && !hasPermission("billing:export")) {
@@ -160,7 +171,7 @@ export default function AdminPointsLedgerPage() {
         trace: { exportType: "算力点流水", filters: { type: typeFilter }, rowCount: list.length, page: "/admin/finance/points" },
         columns: [
           { header: "发生时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
-          { header: "类型", key: "type", width: 16, formatter: (v: string, row: LedgerRow) => POINT_TYPE_LABEL[v] || row.typeLabel || v },
+          { header: "类型", key: "type", width: 16, formatter: (v: string, row: LedgerRow) => lookupBillingValueLabel(v) || row.typeLabel || v },
           { header: "说明", key: "title", width: 30 },
           { header: "点数变动", key: "points", width: 14, formatter: (v: number) => (v > 0 ? `+${v}` : String(v)) },
           { header: "变动后余额", key: "balanceAfter", width: 14 },

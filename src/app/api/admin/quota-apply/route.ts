@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { grantPoints } from "@/lib/credit-service";
 
 /**
@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
           updatedAt: new Date(),
         },
       });
+      await writeAuditLog(adminId, "quota:reject", { applyId, reason: adminRemark }, apply.workspaceId, null, request);
+
       return NextResponse.json({ success: true, message: "已拒绝该申请" });
     }
 
@@ -160,6 +162,8 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(adminId, "quota:approve", { applyId, points: finalPoints, workspaceId: apply.workspaceId, ledgerId: (grantResult as { ledgerId?: string })?.ledgerId ?? null }, apply.workspaceId, null, request);
 
     return NextResponse.json({
       success: true,

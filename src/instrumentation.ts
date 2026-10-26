@@ -76,4 +76,22 @@ export async function register() {
     await sweepModelDisables();
     setInterval(sweepModelDisables, 10 * 60 * 1000);
   }, 2 * 60 * 1000);
+
+  // 订单超时清算：每 5 分钟把超时未付的 PENDING 订单置为 EXPIRED（迟到回调一律拒绝入账）。
+  // 首跑延后 3 分钟（避开启动高峰），与外部调度冗余。
+  const sweepExpiredOrders = async () => {
+    try {
+      const { expirePendingOrders } = await import("@/lib/order-expiry");
+      const res = await expirePendingOrders();
+      if (res.expiredCount > 0) {
+        console.log(`[order-expiry] 订单超时清算：${res.expiredCount} 笔待支付订单已置为 EXPIRED`);
+      }
+    } catch (e) {
+      console.error("[order-expiry] 订单超时清算失败:", e);
+    }
+  };
+  setTimeout(async () => {
+    await sweepExpiredOrders();
+    setInterval(sweepExpiredOrders, 5 * 60 * 1000);
+  }, 3 * 60 * 1000);
 }

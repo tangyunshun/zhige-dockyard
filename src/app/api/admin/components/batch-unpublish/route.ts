@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
@@ -117,6 +117,8 @@ export async function POST(request: NextRequest) {
       data: { isPublished: false },
     });
 
+    await writeAuditLog(authResult.user?.id || "", "component:batch_unpublish", { count: ids.length, ids, forced: force, notified: affectedUserIdSet.size }, null, null, request);
+
     // 4. 若有受影响用户且确认下架，自动派发站内信通知
     let notificationCount = 0;
     if (affectedUserIdSet.size > 0) {
@@ -131,7 +133,7 @@ export async function POST(request: NextRequest) {
         content: `尊敬的空间管理者/使用者：您所在工作空间装配载入的组件 ${compNames} 已被平台管理员执行批量下架操作。\n\n下架说明：${finalReason}\n\n下架后工作空间内将暂停该组件的调度与任务执行。如有任何疑问或业务需求，请及时联系平台管理员或服务支持人员。`,
         type: "system",
         popupOnLogin: true,
-        link: "/user/workspace-hub",
+        link: "/workspace-hub",
         createdAt: new Date(),
       }));
 

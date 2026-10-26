@@ -289,7 +289,8 @@ export default function AdminWorkspacesPage() {
       }
 
       const data = await res.json();
-      const exportList: Workspace[] = data.workspaces || [];
+      // 接口返回 { success, data: { workspaces, ... } }（与列表加载同口径）
+      const exportList: Workspace[] = data?.data?.workspaces || [];
 
       if (exportList.length === 0) {
         toast.error("当前筛选条件下暂无工作空间数据可导出");

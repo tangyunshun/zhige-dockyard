@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { grantPoints, getBalanceSummary } from "@/lib/credit-service";
 import { resolvePaymentMode } from "@/lib/payment-gateway";
+import { isOrderExpired } from "@/lib/order-expiry";
 import { fulfillEnterpriseUpgradeFromOrder } from "@/lib/workspace-upgrade-service";
 
 /**
@@ -110,6 +111,11 @@ export async function POST(request: NextRequest) {
     }
     if (order.status !== "PENDING") {
       return NextResponse.json({ error: `订单当前状态为 ${order.status}，不可入账` }, { status: 409 });
+    }
+    // 订单生命周期：超时未付的订单不可再入账（顺手落库置 EXPIRED，再拒绝）
+    if (isOrderExpired(order as { status: string; expiresAt?: Date | null })) {
+      await billingModel.update({ where: { id: orderNo }, data: { status: "EXPIRED", updatedAt: new Date() } }).catch(() => {});
+      return NextResponse.json({ error: "订单已超时未支付（超过支付截止时间），请重新下单" }, { status: 409 });
     }
 
     // 席位增购：支付确认后增加空间 extraSeats（与企业套餐配额一致，有效期至套餐到期日）

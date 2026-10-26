@@ -161,6 +161,9 @@ export default function UpgradeApplicationsPage() {
         setDialogOpen(false);
         setDialogTarget(null);
         await load();
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+        }
       } else {
         const friendly = describeApiError(data, "更新处理状态失败");
         setDialogError(friendly.message);

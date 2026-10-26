@@ -239,7 +239,7 @@ export async function createUserByoModelDef(ownerUserId: string, input: UserByoD
       contextLimit: input.contextLimit,
       priceInputMicrosPerMillion: input.priceInputMicrosPerMillion,
       priceOutputMicrosPerMillion: input.priceOutputMicrosPerMillion,
-      priceStatus: "VERIFIED",
+      priceStatus: "USER_DECLARED",
     },
   });
   return def;
@@ -268,7 +268,7 @@ export async function updateUserByoModelDef(defId: string, actorUserId: string, 
       contextLimit: input.contextLimit,
       priceInputMicrosPerMillion: input.priceInputMicrosPerMillion,
       priceOutputMicrosPerMillion: input.priceOutputMicrosPerMillion,
-      priceStatus: "VERIFIED",
+      priceStatus: "USER_DECLARED",
     },
   });
 

@@ -1225,6 +1225,125 @@ export async function resolveDefaultDeployment(params: {
 }
 
 /**
+ * 组件大厅「AI 润色」模型解析链（用户级，区别于组件执行的「空间级」）：
+ *   ① 优先用用户「个人空间」配置的默认模型；
+ *   ② 个人空间未配置 → 回落到用户「名下企业空间（所有者）」的默认模型（逐个尝试，取第一个可用的）；
+ *   ③ 都没有 → 抛 MODEL_DEFAULT_NOT_CONFIGURED，由调用方明确提示「无可用模型，润色功能暂无法使用」。
+ * opts.targetDeploymentId 指定具体模型时：在候选空间（个人在前）逐个尝试「指定模型解析」，
+ * 第一个授权该模型且能力满足的空间生效；全部失败则抛出首个错误（明确到模型/空间原因）。
+ * 仅负责解析模型与定位扣费空间，不负责扣费；调用方须按返回的 workspaceId 真实扣算力点。
+ */
+export async function resolvePolishModelPlan(
+  userId: string,
+  opts?: { targetDeploymentId?: string | null },
+): Promise<{ plan: DefaultDeploymentPlan; workspaceId: string }> {
+  if (!userId) {
+    throw new ContractValidationError("AUTH_REQUIRED", "未登录，无法解析润色模型", 401);
+  }
+  const target =
+    typeof opts?.targetDeploymentId === "string" && opts.targetDeploymentId.trim() && opts.targetDeploymentId.trim() !== "auto"
+      ? opts.targetDeploymentId.trim()
+      : null;
+
+  const personal = await prisma.workspace.findFirst({ where: { ownerId: userId, type: "PERSONAL" }, select: { id: true } });
+  const enterprises = await prisma.workspace.findMany({ where: { ownerId: userId, type: "ENTERPRISE" }, select: { id: true } });
+  const candidates = [...(personal ? [personal] : []), ...enterprises];
+  if (candidates.length === 0) {
+    throw new ContractValidationError(
+      "MODEL_DEFAULT_NOT_CONFIGURED",
+      "润色失败：无可用模型，请先前往个人空间或名下企业空间配置默认模型。",
+      403,
+    );
+  }
+
+  let firstError: unknown = null;
+  for (const ws of candidates) {
+    try {
+      const plan = target
+        ? await resolveDeploymentForWorkspace({ workspaceId: ws.id, targetDeploymentId: target, requiredCapabilities: ["TEXT_GENERATION"], userId })
+        : await resolveDefaultDeployment({ workspaceId: ws.id, requiredCapabilities: ["TEXT_GENERATION"], userId });
+      return { plan, workspaceId: ws.id };
+    } catch (e: unknown) {
+      const code = (e as { code?: string }).code;
+      // 该空间未配置默认模型 → 不算真实故障，继续回落下一空间（不污染 firstError）
+      if (code === "MODEL_DEFAULT_NOT_CONFIGURED") continue;
+      if (!firstError) firstError = e;
+      // 指定模型未授权/能力不符 → 换下一个空间试
+      if (target && (code === "MODEL_NOT_ALLOWED" || code === "MODEL_CAPABILITY_NOT_SUPPORTED")) continue;
+      throw e;
+    }
+  }
+  // 走到这里：要么存在真实拦截（如模型被停用，firstError 已捕获），要么全部候选空间都只是未配置默认
+  if (firstError) throw firstError;
+  throw new ContractValidationError(
+    "MODEL_DEFAULT_NOT_CONFIGURED",
+    "润色失败：无可用模型，请先前往个人空间或名下企业空间配置默认模型。",
+    403,
+  );
+}
+
+/**
+ * 组件大厅「AI 润色」模型可选项（供前端展示当前模型与切换）：
+ * 沿默认解析链定位生效空间（个人→企业所有者），列出该空间白名单内、
+ * 已启用且具备文本生成能力的模型，并给出当前默认模型指向。
+ * 不抛业务错误：任何一步失败都以 available=false 降级返回，由前端展示「无可用模型」。
+ */
+export async function listPolishModelOptions(userId: string): Promise<{
+  available: boolean;
+  workspaceName: string | null;
+  defaultDeploymentId: string | null;
+  models: Array<{ id: string; label: string; providerName: string }>;
+}> {
+  const empty = { available: false, workspaceName: null, defaultDeploymentId: null, models: [] as Array<{ id: string; label: string; providerName: string }> };
+  if (!userId) return empty;
+
+  const personal = await prisma.workspace.findFirst({ where: { ownerId: userId, type: "PERSONAL" }, select: { id: true, name: true } });
+  const enterprises = await prisma.workspace.findMany({ where: { ownerId: userId, type: "ENTERPRISE" }, select: { id: true, name: true } });
+  const candidates = [...(personal ? [personal] : []), ...enterprises];
+  if (candidates.length === 0) return empty;
+
+  // 沿默认解析链定位生效空间：第一个能解析出默认模型的空间即润色实际使用的空间
+  let effectiveWs: { id: string; name: string } | null = null;
+  let defaultDeploymentId: string | null = null;
+  for (const ws of candidates) {
+    try {
+      const plan = await resolveDefaultDeployment({ workspaceId: ws.id, requiredCapabilities: ["TEXT_GENERATION"], userId });
+      effectiveWs = ws;
+      defaultDeploymentId = plan.deploymentId;
+      break;
+    } catch {
+      // 该空间未配置默认或默认不可用 → 尝试下一空间
+    }
+  }
+  if (!effectiveWs) effectiveWs = candidates[0]; // 全部未配置：仍返回第一个空间的清单（available 以清单为准）
+
+  const policy = await loadSpaceModelPolicy(effectiveWs.id);
+  const effectiveSet = new Set(policy.effectiveDeploymentIds || []);
+  const deps = await prisma.modeldeployment.findMany({
+    where: { enabled: true, provider: { enabled: true } },
+    include: { provider: { select: { name: true } } },
+  });
+  const models = deps
+    .filter((d) => effectiveSet.has(d.id))
+    .filter((d) =>
+      Array.isArray(d.capabilities) &&
+      (d.capabilities as unknown as string[]).map((c) => String(c).toUpperCase()).includes("TEXT_GENERATION"),
+    )
+    .map((d) => ({
+      id: d.id,
+      label: d.displayName || d.modelId,
+      providerName: d.provider?.name || d.providerId,
+    }));
+
+  return {
+    available: models.length > 0,
+    workspaceName: effectiveWs.name,
+    defaultDeploymentId,
+    models,
+  };
+}
+
+/**
  * 指定部署解析函数（MODEL-SELECT-E1 核心）：
  * 用于在空间内部显式指定目标模型执行（targetDeploymentId 可以是具体的 modeldeployment.id，也可以是 "byo"）。
  *

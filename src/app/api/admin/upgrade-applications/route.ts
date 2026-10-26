@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog, requirePlatformPermission } from "@/lib/security";
 import { upgradePersonalToEnterprise } from "@/lib/workspace-upgrade-service";
 
 export async function GET(request: NextRequest) {
@@ -53,6 +54,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "无权访问" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 upgrade:audit 一致）
+    const permCheck = await requirePlatformPermission(request, "upgrade:audit");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限处理升级申请" }, { status: 403 });
+    }
+
     const body = await request.json();
     const { id, applicationId, status, adminRemark } = body;
     const targetId = applicationId || id;
@@ -89,6 +96,8 @@ export async function PATCH(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(userId, "upgrade:approve", { id: targetId, status, companyName: app.companyName, openPlan: body.openPlan ?? null }, null, null, request);
 
     // 客户经理签约开通：标记为 COMPLETED 且指定 openPlan 时，将关联的个人空间升级为约定企业套餐。
     // 取关联工作空间（须为 PERSONAL）；缺失时回落到该用户名下个人空间。

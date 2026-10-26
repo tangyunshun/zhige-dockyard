@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { isPlatformAdminRole } from "@/lib/security";
+import { isPlatformAdminRole, writeAuditLog, requirePlatformPermission } from "@/lib/security";
 import { getAllTokenPacks, updateTokenPackMemoryCache } from "@/lib/token-pack-service";
 
 /**
@@ -55,6 +55,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "越权警告：仅系统超级管理员可创建算力加油包" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 token_pack:manage 一致）
+    const permCheck = await requirePlatformPermission(request, "token_pack:manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限创建算力加油包" }, { status: 403 });
+    }
+
     const body = await request.json();
     const { name, points, price, icon, color, description, isPopular, isActive, sortOrder } = body;
 
@@ -93,6 +99,8 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(auth.user.id, "token_pack:create", { name, points, price, isActive }, null, null, request);
 
     return NextResponse.json({
       success: true,

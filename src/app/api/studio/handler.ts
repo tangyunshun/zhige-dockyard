@@ -103,6 +103,8 @@ import { enqueueRefundRecovery } from "@/lib/refund-recovery";
 import { resolveTasksRefundMetaMap } from "@/lib/refund-status";
 import {
   resolveDefaultDeployment,
+  resolvePolishModelPlan,
+  listPolishModelOptions,
   resolveDeploymentForWorkspace,
   getPlatformDefaultDeploymentCapabilities,
   calculateMissingCapabilities,
@@ -135,6 +137,7 @@ import {
   type CompleteSettlementResult,
 } from "@/lib/token-settlement-service";
 import { extractTaskExecutionMeta } from "@/lib/task-execution-meta";
+import { stripCatalogInternals } from "@/lib/catalog-sanitize";
 import { deriveCatalogComponentReadiness } from "@/lib/component-readiness-view";
 import {
   deriveCatalogContractView,
@@ -146,6 +149,30 @@ import {
 } from "@/lib/task-query-helpers";
 import { getDefaultCatalogComponentIds } from "@/lib/workspaceInit";
 import { BATCH_2C } from "@/lib/component-contract/catalog-contracts-c12-c15";
+
+// ── AI 需求润色（真实模型调用）──
+// 口径：润色是组件执行前的辅助工具，走与执行同一套空间模型策略（resolveDefaultDeployment，
+// 能力=TEXT_GENERATION），平台承担微额模型成本；因此必须硬性限频 + 全程留痕 + 输出封顶。
+const REFINE_PROMPT_SYSTEM = [
+  "你是研发需求描述润色助手。把用户输入的需求草稿改写成一段清晰、具体、结构化的研发需求描述：",
+  "1) 保留用户的原始意图与全部已知信息，绝不编造用户未提到的内容；",
+  "2) 结构上明确三点：输入材料是什么、期望产出是什么、质量/验收要求是什么（用户未提及的用概括性表述带过，不得虚构细节）；",
+  "3) 使用简体中文，正文不超过 300 字，直接输出润色后的需求描述正文，不要任何解释、前后缀或 Markdown 标记。",
+].join("\n");
+
+// 润色限频：每用户每分钟 3 次（进程内滑动窗口；多实例部署时各实例独立计数，够用且无害）
+const __refinePromptHits = new Map<string, number[]>();
+function allowRefinePrompt(userId: string, now = Date.now()): boolean {
+  const windowStart = now - 60_000;
+  const hits = (__refinePromptHits.get(userId) || []).filter((t) => t > windowStart);
+  if (hits.length >= 3) {
+    __refinePromptHits.set(userId, hits);
+    return false;
+  }
+  hits.push(now);
+  __refinePromptHits.set(userId, hits);
+  return true;
+}
 
 // 受控候选元数据字典（只读依据，严格区分于已发布的数据库激活合同）
 const CANDIDATE_COMPONENTS_MAP = new Map(
@@ -312,6 +339,41 @@ async function touchComponentUsage(userId: string, componentId: string, workspac
   }
 }
 
+// 目录聚合统计（60s 进程内缓存）：componenttask.groupBy 为全表聚合，随任务量线性膨胀。
+// 只缓存只读统计（真实调用次数/成功率分布/评分均值），组件目录行与合同状态实时查询，不受缓存影响。
+interface CatalogAggregates {
+  usageStats: { componentId: string | null; totalUses: number }[];
+  taskStatsRows: { type: string | null; status: string; _count: { _all: number } }[];
+  ratingStats: { componentId: string; averageRating: number; ratingCount: number }[];
+}
+const __catalogAggGlobal = globalThis as unknown as { __catalogAggCache?: { at: number; data: CatalogAggregates } };
+async function getCatalogAggregates(): Promise<CatalogAggregates> {
+  const cached = __catalogAggGlobal.__catalogAggCache;
+  if (cached && Date.now() - cached.at < 60_000) return cached.data;
+  const [usageStats, taskStatsRows] = await Promise.all([
+    // 组件真实调用次数与评分均值（component_stats，由每次执行/评分真实累加）
+    prisma.componentstats.findMany({
+      select: { componentId: true, totalUses: true, averageRating: true, ratingCount: true },
+    }),
+    // 组件真实执行结果分布（用于计算真实成功率，无任何模拟数值）
+    prisma.componenttask.groupBy({
+      by: ["type", "status"],
+      _count: { _all: true },
+    }),
+  ]);
+  const data: CatalogAggregates = {
+    usageStats,
+    taskStatsRows,
+    ratingStats: usageStats.map((u) => ({
+      componentId: u.componentId ?? "",
+      averageRating: u.averageRating,
+      ratingCount: u.ratingCount,
+    })),
+  };
+  __catalogAggGlobal.__catalogAggCache = { at: Date.now(), data };
+  return data;
+}
+
 // GET - 获取组件相关信息
 export async function runStudioGet(request: NextRequest, deps: StudioExecutionDeps) {
   try {
@@ -327,7 +389,7 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
     // 获取系统组件目录（唯一数据源：component_catalog / component_category 表）。
     // 组件大厅属于公开页面，目录只包含已发布组件元数据，无需登录即可读取。
     if (action === "catalog") {
-      const [components, categories, internalComponents, presetPositions, usageStats, taskStatsRows] = await Promise.all([
+      const [components, categories, internalComponents, presetPositions, catalogAgg] = await Promise.all([
         prisma.componentcatalog.findMany({
           where: { isPublished: true },
           orderBy: { sortOrder: "asc" },
@@ -345,21 +407,22 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           where: { isPreset: true, status: "ACTIVE" },
           orderBy: { sortOrder: "asc" },
         }),
-        // 组件真实调用次数（component_stats.totalUses，由每次执行真实累加）
-        prisma.componentstats.findMany({
-          select: { componentId: true, totalUses: true },
-        }),
-        // 组件真实执行结果分布（用于计算真实成功率，无任何模拟数值）
-        prisma.componenttask.groupBy({
-          by: ["type", "status"],
-          _count: { _all: true },
-        }),
+        // 聚合统计（真实调用次数/成功率/评分均值）：全表聚合带 60s 进程内缓存，防任务量增长拖垮目录接口
+        getCatalogAggregates(),
       ]);
+      const usageStats = catalogAgg.usageStats;
+      const taskStatsRows = catalogAgg.taskStatsRows;
 
       // 真实调用次数映射（componentId → totalUses）
       const usageMap = new Map<string, number>();
       usageStats.forEach((s) => {
         if (s.componentId) usageMap.set(s.componentId.trim().toUpperCase(), s.totalUses || 0);
+      });
+
+      // 真实评分均值映射（component_stats.averageRating，由每次评分真实重算）
+      const ratingMap = new Map<string, { averageRating: number; ratingCount: number }>();
+      catalogAgg.ratingStats.forEach((r) => {
+        if (r.componentId) ratingMap.set(r.componentId.trim().toUpperCase(), { averageRating: r.averageRating, ratingCount: r.ratingCount });
       });
 
       // 真实成功率映射（componentId → { total, success }）
@@ -471,10 +534,14 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           ? deriveCatalogContractView(acInfo.fullContract, readiness.qualityHints)
           : null;
 
+        // 对外脱敏：剔除平台内部成本/定价字段（本接口对游客开放，能看≠能带走）
         return {
-          ...c,
+          ...stripCatalogInternals(c),
           realUsageCount: usageMap.get(key) ?? 0,
           realTaskStats: taskStatsMap.get(key) ?? { total: 0, success: 0 },
+          // 真实评分统计（无评分记录时为 0/0，前端显示"暂无评分"，绝不造数）
+          averageRating: ratingMap.get(key)?.averageRating ?? 0,
+          ratingCount: ratingMap.get(key)?.ratingCount ?? 0,
           // 通用只读就绪与审计字段（彻底消除前端按组件 ID 推断）
           readinessStatus: readiness.readinessStatus,
           blockingReasons: readiness.blockingReasons,
@@ -737,6 +804,23 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           reviewCount: 0,
         }
       });
+    }
+
+    // 获取当前用户对某组件的评分（结果页评分条回显用；未评过返回 null）
+    if (action === "my-rating") {
+      const componentId = searchParams.get("componentId");
+      if (!componentId) {
+        return NextResponse.json({ success: false, error: "缺少 componentId 参数" }, { status: 400 });
+      }
+      const myUid = await getUserId(request);
+      if (!myUid) {
+        return NextResponse.json({ success: false, error: "未授权，请先登录" }, { status: 401 });
+      }
+      const row = await prisma.componentrating.findUnique({
+        where: { userId_componentId: { userId: myUid, componentId } },
+        select: { rating: true, comment: true, updatedAt: true },
+      });
+      return NextResponse.json({ success: true, data: row ? { rating: row.rating, comment: row.comment } : null });
     }
 
     // 获取组件评分
@@ -1451,8 +1535,8 @@ async function getRestrictedComponentIds(workspaceId: string, userId: string): P
     return installedComponentIds;
   }
 
-  // 空间底层所有者角色的成员全无限制
-  if (memberRecord.role === "OWNER") {
+  // 空间底层所有者/管理员角色的成员全无限制（与前端 isManager 口径一致，管理员不受岗位矩阵限制）
+  if (memberRecord.role === "OWNER" || memberRecord.role === "ADMIN") {
     return [];
   }
 
@@ -2143,6 +2227,133 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
     const workspaceId = body.workspaceId || searchParams.get("workspaceId");
     const { componentId, rating, comment, content, parentId, tokens } = body;
 
+    // ── AI 润色模型可选项（只读）：供组件大厅展示当前润色模型与切换 ──
+    if (action === "polish-models") {
+      try {
+        const options = await listPolishModelOptions(userId);
+        return NextResponse.json({ success: true, data: options });
+      } catch (e) {
+        console.warn("[polish-models] 获取润色模型选项失败:", (e as Error)?.message);
+        // 降级返回不可用态，前端据此展示「无可用模型，润色功能暂无法使用」
+        return NextResponse.json({
+          success: true,
+          data: { available: false, workspaceName: null, defaultDeploymentId: null, models: [] },
+        });
+      }
+    }
+
+    // ── AI 需求润色（真实模型调用 + 按所用模型计费规则真实扣算力点）──
+    if (action === "refine-prompt") {
+      const rawText = typeof body.text === "string" ? body.text.trim() : "";
+      if (rawText.length < 5 || rawText.length > 2000) {
+        return NextResponse.json({ success: false, error: "请输入 5~2000 字的需求描述后再润色" }, { status: 400 });
+      }
+      // 平台承担成本的能力必须设防
+      if (!allowRefinePrompt(userId)) {
+        return NextResponse.json({ success: false, error: "润色请求过于频繁，请稍后再试（每人每分钟 3 次）" }, { status: 429 });
+      }
+      try {
+        // 模型解析链：个人空间默认 → 名下企业空间(所有者)默认 → 无则报错
+        // （润色是用户级能力，不再按当前浏览的组件大厅解析；前端可指定模型，未指定/auto 走默认链）
+        const requestedDeploymentId = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
+        const { plan, workspaceId: billingWsId } = await resolvePolishModelPlan(userId, {
+          targetDeploymentId: requestedDeploymentId || null,
+        });
+        const billingWs = await prisma.workspace.findUnique({
+          where: { id: billingWsId },
+          select: { id: true, type: true, name: true },
+        });
+        await checkAndResetQuotaCycle(prisma, billingWsId, userId);
+
+        const refineAdapter = await createModelAdapter(plan);
+        const modelResult = await refineAdapter.execute({
+          providerId: refineAdapter.providerId,
+          modelId: refineAdapter.modelId,
+          systemPrompt: REFINE_PROMPT_SYSTEM,
+          userPrompt: rawText,
+          temperature: 0.4,
+          maxOutputTokens: 800,
+        });
+        const refined = (modelResult.text || "").trim();
+        if (!refined) {
+          return NextResponse.json({ success: false, error: "模型未返回润色结果，请稍后重试" }, { status: 502 });
+        }
+
+        // 按所用模型的计费规则真实换算扣点数（不再由平台白承担）
+        const usage = (modelResult.usage || {}) as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
+        const est = await estimatePoints({
+          modelDeploymentId: plan.deploymentId,
+          inputTokens: typeof usage.inputTokens === "number" ? usage.inputTokens : 0,
+          outputTokens: typeof usage.outputTokens === "number" ? usage.outputTokens : 0,
+          pricingSource: resolvePricingSource(plan.deploymentId),
+          estimateSource: "REFINE_PROMPT",
+        });
+        const points = est.points ?? 0;
+        if (!points || points <= 0) {
+          return NextResponse.json(
+            { success: false, error: "该模型暂无可用的计费规则，润色功能暂无法使用" },
+            { status: 400 },
+          );
+        }
+
+        const taskId = crypto.randomUUID();
+        let consumeResult;
+        try {
+          consumeResult = await consumePoints({
+            workspaceId: billingWsId,
+            userId,
+            points,
+            taskId,
+            workspaceType: billingWs?.type || null,
+            workspaceName: billingWs?.name || null,
+            idempotencyKey: `REFINE:${taskId}`,
+          });
+        } catch (consumeErr) {
+          if (consumeErr instanceof InsufficientPointsError) {
+            return NextResponse.json({ success: false, error: "算力点余额不足，无法完成润色" }, { status: 402 });
+          }
+          throw consumeErr;
+        }
+
+        // 全程留痕（非阻断式）：谁、用哪个模型、扣了多少、多少字
+        await writeAuditLog(userId, "studio:refine_prompt", {
+          workspaceId: billingWsId,
+          viewingWorkspaceId: workspaceId || null,
+          model: `${refineAdapter.providerId}/${refineAdapter.modelId}`,
+          inputChars: rawText.length,
+          outputChars: refined.length,
+          tokens: modelResult.usage ?? null,
+          costPoints: points,
+          taskId,
+        }, billingWsId).catch((e) => console.warn("[refine-prompt] 审计日志写入失败:", e));
+
+        return NextResponse.json({
+          success: true,
+          data: {
+            text: refined,
+            model: `${refineAdapter.providerId}/${refineAdapter.modelId}`,
+            costPoints: points,
+            latencyMs: modelResult.latencyMs ?? null,
+          },
+        });
+      } catch (e) {
+        const isContract = e instanceof ContractValidationError;
+        const failCode = isContract
+          ? (e as { code?: string }).code
+          : e instanceof ModelAdapterError
+            ? e.code
+            : "MODEL_UPSTREAM_ERROR";
+        const failMsg = isContract
+          ? (e as { message?: string }).message
+          : e instanceof ModelAdapterError
+            ? e.message
+            : "模型服务调用失败，请稍后重试";
+        const status = isContract ? ((e as { status?: number }).status || 403) : 502;
+        console.warn("[refine-prompt] 润色失败:", failCode, failMsg);
+        return NextResponse.json({ success: false, error: `润色失败（${failCode}）：${failMsg}` }, { status });
+      }
+    }
+
     // 设置/更新空间组件岗位受限列表 (全局持久化)
     if (action === "set-restricted") {
       const { workspaceId, restrictedIds } = body;
@@ -2261,9 +2472,24 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
               componentId,
               workspaceId,
               usedAt: new Date(),
-              metadata: { enabled: true }
+              metadata: { enabled: true, autoBound: true }
             }
           }).catch((e) => console.warn("[simulate] 自动补全组件装配非致命提示:", e));
+          // 自动补装配与显式 bind 同为空间资产变更，必须留痕（否则审计链出现"未装配就能执行"的盲区）
+          await prisma.operationlog.create({
+            data: {
+              id: crypto.randomUUID(),
+              userId,
+              workspaceId,
+              action: "BIND_COMPONENT",
+              resource: "Component",
+              details: {
+                componentId,
+                autoBound: true,
+                note: "执行时自动补全装配记录（用户直接执行未装配组件）",
+              },
+            },
+          }).catch((e) => console.warn("[simulate] 自动补装配审计日志写入失败:", e));
         } else if (binding.metadata) {
           try {
             const meta = typeof binding.metadata === "string" ? JSON.parse(binding.metadata) : (binding.metadata as any);
@@ -6199,6 +6425,17 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           success: false, 
           error: "参数错误" 
         }, { status: 400 });
+      }
+
+      // 评分必须来自真实使用者：只有执行过该组件的用户才能评分（防刷分，评分统计才有业务意义）
+      const executedCount = await prisma.componenttask.count({
+        where: { userId, type: componentId },
+      });
+      if (executedCount === 0) {
+        return NextResponse.json({
+          success: false,
+          error: "只有真实执行过该组件的用户才能评分",
+        }, { status: 403 });
       }
 
       const existing = await prisma.componentrating.findUnique({

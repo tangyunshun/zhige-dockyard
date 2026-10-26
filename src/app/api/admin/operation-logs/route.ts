@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import {
   getAuditDictionariesFromDb,
   translateAction,
@@ -370,6 +370,8 @@ export async function DELETE(request: NextRequest) {
         where: { id: { in: ids } },
       });
 
+      await writeAuditLog(authResult.user?.id || null, "audit_log:delete", { mode: "batch", count: result.count, ids }, null, null, request);
+
       return NextResponse.json({
         success: true,
         message: `成功删除选中的 ${result.count} 条操作审计日志。`,
@@ -386,6 +388,8 @@ export async function DELETE(request: NextRequest) {
     await prisma.operationlog.delete({
       where: { id: targetId },
     });
+
+    await writeAuditLog(authResult.user?.id || null, "audit_log:delete", { mode: "single", id: targetId }, null, null, request);
 
     return NextResponse.json({
       success: true,

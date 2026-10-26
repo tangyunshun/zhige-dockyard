@@ -1,6 +1,7 @@
 ﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
+import { writeAuditLog, requirePlatformPermission } from "@/lib/security";
 
 /**
  * GET /api/admin/membership/levels
@@ -113,6 +114,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "无权访问" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 membership:manage 一致）
+    const permCheck = await requirePlatformPermission(request, "membership:manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限创建会员等级" }, { status: 403 });
+    }
+
     // 获取请求体数据
     const body = await request.json();
     const {
@@ -181,6 +188,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(authResult.user!.id, "membership:level_create", { name, nameZh, priceMonthly, priceYearly, isActive }, null, null, request);
+
     // 将 BigInt 转换为 Number 以便 JSON 序列化
     const serializedLevel = {
       ...level,
@@ -227,6 +236,12 @@ export async function PUT(request: NextRequest, context?: any) {
     // 如果不是管理员
     if (!isAdmin(authResult.user!)) {
       return NextResponse.json({ message: "无权访问" }, { status: 403 });
+    }
+
+    // 双层设防：细粒度权限（与规则层 membership:manage 一致）
+    const permCheck = await requirePlatformPermission(request, "membership:manage");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限更新会员等级" }, { status: 403 });
     }
 
     // 安全解构与获取 URL 中的 name 参数并进行 URL 解码
@@ -313,6 +328,29 @@ export async function PUT(request: NextRequest, context?: any) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(
+      authResult.user!.id,
+      "membership:level_update",
+      {
+        name,
+        old: {
+          nameZh: existing.nameZh,
+          priceMonthly: Number(existing.priceMonthly),
+          priceYearly: Number(existing.priceYearly),
+          isActive: existing.isActive,
+        },
+        new: {
+          nameZh: level.nameZh,
+          priceMonthly: Number(level.priceMonthly),
+          priceYearly: Number(level.priceYearly),
+          isActive: level.isActive,
+        },
+      },
+      null,
+      null,
+      request
+    );
 
     // 将 BigInt 安全转换为 Number 以便 JSON 序列化，防止 500 崩溃
     const serializedLevel = {

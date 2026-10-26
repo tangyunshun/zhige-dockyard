@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 岗位成员管理 API
@@ -82,6 +82,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       skipDuplicates: true,
     });
 
+    await writeAuditLog(adminId, "post:member_assign", { postId, count: userIds.length, workspaceId }, workspaceId, null, request);
+
     console.log(
       `[分配成员] 管理员 ${adminId} 将 ${userIds.length} 个用户分配到岗位 ${postId}`
     );
@@ -151,6 +153,8 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
         userId,
       },
     });
+
+    await writeAuditLog(adminId, "post:member_remove", { postId, userId }, null, null, request);
 
     console.log(
       `[移除成员] 管理员 ${adminId} 从岗位 ${postId} 移除了用户 ${userId}`

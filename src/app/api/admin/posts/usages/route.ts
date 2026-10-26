@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import type { workspacemember_role } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -153,6 +153,8 @@ export async function DELETE(request: NextRequest) {
 
       processedWorkspaces.add(workspaceId);
     }
+
+    await writeAuditLog(auth.user?.id || null, "post:usage_remove", { items: items.length, deletedWorkspacePostsCount, resetMembersCount, workspacesCount: processedWorkspaces.size }, null, null, request);
 
     return NextResponse.json({
       success: true,

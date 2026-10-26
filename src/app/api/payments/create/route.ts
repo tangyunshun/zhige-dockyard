@@ -7,6 +7,7 @@ import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership } from "@/lib/security";
 import { pointsToCents, discountedCents, formatDiscountLabel } from "@/lib/point-rate";
 import { createCharge, resolvePaymentMode, isRealGatewayConfigured } from "@/lib/payment-gateway";
+import { newOrderExpiry } from "@/lib/order-expiry";
 
 /**
  * POST /api/payments/create —— 创建算力充值订单（**不立即入账**）
@@ -94,6 +95,8 @@ export async function POST(request: NextRequest) {
         amount: amountCents,
         currency: "CNY",
         status: "PENDING",
+        // 支付截止时间：超时未付由清算任务置 EXPIRED，迟到入账一律拒绝
+        expiresAt: newOrderExpiry(),
         channel,
         referenceId: workspaceId,
         metadata: {
@@ -113,12 +116,39 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const charge = createCharge({
+    const charge = await createCharge({
+      expiresAt: newOrderExpiry(),
       orderNo,
       amountCents,
       subject: `知阁·舟坊 - ${packName}`,
       channel,
     });
+
+    // 微信 Native：把 code_url 回写进订单 metadata，供扫码收银台页读取渲染二维码
+    const codeUrl = (charge.gatewayPayload as { codeUrl?: string } | null)?.codeUrl;
+    if (codeUrl) {
+      await billingModel
+        .update({
+          where: { id: orderNo },
+          data: {
+            metadata: {
+              points: effectivePoints,
+              packId: usePack ? matchedPack!.id : null,
+              packName,
+              originalAmountCents,
+              discountPercent,
+              discountLabel,
+              paymentMode: mode,
+              workspaceType: ws?.type ?? null,
+              workspaceName: ws?.name ?? null,
+              userEmail: buyer?.email ?? null,
+              createdVia: "payments/create",
+              codeUrl,
+            },
+          },
+        })
+        .catch(() => {});
+    }
 
     return NextResponse.json({
       success: true,

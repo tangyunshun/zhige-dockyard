@@ -87,6 +87,29 @@ interface PlatformPermissionRulesConfig {
   actionRules: ActionRuleTemplate[];
 }
 
+/**
+ * 规范化权限目录：库内历史脏数据（如某权限项缺失 label）曾导致前端过滤时
+ * 对 undefined 调用 toLowerCase() 崩溃。此处统一补齐缺失字段；缺 label 时
+ * 回落到 key，保证页面可正常渲染、管理员也能据此定位并清理该脏项。
+ */
+function normalizePermissionCatalog(raw: unknown): PermissionGroupItem[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as PermissionGroupItem[]).map((g) => ({
+    group: g?.group || "",
+    moduleRoute: g?.moduleRoute || "/admin",
+    description: g?.description || "",
+    keys: Array.isArray(g?.keys)
+      ? g.keys.map((k) => ({
+          key: k?.key || "",
+          label: k?.label || k?.key || "未命名权限",
+          desc: k?.desc || "",
+          moduleName: k?.moduleName || g?.group || "",
+          level: k?.level || "normal",
+        }))
+      : [],
+  }));
+}
+
 /** 系统功能模块注册元数据（100% 由数据库下发） */
 interface PlatformFeatureModuleItem {
   id: string;
@@ -301,10 +324,10 @@ function PermissionsContent() {
           if (levelFilter !== "ALL" && k.level !== levelFilter) return false;
           if (!kw) return true;
           return (
-            k.label.toLowerCase().includes(kw) ||
-            k.key.toLowerCase().includes(kw) ||
+            (k.label || "").toLowerCase().includes(kw) ||
+            (k.key || "").toLowerCase().includes(kw) ||
             (k.desc || "").toLowerCase().includes(kw) ||
-            g.group.toLowerCase().includes(kw)
+            (g.group || "").toLowerCase().includes(kw)
           );
         }),
       }))
@@ -356,7 +379,7 @@ function PermissionsContent() {
         const result = await res.json();
         // 1. 动态加载从数据库查询出来的系统权限目录、风险等级、派生规则与模块注册表（100%数据库驱动）
         if (Array.isArray(result.catalog)) {
-          setPermissionCatalog(result.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(result.catalog));
         }
         if (Array.isArray(result.levels)) {
           setLevels(result.levels);
@@ -598,7 +621,7 @@ function PermissionsContent() {
       if (res.ok && data.success) {
         toast.success(data.message || `已从数据库中成功移除权限：【${perm.label}】`);
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         await loadData(true);
       } else {
@@ -635,7 +658,7 @@ function PermissionsContent() {
       if (res.ok && data.success) {
         toast.success(data.message || `已成功从数据库中移除模块【${group.group}】！`);
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         await loadData(true);
       } else {
@@ -678,7 +701,7 @@ function PermissionsContent() {
       if (res.ok && data.success) {
         toast.success(`成功从数据库批量移除 ${batchSelectedKeys.length} 项权限！`);
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         setBatchSelectedKeys([]);
         setIsBatchMode(false);
@@ -736,7 +759,7 @@ function PermissionsContent() {
       if (res.ok && data.success) {
         toast.success(data.message || "批量调整成功！");
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         setBatchSelectedKeys([]);
         setBatchTargetGroup("");
@@ -778,7 +801,7 @@ function PermissionsContent() {
       if (res.ok && data.success) {
         toast.success(data.message || "已成功从数据库恢复全平台官方标准权限库！");
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         // 重新拉取一次保证列表与数据库完全一致
         await loadData(true);
@@ -890,7 +913,7 @@ function PermissionsContent() {
             (isEditMode ? "权限项已成功更新并落库！" : "权限项已成功落库并补充至权限目录！")
         );
         if (Array.isArray(data.catalog)) {
-          setPermissionCatalog(data.catalog);
+          setPermissionCatalog(normalizePermissionCatalog(data.catalog));
         }
         setShowAddModal(false);
       } else {

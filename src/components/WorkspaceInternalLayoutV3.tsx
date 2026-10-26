@@ -67,6 +67,7 @@ import MemberQuotaModal from "@/components/workspace/MemberQuotaModal";
 import InviteModal from "@/components/workspace/InviteModal";
 import ClearConfirmModal from "@/components/workspace/ClearConfirmModal";
 import AiMatchDetailModal from "@/components/workspace/AiMatchDetailModal";
+import TransferOwnershipModal from "@/components/workspace/TransferOwnershipModal";
 import { PostIcon } from "@/components/studio/PostIcon";
 import type { PositionDefinition } from "@/constants/positions";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
@@ -877,7 +878,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [taskFilter, setTaskFilter] = useState<"all" | "success" | "failed">("all");
 
   // 数据源
-  // TODO: 后续应调用 /api/studio?action=tasks 从后端获取真实任务记录
   const [recentTasks, setRecentTasks] = useState<TaskRecord[]>([]);
 
   // 空间资料：加载状态与错误状态（不再静默伪造空数据）
@@ -904,7 +904,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
 
 
-  // TODO: 后续应从后端空间知识库接口获取真实规范
   const [knowledges, setKnowledges] = useState<KnowledgeRecord[]>([]);
 
   // 空间审计日志（按 workspaceId 维度，从真实 operationlog 聚合）
@@ -912,6 +911,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
   // Modals 控制
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [transferTarget, setTransferTarget] = useState<{ userId: string; name: string; email?: string | null } | null>(null);
   const [showImportAssetModal, setShowImportAssetModal] = useState(false);
   const [importAssetForm, setImportAssetForm] = useState({ title: "", content: "", type: "input" });
   // 导入模态用途：asset=资料上传，knowledge=知识规约沉淀（决定提交到的后端 action）
@@ -1282,8 +1282,15 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
   // 普通成员视图：企业空间内非所有者/管理员的协同成员，仅可见自身算力点，不可见空间共享池
   const isMemberView = currentMemberRole === "MEMBER" && workspaceType === "ENTERPRISE";
+  // 个人空间用户钱包余额（充值入钱包、扣费先钱包后空间池，展示口径需合并）
+  const [userWalletBalance, setUserWalletBalance] = useState<number | null>(null);
   // 当前用户视角下可用于执行组件的算力点：成员用自身独立余额，所有者/管理员用空间共享池
-  const availableTokenForUser = isMemberView ? workspaceQuotaInfo.tokenBalance : workspaceToken;
+  // 展示口径统一：个人空间扣费先烧钱包再烧空间池，"可用点数"= 钱包 + 空间池；企业空间维持空间池/成员独立余额口径
+  const availableTokenForUser = isMemberView
+    ? workspaceQuotaInfo.tokenBalance
+    : workspaceType === "PERSONAL"
+      ? workspaceToken + (userWalletBalance ?? 0)
+      : workspaceToken;
 
   const [editingQuotaMember, setEditingQuotaMember] = useState<any | null>(null);
   const [inputQuotaValue, setInputQuotaValue] = useState<string>("");
@@ -1348,6 +1355,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             unallocatedBalance: Math.max(0, val - (prev.totalAllocatedToMembers || 0)),
           }));
         }
+      }
+      // 个人空间：同步拉取用户钱包余额（充值入钱包，展示需与空间池合并）
+      try {
+        const walletRes = await fetch("/api/user/points", { headers, cache: "no-store" });
+        if (walletRes.ok) {
+          const walletData = await walletRes.json();
+          const walletVal = Number(walletData?.data?.walletBalance ?? NaN);
+          if (!isNaN(walletVal)) setUserWalletBalance(walletVal);
+        }
+      } catch {
+        // 钱包余额拉取失败不阻断空间池展示，保持上次值
       }
     } catch (e) {
       console.warn("实时拉取工作空间配额失败:", e);
@@ -1612,13 +1630,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     try {
       setMembersLoading(true);
       
-      // 个人空间直接本地免网络请求生成当前 Owner 的独占列表
+      // 个人空间直接本地免网络请求生成当前 Owner 的独占列表（仅展示当前用户，不伪造兜底身份）
       if (workspaceType === "PERSONAL") {
-        const myUserId = getCurrentUserId() || "usr_owner";
+        const myUserId = getCurrentUserId();
+        if (!myUserId) {
+          setMembersList([]);
+          return;
+        }
         setMembersList([{
           userId: myUserId,
-          name: userState?.userInfo?.name || "空间所有者",
-          email: userState?.userInfo?.email || "owner@zhige.com",
+          name: userState?.userInfo?.name || "",
+          email: userState?.userInfo?.email || "",
           avatar: null,
           role: "OWNER",
           joinedAt: new Date().toISOString()
@@ -1663,19 +1685,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         const me = list.find((m: any) => m.userId === myUserId);
         if (me) {
           setCurrentMemberRole(me.role);
-        }
-
-        // 防御型自愈：如果列表中未带入当前操作管理员，手动在此补齐展示，保证界面始终有管理员自身记录
-        const hasMe = list.some((m: any) => m.userId === myUserId);
-        if (!hasMe && myUserId) {
-          list.push({
-            userId: myUserId,
-            name: userState?.userInfo?.name || "管理员",
-            email: userState?.userInfo?.email || "未绑定邮箱",
-            avatar: null,
-            role: currentMemberRole || "MEMBER",
-            joinedAt: new Date().toISOString()
-          });
         }
         
         setMembersList(list);
@@ -2276,12 +2285,10 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const loadWorkspace = useCallback(async (id: string) => {
     if (!id) return;
     if (initializedWsIdRef.current === id || isInitializingRef.current) {
-      console.log(`[WorkspaceLayout] 空间 ${id} 已处于挂载或正在初始化状态，跳过重复触发`);
       return;
     }
     isInitializingRef.current = true;
     const startTime = Date.now();
-    console.log(`[WorkspaceLayout] 开始请求初始化空间: ${id}`);
 
     // 加载超时兜底：防止 /api/workspace/list 等请求挂起时 isInitializingRef 永久为 true，
     // 导致后续所有加载被守卫拦截、页面永远卡在 loading 转圈（"卡住无法进入空间"）。
@@ -2331,7 +2338,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         credentials: "include"
       });
 
-      console.log(`[WorkspaceLayout] /api/workspace/list 响应 status: ${res.status}, 耗时: ${Date.now() - startTime}ms`);
 
       if (res.status === 401) {
         console.warn("[WorkspaceLayout] 鉴权失败 (401)，触发向登录页重定向");
@@ -2401,7 +2407,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       setWorkspaceId(id);
       setWorkspaceName(workspace.name);
       setWorkspaceType(workspace.type);
-      const initialTokens = workspace.workspacequota ? Number(workspace.workspacequota.tokenBalance) : workspace.quota?.tokenBalance ? Number(workspace.quota.tokenBalance) : (workspace.type === "PERSONAL" ? 100 : 0);
+      // 余额只信后端真实值：无 quota 数据时显示 0（注册即 0 起步），禁止用猜的数字兜底
+      const initialTokens = workspace.workspacequota ? Number(workspace.workspacequota.tokenBalance) : (workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null ? Number(workspace.quota.tokenBalance) : 0);
       setWorkspaceToken(initialTokens);
       setWorkspaceQuotaInfo((prev) => ({
         ...prev,
@@ -2434,7 +2441,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
       // 核心工作台解锁！立即把状态切为 ready，解封全局遮罩！
       setLoadState("ready");
       setLoading(false);
-      console.log(`[WorkspaceLayout] 核心空间契约已成功 Ready，解封主操作台，耗时: ${Date.now() - startTime}ms`);
 
       // 辅助请求全面采用 Promise.allSettled 独立非阻塞异步并发加载
       (async () => {
@@ -2612,7 +2618,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             }
           }).catch(e => console.warn("[WorkspaceLayout] 静默拉取空间日志失败", e))
         ]);
-        console.log(`[WorkspaceLayout] 空间 ${id} 辅助非阻塞任务静默完毕，耗时: ${Date.now() - auxStartTime}ms`);
       })();
 
     } catch (e: any) {
@@ -2660,7 +2665,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     const handleWsCompUpdate = (e: any) => {
       const targetWsId = e?.detail?.workspaceId;
       if (!targetWsId || targetWsId === workspaceId) {
-        console.log("[WorkspaceLayout] 捕获全网组件绑定变更广播，自动刷新当前空间绑定契约...");
         refreshBoundComponents(workspaceId);
         loadComponentStates();
       }
@@ -2721,12 +2725,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   }, [searchParams]);
 
   // 监听路由参数中的 tab 字段以自动聚焦特定选项卡 (如从空间中枢直达设置 Tab)
+  // 守卫：个人空间不允许通过 URL 参数强开成员/权限等企业专属页；settings 仍按下方 canManageSettings 回退
   useEffect(() => {
     const targetTab = searchParams.get("tab");
-    if (targetTab) {
-      setActiveTab(targetTab);
+    if (!targetTab) return;
+    const enterpriseOnlyTabs = ["members", "permissions", "logs"];
+    if (workspaceType === "PERSONAL" && enterpriseOnlyTabs.includes(targetTab)) {
+      setActiveTab("overview");
+      return;
     }
-  }, [searchParams]);
+    setActiveTab(targetTab);
+  }, [searchParams, workspaceType]);
 
   // 监听路由参数中的 componentId 字段以直接载入快速执行通道（支持从 Studio 货架无缝转场）
   useEffect(() => {
@@ -3836,10 +3845,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                     {isUnlimitedToken(availableTokenForUser) ? "无限" : `${availableTokenForUser.toLocaleString()} 算力点`}
                   </span>
                 </div>
-                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                  <div className="bg-gradient-to-r from-[#3182ce] to-[#10b981] h-full transition-all duration-500" style={{ width: `${isUnlimitedToken(availableTokenForUser) ? 100 : Math.min(100, (availableTokenForUser / (workspaceType === "PERSONAL" ? 100 : 20000)) * 100)}%` }} />
-                </div>
-                {availableTokenForUser !== -1 && availableTokenForUser < (workspaceType === "PERSONAL" ? 10 : 1000) && (
+                {workspaceType === "PERSONAL" && userWalletBalance !== null && userWalletBalance > 0 && (
+                  <p className="text-[10px] text-slate-400 font-bold -mt-1.5">含个人钱包 {userWalletBalance.toLocaleString()} 点（跨空间通用，扣费优先使用）</p>
+                )}
+                {/* 后端无固定额度上限，不画虚构进度的进度条；只做低额预警 */}
+                {availableTokenForUser !== -1 && availableTokenForUser < 50 && (
                   <p className="text-[11px] text-red-500 font-bold bg-red-50 p-2 rounded-lg border border-red-100">⚠️ 可用额度不足，请及时补充</p>
                 )}
               </div>
@@ -6480,6 +6490,17 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               );
                             })()}
 
+                            {/* 转让所有权按钮（仅所有者可对管理员发起，企业空间） */}
+                            {workspaceType === "ENTERPRISE" && isTabOwner && isTargetAdmin && myUserId !== m.userId && (
+                              <button
+                                onClick={() => setTransferTarget({ userId: m.userId, name: m.name, email: m.email })}
+                                className="p-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-100 text-amber-600 rounded-lg cursor-pointer transition-colors shrink-0"
+                                title="转让所有权给该管理员"
+                              >
+                                <Crown className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+
                             {/* 移出空间按钮 */}
                             {canRemoveTarget ? (
                               <button
@@ -6498,47 +6519,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       );
                     })
                   )}
-                  {/* 混排待激活（短路了） */}
-                  {false && workspaceType === "ENTERPRISE" && canTabManage && activeInvitations.filter(inv => inv.status === "PENDING" && new Date(inv.expiresAt).getTime() > Date.now()).map((inv) => (
-                    <div key={inv.id} className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-amber-50/15 hover:bg-amber-50/25 transition-colors border-l-4 border-amber-400">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-[#d97706] flex items-center justify-center text-white text-xs font-black flex-shrink-0 shadow-sm">
-                          ✉️
-                        </div>
-                        <div className="min-w-0 text-left">
-                          <div className="text-xs font-black text-slate-800 flex items-center gap-1.5 flex-wrap">
-                            <span>{inv.email || "公开链接邀请中"}</span>
-                            <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 border border-amber-200 text-[9px] rounded font-bold">等待激活 (Pending)</span>
-                          </div>
-                          <p className="text-[10px] text-slate-400 mt-0.5 truncate">邀请码: {inv.code} · 受邀伙伴尚未激活登录</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-3 self-end sm:self-center">
-                        <div className="text-[10px] text-slate-400 font-semibold hidden lg:inline">
-                          到期时间: {new Date(inv.expiresAt).toLocaleDateString("zh-CN")}
-                        </div>
-                        <span className="text-[11px] px-2.5 py-1 bg-amber-50/60 border border-amber-200 rounded-lg text-amber-600 font-extrabold select-none">
-                          拟分配: {inv.role === "ADMIN" ? "空间管理员" : "协同成员"}
-                        </span>
-                        <button
-                          onClick={() => handleTabDeleteInvitation(inv.id)}
-                          className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 rounded-lg cursor-pointer transition-colors"
-                          title="作废并撤回此邀请令牌"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
             )}
 
-            {/* 3. 引导升级面板（当是个人空间时） */}
-            {workspaceType === "PERSONAL" && (
-              <div className="bg-gradient-to-r from-amber-50 to-amber-50 border border-amber-200 rounded-2xl p-5 shadow-inner space-y-3 animate-in slide-in-from-top-1 duration-200">
-                <div className="flex items-center gap-2 text-amber-705">
+            {/* 3. 引导升级面板（当是个人空间时） */}            {workspaceType === "PERSONAL" && (
+              <div className="bg-gradient-to-r from-amber-50 to-amber-100 border border-amber-200 rounded-2xl p-5 shadow-inner space-y-3 animate-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 text-amber-700">
                   <ShieldAlert className="w-5 h-5 shrink-0 text-amber-600" />
                   <h4 className="text-xs font-black">个人版空间协作受限提示</h4>
                 </div>
@@ -6547,7 +6534,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                 </p>
                 <button
                   onClick={handleUpgradeClick}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-500 hover:from-amber-600 hover:to-amber-600 text-white rounded-lg text-xs font-bold shadow hover:shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-lg text-xs font-bold shadow hover:shadow-md transition-all cursor-pointer"
                 >
                   升级为企业版空间，体验协同研发
                 </button>
@@ -7552,10 +7539,24 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
 
       {/* ------------------ MODALS 声明式挂载 ------------------ */}
       
-      <UpgradeModal 
-        open={showUpgradeModal} 
-        onClose={() => setShowUpgradeModal(false)} 
-        workspaceType={workspaceType} 
+      <UpgradeModal
+        open={showUpgradeModal}
+        onClose={() => setShowUpgradeModal(false)}
+        workspaceType={workspaceType}
+        workspaceId={workspaceId}
+        onSuccess={() => { if (workspaceId) loadWorkspace(workspaceId); }}
+      />
+
+      <TransferOwnershipModal
+        open={!!transferTarget}
+        onClose={() => setTransferTarget(null)}
+        workspaceId={workspaceId}
+        workspaceName={workspaceName}
+        targetMember={transferTarget}
+        onSuccess={() => {
+          loadTabMembers();
+          if (workspaceId) loadWorkspace(workspaceId);
+        }}
       />
 
       <ImportAssetModal

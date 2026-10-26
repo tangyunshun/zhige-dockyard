@@ -4,6 +4,7 @@ import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { createCharge, resolvePaymentMode } from "@/lib/payment-gateway";
+import { newOrderExpiry } from "@/lib/order-expiry";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -100,6 +101,7 @@ export async function POST(request: NextRequest) {
         amount: amountCents,
         currency: "CNY",
         status: "PENDING",
+        expiresAt: newOrderExpiry(),
         channel,
         referenceId: workspaceId,
         metadata: {
@@ -117,7 +119,8 @@ export async function POST(request: NextRequest) {
     });
 
     // 产出收银台地址（mock 模式为本地模拟页；real 模式为网关支付链接，由回调入账）
-    const charge = createCharge({
+    const charge = await createCharge({
+      expiresAt: newOrderExpiry(),
       orderNo,
       amountCents,
       subject: "知阁·舟坊 - 席位增购",

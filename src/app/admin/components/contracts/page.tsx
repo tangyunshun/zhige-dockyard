@@ -36,6 +36,7 @@ import {
   ComponentContract,
   ContractLifecycle,
   validateComponentContract,
+  assertPromptCoversRequiredSections,
   ComponentContractError,
   ALLOWED_MODEL_CAPABILITIES,
   ALLOWED_INPUT_KINDS,
@@ -52,6 +53,26 @@ interface ComponentItem {
   icon: string;
   description: string;
   estimatedModelTokens: number | null;
+  accept?: string | null;
+}
+
+/**
+ * 【P3 交叉提示】目录 accept 与合同 acceptedMimes 是否存在交集。
+ * 目录 accept 是自由文本（如 ".pdf,.docx" 或 "text/plain"），合同 acceptedMimes 实际
+ * 存扩展名/MIME 混合形态——统一小写、去首点、按逗号/顿号/分号/空白切分后比对。
+ */
+function normalizeFormatTokenList(raw: unknown): string[] {
+  if (raw === undefined || raw === null || raw === "") return [];
+  const list = Array.isArray(raw) ? raw : String(raw).split(/[,，、;；\s]+/);
+  return list
+    .map((t) => String(t).trim().toLowerCase().replace(/^\./, ""))
+    .filter(Boolean);
+}
+function hasFormatIntersection(catalogAccept: unknown, contractMimes: unknown): boolean {
+  const catalogSet = new Set(normalizeFormatTokenList(catalogAccept));
+  const contractList = normalizeFormatTokenList(contractMimes);
+  if (catalogSet.size === 0 || contractList.length === 0) return true; // 任一侧为空不提示
+  return contractList.some((t) => catalogSet.has(t));
 }
 
 interface ContractSummary {
@@ -643,6 +664,8 @@ export default function ComponentContractsPage() {
       }
 
       validateComponentContract(parsed);
+      // 【P2 事故防线】本地校验同样检查 Prompt 模板必填章节覆盖
+      assertPromptCoversRequiredSections(parsed as ComponentContract);
       setValidationSuccess(true);
     } catch (err) {
       if (err instanceof ComponentContractError) {
@@ -683,6 +706,14 @@ export default function ComponentContractsPage() {
         };
       } else {
         draftBody = createDefaultContractTemplate(selectedComponentId, version);
+      }
+
+      // 【P2 事故防线】起草期前置校验：Prompt 模板必须覆盖必填章节（不满足阻断保存）
+      try {
+        assertPromptCoversRequiredSections(draftBody);
+      } catch (err) {
+        setDraftFormError(err instanceof Error ? err.message : "Prompt 模板未包含必填章节");
+        return;
       }
 
       const res = await fetch(`/api/admin/components/${selectedComponentId}/contracts`, {
@@ -753,6 +784,16 @@ export default function ComponentContractsPage() {
       return;
     }
 
+    // 【P2 事故防线】保存前前置校验：Prompt 模板必须覆盖必填章节（不满足阻断保存）
+    try {
+      assertPromptCoversRequiredSections(parsed as ComponentContract);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Prompt 模板未包含必填章节";
+      setValidationErrors([`[PROMPT_MISSING_REQUIRED_SECTION] ${msg}`]);
+      showToast("error", msg);
+      return;
+    }
+
     setPermissionError(null);
     try {
       const res = await fetch(
@@ -780,6 +821,22 @@ export default function ComponentContractsPage() {
       showToast("success", "草稿保存成功！");
       setCurrentContract(json.data.contract);
       setValidationErrors([]);
+
+      // 【P3 交叉提示】目录 accept 与合同 acceptedMimes 无交集 → 黄色警告（不阻断）
+      const savedContract = json.data.contract as ComponentContract;
+      const compMeta = components.find((c) => c.id === selectedComponentId);
+      if (
+        !hasFormatIntersection(
+          compMeta?.accept,
+          (savedContract.input as { fileConstraints?: { acceptedMimes?: unknown } })
+            ?.fileConstraints?.acceptedMimes
+        )
+      ) {
+        showToast(
+          "warning",
+          "目录允许格式与合同允许格式不一致，用户可能无法上传，请检查目录 accept 与合同 acceptedMimes 配置"
+        );
+      }
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "保存草稿异常");
     }
@@ -790,6 +847,16 @@ export default function ComponentContractsPage() {
     if (!isDraft) {
       showToast("warning", "只有草稿状态的版本可以发布！");
       return;
+    }
+
+    // 【P2 事故防线】发布前端预检：Prompt 模板必须覆盖必填章节（后端发布层还有第二道闸）
+    if (currentContract) {
+      try {
+        assertPromptCoversRequiredSections(currentContract);
+      } catch (err) {
+        showToast("error", err instanceof Error ? err.message : "发布被拦截：Prompt 模板未包含必填章节");
+        return;
+      }
     }
 
     setConfirmDialog({

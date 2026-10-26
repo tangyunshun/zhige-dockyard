@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
 import { createCharge, resolvePaymentMode } from "@/lib/payment-gateway";
 import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { newOrderExpiry } from "@/lib/order-expiry";
 import {
   provisionEnterpriseUpgrade,
 } from "@/lib/workspace-upgrade-service";
@@ -208,6 +209,7 @@ export async function POST(request: NextRequest) {
         amount: cycleAmount,
         currency: "CNY",
         status: "PENDING",
+        expiresAt: newOrderExpiry(),
         channel,
         referenceId: workspaceId,
         metadata: {
@@ -223,7 +225,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    const charge = createCharge({
+    const charge = await createCharge({
+      expiresAt: newOrderExpiry(),
       orderNo,
       amountCents: cycleAmount,
       subject: "知阁·舟坊 - 升级企业空间",

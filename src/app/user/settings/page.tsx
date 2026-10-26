@@ -22,10 +22,7 @@ import {
   ExternalLink,
   AlertTriangle,
   Volume2,
-  EyeOff,
   Sliders,
-  Clock,
-  FileSpreadsheet,
   Calendar,
   Building,
 } from "lucide-react";
@@ -55,7 +52,6 @@ const DEFAULT_SYSTEM_SETTINGS = {
   // 声音与交互
   soundEffects: true,
   // 隐私安全
-  stealthMode: false,
   requireDeleteConfirm: true,
 };
 
@@ -64,7 +60,7 @@ const I18N_DICTIONARY: Record<string, Record<string, string>> = {
   "zh-CN": {
     pageTitle: "系统偏好与协同设置",
     pageSubtitle: "自主定制您的显示界面、工作空间呈现方式、代码开发习惯、通知接收渠道以及登录安全策略，全端实时生效。",
-    badgeSync: "实时生效 · 全端同步",
+    badgeSync: "保存后全端同步",
     badgeDirty: "● 有未保存的修改",
     btnReload: "重新加载",
     btnReset: "恢复默认",
@@ -238,7 +234,7 @@ const I18N_DICTIONARY: Record<string, Record<string, string>> = {
     notifyChannelTitle: "Notification & Subscription Channels",
     emailChannelTitle: "External Email Alerts (Email Channel)",
     emailBoundPrefix: "Receive critical security and order alerts via",
-    emailBoundSuffix: "",
+    emailBoundSuffix: "to receive critical security alerts and order notices",
     emailUnboundTip: "Please bind a verified email in profile to receive email alerts",
     emailUnboundBtn: "Unbound Email (Click to bind)",
     sysChannelTitle: "In-app System Messages",
@@ -1468,34 +1464,6 @@ export default function UserSettingsPage() {
                   <span
                     className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
                       allowMultiDevice ? "translate-x-5" : ""
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* 空间协同在线隐身状态 */}
-              <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50/70 border border-slate-100">
-                <div className="flex items-start gap-3.5">
-                  <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0 mt-0.5">
-                    <EyeOff className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-slate-800">{t("stealthTitle")}</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
-                      {t("stealthDesc")}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => updateSetting("stealthMode", !settings.stealthMode)}
-                  className={`relative w-11 h-6 rounded-full transition-colors shrink-0 cursor-pointer ${
-                    settings.stealthMode ? "bg-[#3182ce]" : "bg-slate-300"
-                  }`}
-                >
-                  <span
-                    className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                      settings.stealthMode ? "translate-x-5" : ""
                     }`}
                   />
                 </button>

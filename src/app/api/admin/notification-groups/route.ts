@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 通知受众群组管理接口
@@ -218,6 +218,8 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(guard.admin!.id, "notification_group:create", { id: group.id, name: group.name }, null, null, request);
+
     return NextResponse.json({ success: true, group });
   } catch (error) {
     console.error("Create notification group error:", error);
@@ -279,6 +281,15 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
+    await writeAuditLog(
+      guard.admin!.id,
+      "notification_group:update",
+      { groupId, name: name ?? undefined, description: description ?? undefined, addCount: Array.isArray(addUserIds) ? addUserIds.length : 0, removeCount: Array.isArray(removeUserIds) ? removeUserIds.length : 0 },
+      null,
+      null,
+      request
+    );
+
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Update notification group error:", error);
@@ -306,6 +317,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.notificationgroup.delete({ where: { id: groupId } });
+    await writeAuditLog(guard.admin!.id, "notification_group:delete", { id: groupId }, null, null, request);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("Delete notification group error:", error);

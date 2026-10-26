@@ -2,6 +2,7 @@
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
 import { executeAdminUserDeletion } from "@/lib/admin-user-deletion";
+import { writeAuditLog } from "@/lib/security";
 
 export async function PATCH(request: NextRequest) {
   try {
@@ -51,6 +52,8 @@ export async function PATCH(request: NextRequest) {
       where: { id: { in: userIds } },
       data: { status },
     });
+
+    await writeAuditLog(userId, "user:batch_update", { count: userIds.length, status, skippedAdmin: adminUsers.length }, null, null, request);
 
     return NextResponse.json({
       success: true,
@@ -131,6 +134,8 @@ export async function DELETE(request: NextRequest) {
         });
       }
     }
+
+    await writeAuditLog(userId, "user:batch_delete", { requested: userIds.length, processedCount, skippedCount: skipped.length }, null, null, request);
 
     return NextResponse.json({
       success: true,

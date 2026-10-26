@@ -261,7 +261,9 @@ export async function tryResolveWorkspaceByoDefault(
   };
 }
 
-/** BYO 定价：平台服务费同时作为结算成本（价差即平台收入），状态 VERIFIED 以通过结算就绪校验 */
+/** BYO 定价：平台服务费同时作为结算成本（价差即平台收入）。
+ * 价格口径（产品裁定）：BYO 模型价格由用户自主申报（用用户自己的供应商钥匙结算，平台只收服务费），
+ * 状态一律记为 USER_DECLARED（用户自报价，结算即按申报价），不再冒充平台 VERIFIED。 */
 export function buildByoPricing(row: {
   priceInputMicrosPerMillion: number | null;
   priceOutputMicrosPerMillion: number | null;
@@ -271,9 +273,9 @@ export function buildByoPricing(row: {
   const outM = row.priceOutputMicrosPerMillion;
   const source: PriceSource = "VERIFIED";
   const status: PriceStatus =
-    (["UNCONFIGURED", "FREE", "OBSERVED_ONLY", "VERIFIED"] as readonly string[]).includes(row.priceStatus)
+    (["UNCONFIGURED", "FREE", "OBSERVED_ONLY", "VERIFIED", "USER_DECLARED"] as readonly string[]).includes(row.priceStatus)
       ? (row.priceStatus as PriceStatus)
-      : "VERIFIED";
+      : "USER_DECLARED";
   return {
     currency: "CNY",
     costInputMicrosPerMillion: inM,

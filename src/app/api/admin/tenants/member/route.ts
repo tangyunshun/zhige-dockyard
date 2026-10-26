@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { isSuperAdminRole } from "@/lib/role-utils";
+import { getAuditDictionariesFromDb, translateAction, translateResource } from "@/lib/audit-dict";
 
 /**
  * 企业空间「成员明细」抽屉数据。围绕单个成员在某企业空间内的行为：
@@ -166,6 +167,8 @@ export async function GET(request: NextRequest) {
         { resource: { contains: q } },
       ];
     }
+    // 操作记录（本空间 + 本成员）；动作与资源一律从数据库审计字典翻译，绝不裸显英文键
+    const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
     const opTotal = await prisma.operationlog.count({ where: opWhere });
     const opRows = await prisma.operationlog.findMany({
       where: opWhere,
@@ -177,7 +180,9 @@ export async function GET(request: NextRequest) {
     const opItems = opRows.map((o: any) => ({
       id: o.id,
       action: o.action,
+      actionZh: translateAction(o.action, actionDict).label,
       resource: o.resource || null,
+      resourceZh: translateResource(o.resource, resourceDict),
       ipAddress: o.ipAddress || null,
       userName: o.user?.name || o.user?.email || null,
       userAvatar: o.user?.avatar || null,

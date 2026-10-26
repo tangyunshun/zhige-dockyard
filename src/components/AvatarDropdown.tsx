@@ -122,6 +122,7 @@ export default function AvatarDropdown({
     if (isComponentAdmin) return "组件管理员";
     if (isKnowledgeAdmin) return "知识库管理员";
     if (workspaceType === "ENTERPRISE") return "企业成员";
+    if (workspaceType === "PERSONAL") return "空间所有者";
     return "免费用户";
   };
 
@@ -295,6 +296,16 @@ export default function AvatarDropdown({
 
           {/* 菜单项区块二：个人中心与设置 */}
           <div className="space-y-0.5">
+            {/* 与后端 /api/workspace/upgrade-plan 同口径：套餐仅面向企业空间，且仅空间所有者可升级 */}
+            {onUpgradeClick && workspaceId && workspaceType === "ENTERPRISE" && userRole === "Owner" && (
+              <button
+                onClick={() => { onUpgradeClick(); setShowDropdown(false); }}
+                className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-amber-600 hover:bg-amber-50/70 transition-all cursor-pointer"
+              >
+                <Shield className="w-4 h-4 text-amber-400 group-hover:scale-105 transition-all" />
+                <span>升级空间套餐</span>
+              </button>
+            )}
             <button
               onClick={() => { router.push("/user/profile"); setShowDropdown(false); }}
               className="group w-full flex items-center gap-2.5 px-2.5 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50/70 hover:text-slate-800 transition-all cursor-pointer"

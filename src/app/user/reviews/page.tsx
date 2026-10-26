@@ -86,6 +86,7 @@ export default function UserReviewsPage() {
       }
     } catch (error) {
       console.error("Load my testimonials error:", error);
+      toast.error("加载评价记录失败，请稍后刷新重试");
     } finally {
       setLoading(false);
     }

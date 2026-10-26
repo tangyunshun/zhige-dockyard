@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
       where: { id: { in: ids } },
       data: { isPublished: true },
     });
+
+    await writeAuditLog(authResult.user?.id || "", "component:batch_publish", { count: ids.length, ids }, null, null, request);
 
     return NextResponse.json({
       success: true,

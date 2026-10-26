@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { isSuperAdminRole } from "@/lib/role-utils";
+import { getAuditDictionariesFromDb, translateAction } from "@/lib/audit-dict";
 
 /**
  * 企业空间「成员活动」总表（超管在后台透视每个企业空间里每一个成员的行为）。
@@ -40,7 +41,10 @@ export async function GET(request: NextRequest) {
     });
     const enterpriseIds = enterpriseWorkspaces.map((w) => w.id);
     const spaceMetaMap = new Map(
-      enterpriseWorkspaces.map((w) => [w.id, { name: w.name, status: (w as any).status || "active" }]),
+      enterpriseWorkspaces.map((w) => [
+        w.id,
+        { name: w.name, status: ((w as any).status || "ACTIVE").toString().toUpperCase() },
+      ]),
     );
 
     // 顶部 4 卡统计（全量，不受分页/筛选影响）
@@ -66,8 +70,9 @@ export async function GET(request: NextRequest) {
     if (spaceId) {
       where.workspaceId = spaceId;
     } else if (spaceStatus && spaceStatus !== "ALL") {
+      const targetStatus = spaceStatus.toUpperCase();
       const targetIds = enterpriseWorkspaces
-        .filter((w) => ((w as any).status || "active") === spaceStatus)
+        .filter((w) => ((w as any).status || "ACTIVE").toString().toUpperCase() === targetStatus)
         .map((w) => w.id);
       where.workspaceId = { in: targetIds };
     }
@@ -118,6 +123,9 @@ export async function GET(request: NextRequest) {
       : [];
     const compNameMap = new Map(compRows.map((c: any) => [c.id, c.name]));
 
+    // 「最近操作」动作标签同样必须从数据库审计字典翻译，绝不裸显英文动作键
+    const { actionDict } = await getAuditDictionariesFromDb();
+
     const roleLabel: Record<string, string> = {
       OWNER: "空间所有者",
       ADMIN: "管理员",
@@ -140,7 +148,7 @@ export async function GET(request: NextRequest) {
         }));
 
       const recentLog = l[0]
-        ? { action: l[0].action, createdAt: l[0].createdAt }
+        ? { action: l[0].action, actionZh: translateAction(l[0].action, actionDict).label, createdAt: l[0].createdAt }
         : null;
 
       const meta = spaceMetaMap.get(r.workspaceId);
@@ -148,7 +156,7 @@ export async function GET(request: NextRequest) {
         id: r.id,
         workspaceId: r.workspaceId,
         workspaceName: meta?.name || "",
-        workspaceStatus: meta?.status || "active",
+        workspaceStatus: meta?.status || "ACTIVE",
         userId: r.userId,
         name: r.user?.name || null,
         email: r.user?.email,

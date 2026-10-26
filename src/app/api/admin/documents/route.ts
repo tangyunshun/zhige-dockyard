@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -285,6 +285,8 @@ export async function POST(request: NextRequest) {
       console.warn("[文档历史快照] 记录初始创建版本非阻断提示:", err);
     });
 
+    await writeAuditLog(userId, "document:create", { id: document.id, title: document.title, category: document.category }, null, null, request);
+
     return NextResponse.json({ success: true, data: document });
   } catch (error) {
     console.error("Create document error:", error);
@@ -406,6 +408,8 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
+    await writeAuditLog(userId, "document:update", { id: documentId, title: newTitle, category: newCategory }, null, null, request);
+
     return NextResponse.json({ success: true, data: document });
   } catch (error) {
     console.error("Update document error:", error);
@@ -450,6 +454,8 @@ export async function DELETE(request: NextRequest) {
     }
 
     await prisma.systemdocument.delete({ where: { id: documentId } });
+
+    await writeAuditLog(userId, "document:delete", { id: documentId, title: targetDoc.title }, null, null, request);
 
     return NextResponse.json({ success: true, message: "文档已删除" });
   } catch (error) {

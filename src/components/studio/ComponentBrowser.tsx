@@ -5,7 +5,7 @@ import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { iconMap } from "@/components/ComponentShowcase";
-import { Box } from "lucide-react";
+import { Box, Sparkles } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
@@ -19,10 +19,8 @@ import {
   ArrowRight,
   ShieldCheck,
   TrendingUp,
-  Clock,
   CheckCircle,
   X,
-  Filter,
   SortAsc,
   SortDesc,
   Trash2,
@@ -33,15 +31,11 @@ import {
   Layers,
   ArrowRightLeft,
   FileText,
-  Cpu,
   Database,
-  Monitor,
   Server,
   Users,
-  BookOpen,
   Target,
   Zap,
-  Settings,
   FolderClosed,
   FolderOpen,
   CheckCircle2,
@@ -50,8 +44,6 @@ import {
   Code,
   Layout,
   ShieldAlert,
-  Briefcase,
-  PenLine,
   AlertTriangle,
   RefreshCw
 } from "lucide-react";
@@ -111,35 +103,23 @@ const getComponentExtra = (
   return { calls, successRate, total, success, contract: resolvedContract };
 };
 
-const categoryEmojis: Record<string, string> = {
-  BID_PREP: "",
-  REQ_DESIGN: "",
-  BACKEND_CORE: "",
-  DATABASE_ENG: "",
-  FRONTEND_DEV: "",
-  TEST_QA: "",
-  DEVOPS: "",
-  SECURITY: "",
-  PROJ_MGMT: "",
-  KNOWLEDGE: "",
-};
-
 interface ComponentBrowserProps {
   workspaceId: string | null;
   workspaceName: string;
   workspaceToken: number;
+  /** 余额是否仍在加载：加载完成前不渲染「算力不足」警告（避免初始 0 值误闪） */
+  tokenLoading?: boolean;
   restrictedComponentIds: string[];
   onSelectComponent: (componentId: string, workspaceId?: string) => void;
-  onTokenUpdate: (newToken: number) => void;
 }
 
 export default function ComponentBrowser({
   workspaceId,
   workspaceName,
   workspaceToken,
+  tokenLoading = false,
   restrictedComponentIds,
   onSelectComponent,
-  onTokenUpdate,
 }: ComponentBrowserProps) {
   const toast = useToast();
   const router = useRouter();
@@ -199,7 +179,6 @@ export default function ComponentBrowser({
   const [showSearchHistory, setShowSearchHistory] = useState(false);
   const [selectedStage, setSelectedStage] = useState<number>(-1); // -1 表示全部
   const [sortBy, setSortBy] = useState<"default" | "hot" | "success" | "new">("default");
-  const [showFilters, setShowFilters] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   // 我的收藏筛选：收藏数据按账号云端持久化（componentfavorite 表，跨设备/跨空间可见），
   // 此开关仅在组件大厅内做列表过滤，不影响任何后端数据。
@@ -230,42 +209,58 @@ export default function ComponentBrowser({
     }
   }, [recommendedComponents]);
 
-  // 智能需求描述润色引擎状态组与专业扩增算法
-  const [originalSmartPrompt, setOriginalSmartPrompt] = useState("");
-  const [refinedSmartPrompt, setRefinedSmartPrompt] = useState("");
-  const [isRefiningSmart, setIsRefiningSmart] = useState(false);
-  const [showRefineSmartPanel, setShowRefineSmartPanel] = useState(false);
-
-  const getRefinedText = (text: string): string => {
-    const trimmed = text.trim();
-    if (!trimmed) return "";
-    
-    const lower = trimmed.toLowerCase();
-    if (lower.includes("标书") || lower.includes("rfp") || lower.includes("投标") || lower.includes("合同")) {
-      return "我需要对上传的 RFP 招标 PDF 材料及技术偏离文件进行格式自检，通过深度文本适配自动提取偏离差异条款，并快速生成规范的可视化风险比对报告。";
-    }
-    if (lower.includes("api") || lower.includes("接口") || lower.includes("后端") || lower.includes("swagger")) {
-      return "我需要对给定的 RESTful API 协议契约进行分析，逆向生成对应的 Spring Boot/Next.js 后端接口模板与业务控制器框架，并自动对齐契约定义。";
-    }
-    if (lower.includes("测试") || lower.includes("单测") || lower.includes("jest") || lower.includes("junit")) {
-      return "我需要对项目核心业务代码自动生成覆盖率达标的单元测试用例，并配套构建 Docker 自动化部署镜像及流水线配置文件。";
-    }
-    if (lower.includes("react") || lower.includes("vue") || lower.includes("前端") || lower.includes("页面")) {
-      return "我希望将手写或导出的交互原型 schema 自动转换生成为符合现代化设计系统规范的响应式 React 大前端组件代码。";
-    }
-    if (lower.includes("数据库") || lower.includes("er") || lower.includes("sql") || lower.includes("建表")) {
-      return "我需要对现有的 DDL 建表 SQL 脚本进行实体逆向映射，生成直观清晰的 ER 拓扑图模型，并导出为标准数据字典。";
-    }
-    
-    return `我需要在当前工作空间中，基于“${trimmed}”的具体研发场景，通过配置化效能组件进行数据流自适应处理，自动生成规范成果，并沉淀为团队 SOP 避坑规约。`;
-  };
-
   const [promptError, setPromptError] = useState<string | null>(null);
+  // AI 需求润色（真实模型调用：POST /api/studio action=refine-prompt；后端按用户个人/企业空间解析默认模型，真实扣算力点）
+  const [isRefiningSmart, setIsRefiningSmart] = useState(false);
+  // 润色模型展示与切换：默认=个人/企业空间默认链（auto），可指定具体模型；选择本地记忆
+  const [polishModelOptions, setPolishModelOptions] = useState<{
+    available: boolean;
+    workspaceName: string | null;
+    defaultDeploymentId: string | null;
+    models: Array<{ id: string; label: string; providerName: string }>;
+  } | null>(null);
+  const [polishModelChoice, setPolishModelChoice] = useState<string>("auto");
+
+  // 拉取润色模型可选项（用户级），并恢复上次选择的模型
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthToken();
+        // 注意：polish-models 是 POST 动作（GET 路径无此 action，用 GET 会 405/400 导致选择器静默消失）
+        const res = await fetch("/api/studio", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ action: "polish-models" }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (cancelled || !res.ok || !d.success) return;
+        const opts = {
+          available: Boolean(d.data?.available),
+          workspaceName: d.data?.workspaceName ?? null,
+          defaultDeploymentId: d.data?.defaultDeploymentId ?? null,
+          models: Array.isArray(d.data?.models) ? d.data.models : [],
+        };
+        setPolishModelOptions(opts);
+        let stored: string | null = null;
+        try { stored = window.localStorage.getItem("zhige_polish_model_choice"); } catch { /* 忽略 */ }
+        if (stored && stored !== "auto" && opts.models.some((m: { id: string }) => m.id === stored)) {
+          setPolishModelChoice(stored);
+        }
+      } catch {
+        // 拉取失败保持 null：选择器整体隐藏，润色仍走后端默认链
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [isLoggedIn]);
 
   // 开发需求检索状态
   const [taskSearchQuery, setTaskSearchQuery] = useState("");
   const [matchedIds, setMatchedIds] = useState<string[]>([]);
-  const [isTaskSearching, setIsTaskSearching] = useState(false);
 
   // 侧滑分发控制面板状态
   const [dispatcherCompId, setDispatcherCompId] = useState<string | null>(null);
@@ -292,14 +287,6 @@ export default function ComponentBrowser({
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
   // 折叠资产树阶段的状态 (默认展开商机、需求、后端)
-  const [expandedStages, setExpandedStages] = useState<Record<number, boolean>>({
-    1: true, 2: true, 3: true,
-  });
-
-  const toggleStageExpand = (stageId: number) => {
-    setExpandedStages(prev => ({ ...prev, [stageId]: !prev[stageId] }));
-  };
-
   // 确认弹窗中"确定解除"：真正执行解除装配
   const confirmUnbind = async () => {
     if (!unbindModal || !workspaceId) return;
@@ -409,6 +396,7 @@ export default function ComponentBrowser({
     setSearchQuery(query);
     if (query.trim() && !searchHistory.includes(query.trim())) {
       const newHistory = [query.trim(), ...searchHistory].slice(0, 10);
+      setSearchHistory(newHistory);
       saveSearchHistory(newHistory);
     }
   };
@@ -461,7 +449,7 @@ export default function ComponentBrowser({
     }
   };
 
-  // 开发需求检索匹配逻辑
+  // 开发需求检索匹配逻辑（真实前端内存匹配，即时返回，无伪造运算延迟）
   const handleTaskMatchSearch = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const prompt = taskSearchQuery.trim();
@@ -470,32 +458,28 @@ export default function ComponentBrowser({
       return;
     }
 
-    setIsTaskSearching(true);
-    setTimeout(() => {
-      setIsTaskSearching(false);
-      const matches: string[] = [];
-      const lower = prompt.toLowerCase();
+    const matches: string[] = [];
+    const lower = prompt.toLowerCase();
 
-      // 基于数据库 component_catalog 的 keywords / 名称 / 描述 / 标签做模糊匹配（不再硬编码关键词映射）
-      COMPONENTS.forEach((comp) => {
-        const kwList = (comp.keywords || []).map((k) => k.toLowerCase());
-        const kwHit = kwList.some((k) => lower.includes(k));
-        const nameHit = comp.name.toLowerCase().includes(lower) || lower.includes(comp.name.toLowerCase());
-        const descHit = comp.description.toLowerCase().includes(lower);
-        const tagHit = (comp.tags || []).some((t) => t.toLowerCase().includes(lower));
-        if (kwHit || nameHit || descHit || tagHit) {
-          matches.push(comp.id);
-        }
-      });
-
-      if (matches.length > 0) {
-        setMatchedIds(matches);
-        toast.success(`检索匹配完成，已为您高亮匹配出 ${matches.length} 个相关组件`);
-      } else {
-        setMatchedIds([]);
-        toast.info("未能检索到匹配的专属组件");
+    // 基于数据库 component_catalog 的 keywords / 名称 / 描述 / 标签做模糊匹配（不再硬编码关键词映射）
+    COMPONENTS.forEach((comp) => {
+      const kwList = (comp.keywords || []).map((k) => k.toLowerCase());
+      const kwHit = kwList.some((k) => lower.includes(k));
+      const nameHit = comp.name.toLowerCase().includes(lower) || lower.includes(comp.name.toLowerCase());
+      const descHit = comp.description.toLowerCase().includes(lower);
+      const tagHit = (comp.tags || []).some((t) => t.toLowerCase().includes(lower));
+      if (kwHit || nameHit || descHit || tagHit) {
+        matches.push(comp.id);
       }
-    }, 600);
+    });
+
+    if (matches.length > 0) {
+      setMatchedIds(matches);
+      toast.success(`检索匹配完成，已为您高亮匹配出 ${matches.length} 个相关组件`);
+    } else {
+      setMatchedIds([]);
+      toast.info("未能检索到匹配的专属组件");
+    }
   };
 
   const handleToggleFavorite = async (componentId: string) => {
@@ -509,6 +493,12 @@ export default function ComponentBrowser({
   };
 
   const handleOpenDispatcher = (componentId: string) => {
+    // 大厅入口的岗位受限前置拦截：受限组件对当前用户不可装配/执行，
+    // 与卡片上的 🔒 标识同口径（后端 bind/simulate 亦有兜底校验）。
+    if (restrictedComponentIds.includes(componentId)) {
+      toast.error("该组件受当前空间的岗位权限限制，无法使用。请联系空间管理员调整岗位权限。");
+      return;
+    }
     // 允许打开分发面板查看组件规格契约与质量限制提示；
     // 真实执行门禁由分发面板内部 strict 校验（未发布组件按钮 disabled，拦截物理执行）。
     setDispatcherCompId(componentId);
@@ -560,16 +550,72 @@ export default function ComponentBrowser({
     setPromptError(null);
   };
 
+  // AI 需求润色：调用真实模型（后端按用户个人/企业空间默认模型解析，真实扣算力点，非模板伪装）；
+  // 失败提示就地显示在输入框下方（输入框红框高亮），不再用弹窗
+  const handleRefinePrompt = async () => {
+    const raw = smartPrompt.trim();
+    if (raw.length < 5) {
+      setPromptError("请先输入至少 5 个字的需求描述，再进行 AI 润色");
+      return;
+    }
+    if (polishModelOptions && !polishModelOptions.available) {
+      setPromptError("无可用模型，润色功能暂无法使用：请先在个人空间或名下企业空间配置默认模型");
+      return;
+    }
+    setIsRefiningSmart(true);
+    try {
+      const token = getAuthToken();
+      const res = await fetch("/api/studio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          action: "refine-prompt",
+          workspaceId,
+          text: raw,
+          ...(polishModelChoice !== "auto" ? { deploymentId: polishModelChoice } : {}),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success && data.data?.text) {
+        setSmartPrompt(data.data.text);
+        setPromptError(null);
+        const cost = typeof data.data.costPoints === "number" && data.data.costPoints > 0
+          ? `（扣 ${data.data.costPoints} 算力点）`
+          : "";
+        toast.success(data.data.model ? `AI 润色完成（${data.data.model}）${cost}` : `AI 润色完成${cost}`);
+      } else {
+        const rawMsg = String(data.error || "AI 润色失败，请稍后重试");
+        // 去掉「润色失败（错误码）：」技术前缀，就地展示友好文案
+        const friendly = rawMsg.replace(/^润色失败（[A-Z_]+）：/, "");
+        setPromptError(friendly);
+        // 后端确认用户级无可用模型：模型选择器同步切换为「无可用模型」态并禁用按钮
+        if (rawMsg.includes("MODEL_DEFAULT_NOT_CONFIGURED") && polishModelOptions) {
+          setPolishModelOptions({ ...polishModelOptions, available: false });
+        }
+      }
+    } catch {
+      setPromptError("网络异常，润色请求未完成");
+    } finally {
+      setIsRefiningSmart(false);
+    }
+  };
+
   // 核心契约分析匹配逻辑 (支持可选上传文件)
+  // 诚实口径：纯前端对数据库目录的真实关键词/名称匹配，匹配度 = 命中关键词数 ÷ 组件关键词总数；
+  // 过短关键词（单字/单字母）不参与匹配以免误报；岗位受限组件真实排除；零命中即空推荐不凑数；
+  // 无任何伪造的"AI 分析过程"——日志只陈述真实执行的事实。
   const handleStartSmartAnalysis = () => {
     // 立即擦除上一次的推荐结果和分析日志，防止旧数据在校验拦截或新分析时残留
     setRecommendedComponents([]);
     setAnalysisLogs([]);
 
     const trimmedPrompt = smartPrompt.trim();
-    
+
     // 验证是否为规范输入
-    const isInvalid = 
+    const isInvalid =
       !trimmedPrompt || // 空输入
       trimmedPrompt.length < 5 || // 长度少于 5 个字符
       /^[\d\s]+$/.test(trimmedPrompt) || // 纯数字（或纯数字带空格）
@@ -590,66 +636,58 @@ export default function ComponentBrowser({
 
     setIsAnalyzing(true);
 
-    // 根据是否上传文件分流日志打印
-    const logPool = uploadedFile
-      ? [
-        `[INFO] 正在读取上传的文件 ${uploadedFile.name}...`,
-        `[INFO] 识别文件格式：${uploadedFile.name.split('.').pop()?.toUpperCase() || 'UNKNOWN'} (大小: ${(uploadedFile.size / 1024).toFixed(1)} KB)...`,
-        `[INFO] 正在分析文档内容与数据结构...`,
-        `[INFO] 正在分析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 ${COMPONENTS.length} 个应用组件进行功能适配度比对...`,
-        `[INFO] 正在检查当前空间的组件权限限制...`,
-        `[SUCCESS] 推荐组件匹配分析已完成。`
-      ]
-      : [
-        `[INFO] 未检测到上传文档，直接基于需求描述进行分析匹配...`,
-        `[INFO] 正在解析您的需求描述内容：“${smartPrompt}”...`,
-        `[INFO] 正在与大厅 ${COMPONENTS.length} 个应用组件进行功能适配度比对...`,
-        `[INFO] 正在检查当前空间的组件权限限制...`,
-        `[SUCCESS] 推荐组件匹配分析已完成。`
-      ];
+    // 真实匹配计算：基于数据库 component_catalog 的 keywords / 名称 / 描述做通用需求匹配
+    const promptLower = smartPrompt.toLowerCase();
+    const fileLower = uploadedFile ? uploadedFile.name.toLowerCase() : "";
 
-    let logIndex = 0;
-    const interval = setInterval(() => {
-      if (logIndex < logPool.length) {
-        setAnalysisLogs(prev => [...prev, logPool[logIndex]]);
-        logIndex++;
-      } else {
-        clearInterval(interval);
+    const matchResults = COMPONENTS
+      .map(comp => {
+        // 过短关键词（单字/单字母，如 "c"）会被 substring 命中放大成大面积误报，不参与匹配
+        const kwList = (comp.keywords || []).map(k => k.trim().toLowerCase()).filter(k => k.length >= 2);
+        const nameLower = comp.name.toLowerCase();
+        const descLower = comp.description.toLowerCase();
 
-        // 自动匹配计算逻辑：基于数据库 component_catalog 的 keywords / 名称 / 描述做通用需求匹配
-        const promptLower = smartPrompt.toLowerCase();
-        const fileLower = uploadedFile ? uploadedFile.name.toLowerCase() : "";
+        const hitKeywords = kwList.filter(k => promptLower.includes(k));
+        const nameHit = nameLower.length >= 2 && (nameLower.includes(promptLower) || promptLower.includes(nameLower));
+        const descHit = promptLower.length > 0 && descLower.includes(promptLower);
+        const fileHit = fileLower.length > 0 && kwList.some(k => fileLower.includes(k) || k.includes(fileLower.split(".")[0]));
 
-        const matchResults = COMPONENTS
-          .map(comp => {
-            const kwList = (comp.keywords || []).map(k => k.toLowerCase());
-            const nameLower = comp.name.toLowerCase();
-            const descLower = comp.description.toLowerCase();
+        if (hitKeywords.length === 0 && !nameHit && !descHit && !fileHit) return null;
 
-            const kwHit = kwList.some(k => promptLower.includes(k));
-            const nameHit = promptLower.length > 0 && (nameLower.includes(promptLower) || promptLower.includes(nameLower));
-            const descHit = promptLower.length > 0 && descLower.includes(promptLower);
-            const fileHit = fileLower.length > 0 && kwList.some(k => fileLower.includes(k) || k.includes(fileLower.split(".")[0]));
+        // 匹配度 = 命中关键词占该组件关键词总数的比例（名称/描述整体命中记为 1 次命中，上限 95% 防止绝对化）
+        const hitCount = hitKeywords.length + (nameHit || descHit ? 1 : 0);
+        const denominator = Math.max(kwList.length, 1) + (nameHit || descHit ? 1 : 0);
+        const raw = Math.round((hitCount / denominator) * 100);
+        const matchScore = Math.min(raw, 95);
+        const reason = hitKeywords.length > 0
+          ? `命中 ${hitKeywords.length} 个能力关键词（${hitKeywords.slice(0, 3).join("、")}），可完成 ${comp.contract || "对应研发任务"}。`
+          : `需求描述与组件功能描述匹配，可完成 ${comp.contract || "对应研发任务"}。`;
 
-            if (!kwHit && !nameHit && !descHit && !fileHit) return null;
+        return { component: comp, matchScore, reason };
+      })
+      .filter((item): item is { component: ComponentDefinition; matchScore: number; reason: string } => item !== null)
+      // 岗位受限组件必须真实排除（此前日志声称排除但代码未过滤，属不实陈述）
+      .filter((item) => !restrictedComponentIds.includes(item.component.id))
+      .sort((a, b) => b.matchScore - a.matchScore)
+      .slice(0, 3);
 
-            // 确定性匹配度（基于组件 ID 派生的视觉分数）
-            const scoreIdx = parseInt(comp.id.substring(1)) || 1;
-            const score = 95.0 + ((scoreIdx * 7) % 49) / 10;
-            const reason = `系统检测到与「${comp.name}」相关的需求特征，该组件可自动完成 ${comp.contract || "对应研发任务"}，大幅提升交付效率。`;
+    // 真实执行事实日志（一次性呈现，无脚本化模拟过程）
+    const logs: string[] = [];
+    if (uploadedFile) {
+      logs.push(`[INFO] 已接收上传文件 ${uploadedFile.name}（${(uploadedFile.size / 1024).toFixed(1)} KB），提取文件名参与匹配。`);
+    }
+    logs.push(`[INFO] 已在大厅 ${COMPONENTS.length} 个组件的能力关键词、名称与描述中完成匹配。`);
+    logs.push(`[INFO] 已按当前空间的岗位权限排除受限组件（${restrictedComponentIds.length} 个受限）。`);
+    logs.push(`[SUCCESS] 匹配完成，命中 ${matchResults.length} 个推荐组件。`);
+    setAnalysisLogs(logs);
 
-            return { component: comp, matchScore: score, reason };
-          })
-          .filter((item): item is { component: ComponentDefinition; matchScore: number; reason: string } => item !== null)
-          .sort((a, b) => b.matchScore - a.matchScore)
-          .slice(0, 3);
-
-        setRecommendedComponents(matchResults);
-        setIsAnalyzing(false);
-        toast.success(`文档匹配分析完成，为您生成 ${matchResults.length} 个推荐装配方案`);
-      }
-    }, 250);
+    setRecommendedComponents(matchResults);
+    setIsAnalyzing(false);
+    if (matchResults.length > 0) {
+      toast.success(`匹配完成，为您找到 ${matchResults.length} 个推荐组件`);
+    } else {
+      toast.info("未匹配到合适组件，请尝试更换需求描述的关键词");
+    }
   };
 
   // 批量操作
@@ -746,17 +784,16 @@ export default function ComponentBrowser({
           return (getComponentExtra(b.contract, b.realUsageCount, b.realTaskStats).successRate ?? -1)
             - (getComponentExtra(a.contract, a.realUsageCount, a.realTaskStats).successRate ?? -1);
         case "new":
-          return parseInt(b.id.substring(1)) - parseInt(a.id.substring(1));
+          // 全新发布 = 按目录真实创建时间倒序（不再用编号大小冒充上架时间）
+          return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
         default:
           return parseInt(a.id.substring(1)) - parseInt(b.id.substring(1));
       }
     });
   };
 
-  // 计算 Token 消耗百分比（底数设为 100,000）
-  const tokenMax = 100000;
-  const tokenPercentage = Math.min(100, Math.max(0, (workspaceToken / tokenMax) * 100));
-  const strokeDashoffset = 125.6 - (125.6 * tokenPercentage) / 100;
+  // Token 展示：只呈现真实余额数字，不画虚构上限的进度（后端无固定额度上限）
+  const hasToken = workspaceToken > 0;
 
   return (
     <div className="relative z-0 max-w-[1600px] mx-auto p-6 space-y-6" onClick={() => setShowSearchHistory(false)}>
@@ -874,27 +911,37 @@ export default function ComponentBrowser({
                 </div>
               </div>
 
-              {/* 第二列：剩余算力点 */}
+              {/* 第二列：剩余算力点（与左右两列同款带边框盒子；不足时给出充值入口） */}
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[10px] font-black text-slate-400 uppercase tracking-wider">
-                  <span>剩余调用额度</span>
-                  <span className="text-slate-700 font-mono font-black">
-                    {workspaceToken.toLocaleString()}
-                    <span className="text-slate-400 font-bold ml-1">({formatYuanFromPoints(workspaceToken)})</span>
-                  </span>
-                </div>
-                <div className="h-10 bg-slate-50 border border-slate-200/60 p-2.5 rounded-xl flex items-center gap-3 shadow-inner">
-                  {/* 水平进度条 */}
-                  <div className="flex-1 bg-slate-200 h-2 rounded-full overflow-hidden">
-                    <div
-                      className="bg-[#3182ce] h-full rounded-full transition-all duration-500"
-                      style={{ width: `${Math.min(100, Math.round(tokenPercentage))}%` }}
-                    />
+                <label className="text-[10px] font-black text-slate-400 block uppercase tracking-wider">
+                  剩余调用额度
+                </label>
+                {tokenLoading ? (
+                  <div className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center shadow-inner">
+                    <span className="text-xs font-bold text-slate-400">正在获取空间余额…</span>
                   </div>
-                  <span className="text-xs font-black text-slate-700 font-mono shrink-0">
-                    {Math.round(tokenPercentage)}%
-                  </span>
-                </div>
+                ) : workspaceToken !== -1 && workspaceToken < 10 ? (
+                  <div className="h-10 px-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between shadow-inner">
+                    <span className="text-[11px] font-black text-rose-600 flex items-center gap-1 truncate pr-2">
+                      ⚠️ 算力不足，执行前请先充值
+                    </span>
+                    <button
+                      onClick={() => router.push("/user/billing-center?section=points")}
+                      className="h-8 px-3 rounded-lg bg-[#3182ce] text-white border border-[#3182ce] text-xs font-black hover:brightness-105 transition-all cursor-pointer shadow-sm shrink-0"
+                    >
+                      去充值
+                    </button>
+                  </div>
+                ) : (
+                  <div className="h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between shadow-inner">
+                    <span className="text-xs font-extrabold text-slate-800 flex items-center gap-1.5 truncate pr-2">
+                      剩余 <span className="font-mono text-[#3182ce] font-black">{workspaceToken.toLocaleString()}</span> 算力点
+                    </span>
+                    <span className="text-[11px] text-slate-400 font-bold font-mono shrink-0">
+                      {formatYuanFromPoints(workspaceToken)}
+                    </span>
+                  </div>
+                )}
                 <p className="text-[9px] font-bold text-slate-400" title={UNIT_EXPLAIN_HINT}>
                   💡 组件执行按后台配置的固定点数扣费 ｜ {POINT_RATE_TEXT}
                 </p>
@@ -1213,14 +1260,9 @@ export default function ComponentBrowser({
                     />
                     <button
                       type="submit"
-                      disabled={isTaskSearching}
                       className="bg-[#3182ce] hover:bg-[#2b6cb0] text-white px-3 py-1.5 h-8 text-xs font-black rounded-lg transition-all flex items-center justify-center gap-1 shrink-0 cursor-pointer shadow"
                     >
-                      {isTaskSearching ? (
-                        <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      ) : (
-                        <span>开始检索</span>
-                      )}
+                      <span>开始检索</span>
                     </button>
                   </form>
                 </section>
@@ -1285,14 +1327,18 @@ export default function ComponentBrowser({
                   <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input
                     type="text"
-                    placeholder="在当前应用阶段货架检索组件名、标签..."
+                    placeholder="在当前应用阶段货架检索组件ID、名称、标签..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => handleSearch(e.target.value)}
                     onFocus={() => setShowSearchHistory(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") setShowSearchHistory(false);
+                      if (e.key === "Escape") setShowSearchHistory(false);
+                    }}
                     className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-xs text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white transition-all font-extrabold"
                   />
 
-                  {showSearchHistory && (searchHistory.length > 0 || searchQuery.trim()) && (
+                  {showSearchHistory && !searchQuery.trim() && searchHistory.length > 0 && (
                     <div className="absolute top-full left-0 mt-2 w-full bg-white rounded-xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in duration-150">
                       {!searchQuery.trim() && searchHistory.length > 0 && (
                         <div>
@@ -1451,10 +1497,13 @@ export default function ComponentBrowser({
                 }
 
                 // 过滤搜索内容（叠加「我的收藏」筛选；收藏视图跨全部研发阶段平铺，不被阶段 Tab 切碎）
-                const baseList = onlyFavorites ? COMPONENTS : currentStage.components;
+                // 有检索词时同样跨全部阶段搜索，避免组件挂在其他阶段时搜不到（支持按 ID 如 C10）
+                const isSearching = !onlyFavorites && searchQuery.trim().length > 0;
+                const baseList = onlyFavorites || isSearching ? COMPONENTS : currentStage.components;
                 const comps = baseList.filter((c) => {
                   if (onlyFavorites && !favorites.includes(c.id)) return false;
                   const matchesSearch =
+                    c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                     c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -1494,8 +1543,12 @@ export default function ComponentBrowser({
                   return (
                     <div className="bg-white border border-[#e2e8f0]/80 rounded-2xl p-10 text-center shadow-sm">
                       <Search className="w-8 h-8 text-slate-400 block mx-auto mb-3" />
-                      <p className="text-xs font-black text-slate-700">当前阶段货架未检索到符合条件的组件</p>
-                      <p className="text-xs text-slate-400 mt-1">您可以更换检索词或切换流水线其他步骤</p>
+                      <p className="text-xs font-black text-slate-700">
+                        {isSearching ? "全部分类未检索到符合条件的组件" : "当前阶段货架未检索到符合条件的组件"}
+                      </p>
+                      <p className="text-xs text-slate-400 mt-1">
+                        {isSearching ? "支持按组件ID（如 C10）、名称、标签检索，大小写不限" : "您可以更换检索词或切换流水线其他步骤"}
+                      </p>
                     </div>
                   );
                 }
@@ -1509,7 +1562,7 @@ export default function ComponentBrowser({
                         ) : (
                           <FolderOpen className="w-4 h-4 text-[#3182ce]" />
                         )}
-                        <span>{onlyFavorites ? "我的收藏（跨全部研发阶段）" : `${currentStage.name} 研发阶段精品货架`}</span>
+                        <span>{onlyFavorites ? "我的收藏（跨全部研发阶段）" : isSearching ? `检索结果（跨全部研发阶段）` : `${currentStage.name} 研发阶段精品货架`}</span>
                       </h3>
                       <span className={`px-2.5 py-0.5 text-xs font-bold rounded-full border font-mono ${onlyFavorites ? "bg-amber-50 text-amber-600 border-amber-100" : "bg-blue-50 text-[#3182ce] border-blue-100/50"}`}>
                         {onlyFavorites ? `已收藏 ${comps.length} 项` : `${comps.length} 项资产已就绪`}
@@ -1759,7 +1812,7 @@ export default function ComponentBrowser({
                                           {isRestricted ? (
                                             <span className="px-1.5 py-0.5 bg-red-50 text-red-500 rounded text-xs font-bold border border-red-200">受限</span>
                                           ) : isBound ? (
-                                            <span className="px-1.5 py-0.5 bg-blue-50 text-[#3182ce] rounded text-xs font-bold border border-blue-200">已绑定</span>
+                                            <span className="px-1.5 py-0.5 bg-blue-50 text-[#3182ce] rounded text-xs font-bold border border-blue-200">已装配</span>
                                           ) : null}
                                         </>
                                       ) : null}
@@ -1934,7 +1987,7 @@ export default function ComponentBrowser({
                       <div className="relative">
                         <textarea
                           rows={4}
-                          placeholder="例如：我需要将这份 API 规格文档，自动生成对应的 RESTful 接口代码以及单测试用例..."
+                          placeholder="例如：我需要将这份 API 规格文档，自动生成对应的 RESTful 接口代码以及单元测试用例..."
                           value={smartPrompt}
                           onChange={(e) => {
                             setSmartPrompt(e.target.value);
@@ -1942,62 +1995,89 @@ export default function ComponentBrowser({
                               setPromptError(null);
                             }
                           }}
-                          className={`w-full p-3 pr-20 pb-10 rounded-xl border text-xs text-slate-805 focus:outline-none transition-all font-extrabold ${promptError
+                          className={`w-full p-3 pr-24 pb-10 rounded-xl border text-xs text-slate-800 focus:outline-none transition-all font-extrabold ${promptError
                             ? "border-red-500 border-2 bg-red-50/10 focus:border-red-500 focus:ring-2 focus:ring-red-500/20"
                             : "border-slate-200 bg-slate-100/30 focus:border-[#3182ce] focus:bg-white"
                             }`}
                         />
-                        
-                        {/* 文本润色悬浮按钮面板 */}
-                        <div className="absolute right-3 bottom-3 flex items-center gap-1.5 z-10">
-                          {showRefineSmartPanel ? (
-                            <div className="flex gap-1.5 bg-white/95 backdrop-blur-sm p-1 rounded-lg border border-slate-200/80 shadow-md animate-in zoom-in-95 duration-150">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSmartPrompt(refinedSmartPrompt);
-                                  setShowRefineSmartPanel(false);
-                                }}
-                                className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white text-[10px] font-black rounded cursor-pointer transition-colors shadow-sm"
-                              >
-                                ✔ 采纳
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setSmartPrompt(originalSmartPrompt);
-                                  setShowRefineSmartPanel(false);
-                                }}
-                                className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-black rounded cursor-pointer transition-colors"
-                              >
-                                ✕ 撤销
-                              </button>
-                            </div>
-                          ) : (
-                            <button
-                              type="button"
-                              disabled={isRefiningSmart || !smartPrompt.trim()}
-                              onClick={async () => {
-                                setIsRefiningSmart(true);
-                                setOriginalSmartPrompt(smartPrompt);
-                                await new Promise(resolve => setTimeout(resolve, 600)); // 文本润色模拟运算微延迟
-                                const resText = getRefinedText(smartPrompt);
-                                setRefinedSmartPrompt(resText);
-                                setSmartPrompt(resText);
-                                setIsRefiningSmart(false);
-                                setShowRefineSmartPanel(true);
-                              }}
-                              className="px-2.5 py-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:from-slate-100 disabled:to-slate-100 text-white disabled:text-slate-400 text-[10px] font-black rounded shadow-sm hover:shadow hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-0.5"
-                            >
-                              {isRefiningSmart ? (
+
+                        {/* AI 润色：按用户个人/企业空间默认模型真实调用，按所用模型计费规则真实扣算力点 */}
+                        <div className="absolute right-3 bottom-3 z-10">
+                          <button
+                            type="button"
+                            disabled={isRefiningSmart || !smartPrompt.trim() || (polishModelOptions ? !polishModelOptions.available : false)}
+                            onClick={handleRefinePrompt}
+                            title={"调用你的个人/企业空间默认模型润色（按所用模型真实扣算力点），将草稿润色为结构化研发需求描述"}
+                            className="px-2.5 py-1 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 disabled:from-slate-100 disabled:to-slate-100 text-white disabled:text-slate-400 text-[10px] font-black rounded shadow-sm hover:shadow hover:scale-[1.02] active:scale-95 transition-all cursor-pointer flex items-center gap-1"
+                          >
+                            {isRefiningSmart ? (
+                              <>
                                 <span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              ) : (
-                                <span className="inline-flex items-center gap-1"><PenLine className="w-3 h-3" /> 自动润色</span>
-                              )}
-                            </button>
-                          )}
+                                润色中…
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="w-3 h-3" /> AI 润色
+                              </>
+                            )}
+                          </button>
                         </div>
                       </div>
+
+                      {/* 润色失败提示：紧贴输入框下方就地显示（输入框同步红框高亮） */}
+                      {promptError && (
+                        <p className="text-xs text-red-500 font-extrabold flex items-center gap-1 mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
+                          <span className="text-sm">⚠</span> {promptError}
+                        </p>
+                      )}
+
+                      {/* 执行模型展示与切换（默认=个人/企业空间链路，可指定模型；清单为服务端规则过滤后的结果） */}
+                      {polishModelOptions && (
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className="text-[10px] font-black text-slate-400 shrink-0">执行模型</span>
+                          {polishModelOptions.available ? (
+                            <select
+                              value={polishModelChoice}
+                              disabled={isRefiningSmart}
+                              onChange={(e) => {
+                                setPolishModelChoice(e.target.value);
+                                try { window.localStorage.setItem("zhige_polish_model_choice", e.target.value); } catch { /* 忽略 */ }
+                                setPromptError(null);
+                              }}
+                              className="h-7 px-2 rounded-lg border border-slate-200 bg-slate-50 text-[10px] font-extrabold text-slate-700 outline-none cursor-pointer focus:border-[#3182ce] transition-all max-w-[320px]"
+                            >
+                              <option value="auto">
+                                默认{polishModelOptions.defaultDeploymentId
+                                  ? `：${polishModelOptions.models.find((m) => m.id === polishModelOptions.defaultDeploymentId)?.label || "自动"}`
+                                  : "（自动）"}
+                              </option>
+                              {/* 模型多时按供应商分组（原生分组下拉自带滚动与键盘定位，可承载大量模型） */}
+                              {(() => {
+                                const groups = new Map<string, typeof polishModelOptions.models>();
+                                polishModelOptions.models.forEach((m) => {
+                                  const list = groups.get(m.providerName);
+                                  if (list) list.push(m);
+                                  else groups.set(m.providerName, [m]);
+                                });
+                                return [...groups.entries()].map(([provider, list]) => (
+                                  <optgroup key={provider} label={provider}>
+                                    {list.map((m) => (
+                                      <option key={m.id} value={m.id}>{m.label}</option>
+                                    ))}
+                                  </optgroup>
+                                ));
+                              })()}
+                            </select>
+                          ) : (
+                            <span className="text-[10px] font-black text-rose-500">无可用模型，润色功能暂无法使用</span>
+                          )}
+                          {polishModelOptions.available && polishModelOptions.models.length > 3 && (
+                            <span className="text-[9px] font-bold text-slate-400 shrink-0">
+                              共 {polishModelOptions.models.length} 个可选
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       {/* 规范输入示例一键填入 */}
                       <div className="flex flex-wrap gap-2 pt-1 pb-1">
@@ -2023,12 +2103,6 @@ export default function ComponentBrowser({
                           </button>
                         ))}
                       </div>
-
-                      {promptError && (
-                        <p className="text-xs text-red-500 font-extrabold flex items-center gap-1 mt-1.5 animate-in fade-in slide-in-from-top-1 duration-200">
-                          <span className="text-sm">⚠</span> {promptError}
-                        </p>
-                      )}
                     </div>
 
                     <button
@@ -2085,8 +2159,12 @@ export default function ComponentBrowser({
                       )}
                     </div>
 
-                    <div className="text-[10px] text-slate-600 border-t border-slate-800/80 pt-2 text-right">
-                      算力状态: 100% 畅通
+                    <div className="text-[10px] text-slate-400 border-t border-slate-800/80 pt-2 text-right">
+                      {isLoggedIn && workspaceName
+                        ? hasToken
+                          ? `当前空间「${workspaceName}」可用算力 ${workspaceToken.toLocaleString()} 点`
+                          : `当前空间「${workspaceName}」算力余额为 0，执行组件前请先充值`
+                        : "登录并选择工作空间后展示可用算力"}
                     </div>
                   </div>
                 </div>
@@ -2112,7 +2190,7 @@ export default function ComponentBrowser({
                       return (
                         <div
                           key={comp.id}
-                          className={`group relative bg-white border rounded-2xl p-5 hover:shadow-lg transition-all duration-350 flex flex-col justify-between cursor-pointer border-[#63b3ed] shadow-md`}
+                          className={`group relative bg-white border rounded-2xl p-5 hover:shadow-lg transition-all duration-300 flex flex-col justify-between cursor-pointer border-[#63b3ed] shadow-md`}
                           onClick={() => handleOpenDispatcher(comp.id)}
                         >
                           <div>

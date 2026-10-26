@@ -125,6 +125,11 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
       }
 
+      // 个人空间不支持成员协作
+      if (workspace.type !== "ENTERPRISE") {
+        return NextResponse.json({ error: "个人空间不支持成员邀请与加入" }, { status: 400 });
+      }
+
       const spaceOwner = await prisma.user.findUnique({
         where: { id: workspace.ownerId }
       });

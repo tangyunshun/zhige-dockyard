@@ -23,6 +23,8 @@ export async function GET(request: NextRequest) {
     const workspaceId = searchParams.get("workspaceId");
     const limitParam = Number(searchParams.get("limit"));
     const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : 50;
+    const skipParam = Number(searchParams.get("skip"));
+    const skip = Number.isFinite(skipParam) && skipParam > 0 ? Math.floor(skipParam) : 0;
 
     const records = await prisma.billingrecord.findMany({
       where: {
@@ -31,6 +33,7 @@ export async function GET(request: NextRequest) {
       },
       orderBy: { createdAt: "desc" },
       take: limit,
+      skip,
     });
 
     // 金额单位统一为「分」，同时给出元，便于前端展示

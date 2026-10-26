@@ -78,6 +78,9 @@ const PAYMENT_LABEL: Record<string, string> = {
   CONTRACT: "合同结算",
   SYSTEM: "系统发放",
   MANUAL: "人工入账",
+  // 模拟支付入账（开发联调）：诚实标注，不冒充真实支付渠道
+  MOCK_WECHAT_PAY: "模拟支付（微信通道·联调）",
+  MOCK_ALIPAY: "模拟支付（支付宝通道·联调）",
 };
 
 export default function MyPointsPage() {

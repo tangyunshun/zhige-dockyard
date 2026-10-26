@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { writeAuditLog } from "@/lib/security";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 
 export async function GET(request: NextRequest) {
   try {
@@ -25,8 +26,19 @@ export async function GET(request: NextRequest) {
       where: { id: workspaceId },
     });
 
-    if (!workspace || (workspace.ownerId !== userId && workspace.type !== "ENTERPRISE")) {
-      return NextResponse.json({ error: "无权访问此空间" }, { status: 403 });
+    if (!workspace) {
+      return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
+    }
+
+    // 能看≠能带走：仅空间所有者或在册成员可读，陌生人（即使是企业空间）一律 403
+    if (workspace.ownerId !== userId) {
+      const member = await prisma.workspacemember.findFirst({
+        where: { workspaceId, userId },
+        select: { id: true },
+      });
+      if (!member) {
+        return NextResponse.json({ error: "无权访问此空间" }, { status: 403 });
+      }
     }
 
     const ownerUser = workspace.ownerId
@@ -121,8 +133,22 @@ export async function PATCH(request: NextRequest) {
       where: { id: workspaceId },
     });
 
-    if (!workspace || workspace.ownerId !== userId) {
-      return NextResponse.json({ error: "无权访问此空间" }, { status: 403 });
+    if (!workspace) {
+      return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
+    }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
+
+    // 所有者或空间管理员可改基础信息（与前端设置页"所有者/管理员可修改"的口径一致）
+    if (workspace.ownerId !== userId) {
+      const admin = await prisma.workspacemember.findFirst({
+        where: { workspaceId, userId, role: "ADMIN" },
+        select: { id: true },
+      });
+      if (!admin) {
+        return NextResponse.json({ error: "仅空间所有者或管理员可修改空间信息" }, { status: 403 });
+      }
     }
 
     const body = await request.json();

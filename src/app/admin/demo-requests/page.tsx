@@ -93,6 +93,9 @@ export default function AdminDemoRequestsPage() {
         setRequests((prev) =>
           prev.map((r) => (r.id === id ? { ...r, status: newStatus } : r))
         );
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+        }
       } else {
         setError(data.error || "更新失败");
       }

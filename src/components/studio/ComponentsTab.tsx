@@ -77,7 +77,9 @@ export default function ComponentsTab({
 
   // 阶段列表由数据库分类动态构造，不依赖代码写死的分类
   const stages: (Stage & { categoryKey: string })[] = useMemo(() => {
-    return Object.entries(COMPONENT_CATEGORIES).map(([key, value]) => {
+    return Object.entries(COMPONENT_CATEGORIES)
+      .filter(([key]) => COMPONENTS.some((c) => c.category === key))
+      .map(([key, value]) => {
       const cat = key as ComponentCategory;
       return {
         id: categoryToStageId[cat] || 1,

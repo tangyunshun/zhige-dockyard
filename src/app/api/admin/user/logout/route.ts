@@ -1,6 +1,7 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +35,8 @@ export async function POST(request: NextRequest) {
         lastForcedLogoutAt: new Date(),
       },
     });
+
+    await writeAuditLog(adminId, "user:admin_logout", { targetUserId: userId }, null, null, request);
 
     return NextResponse.json({
       success: true,

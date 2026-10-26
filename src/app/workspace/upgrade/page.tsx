@@ -169,14 +169,12 @@ function UpgradeWorkspaceForm() {
 
       const result = await res.json();
 
-      console.log("[Upgrade] API Response:", { status: res.status, result });
 
       if (!res.ok) {
         console.error("[Upgrade] API returned error:", result);
         throw new Error(result.error || "升级失败");
       }
 
-      console.log("[Upgrade] Success, showing toast and setting localStorage");
       toast.success(result.message || "升级成功！");
 
       // 根据选项写入客户端升级标记，并跳转回空间中枢

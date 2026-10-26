@@ -95,6 +95,7 @@ const statusLabel = (s?: string) =>
     SUCCESS: "已到账",
     FAILED: "支付失败",
     REFUNDED: "已退款",
+    EXPIRED: "已超时关闭",
   } as Record<string, string>)[s || ""] || s || "—";
 
 const orderStatusLabel = (s?: string) =>

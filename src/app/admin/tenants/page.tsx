@@ -51,7 +51,7 @@ interface MemberRow {
   joinedAt: string;
   taskCount: number;
   topComponents: { componentId: string; name: string; count: number }[];
-  recentLog: { action: string; createdAt: string } | null;
+  recentLog: { action: string; actionZh?: string | null; createdAt: string } | null;
 }
 
 interface TenantStats {
@@ -90,7 +90,9 @@ interface ComponentItem {
 interface OperationItem {
   id: string;
   action: string;
+  actionZh?: string | null;
   resource?: string | null;
+  resourceZh?: string | null;
   ipAddress?: string | null;
   userName: string | null;
   userAvatar?: string | null;
@@ -610,8 +612,8 @@ export default function AdminTenantsPage() {
               className="w-full px-3 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium bg-slate-50/50 hover:bg-white focus:bg-white transition-all cursor-pointer"
             >
               <option value="ALL">全部空间状态</option>
-              <option value="active">正常启用</option>
-              <option value="disabled">已被停用</option>
+              <option value="ACTIVE">正常启用</option>
+              <option value="DISABLED">已被停用</option>
             </select>
 
             {/* 4. 成员角色筛选 */}
@@ -686,7 +688,7 @@ export default function AdminTenantsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {data?.members.map((m) => {
-                  const isSpaceDisabled = m.workspaceStatus === "disabled";
+                  const isSpaceDisabled = m.workspaceStatus === "DISABLED";
                   return (
                     <tr
                       key={m.id}
@@ -820,8 +822,9 @@ export default function AdminTenantsPage() {
                               className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${
                                 getLogMeta(m.recentLog.action).badgeCls
                               }`}
+                              title={m.recentLog.action}
                             >
-                              {getLogMeta(m.recentLog.action).label}
+                              {m.recentLog.actionZh || getLogMeta(m.recentLog.action).label}
                             </span>
                             <span
                               className="text-xs font-mono font-medium text-slate-600 cursor-help"
@@ -1183,7 +1186,7 @@ function SpaceCombobox({
                   >
                     <span className="truncate">{s.name}</span>
                     <div className="flex items-center gap-1 shrink-0">
-                      {s.status === "disabled" && (
+                      {s.status === "DISABLED" && (
                         <span className="text-[10px] text-rose-500 bg-rose-50 px-1 py-0.2 rounded">
                           已停用
                         </span>
@@ -1589,12 +1592,16 @@ function OperationList({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className={`px-2.5 py-0.5 rounded-md text-[11px] font-black border ${meta.badgeCls}`}
+                        title={o.action}
                       >
-                        {meta.label}
+                        {o.actionZh || meta.label}
                       </span>
-                      {o.resource && (
-                        <span className="text-xs font-mono text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                          {o.resource}
+                      {o.resourceZh && (
+                        <span
+                          className="text-xs font-mono text-slate-600 bg-slate-50 px-2 py-0.5 rounded border border-slate-100"
+                          title={o.resource || undefined}
+                        >
+                          {o.resourceZh}
                         </span>
                       )}
                     </div>

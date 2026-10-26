@@ -30,6 +30,8 @@ import { getMembershipLevelIcon } from "@/utils/membership-icon";
 import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 import { useExportMaxRows } from "@/lib/use-export-max-rows";
+// 账单/算力点流水枚举中文一律来自数据库字典（system_config.billing_display_dict），前端不内置
+import { setBillingDicts, lookupBillingValueLabel } from "@/lib/billing-display-dict";
 
 interface BillingRecord {
   id: string;
@@ -69,21 +71,19 @@ function formatBillingDate(value: string | Date): string {
   )}`;
 }
 
-/** 消费类型展示元信息（与 billing_record.type 枚举保持一致） */
-const CONSUMPTION_TYPE_META: Record<string, { label: string; badge: string }> = {
-  TOKEN_RECHARGE: { label: "算力充值", badge: "bg-amber-50 text-amber-600 border-amber-200" },
-  PLAN_UPGRADE: { label: "空间套餐扩容", badge: "bg-blue-50 text-[#2b6cb0] border-blue-200" },
-  MEMBERSHIP: { label: "会员订阅", badge: "bg-purple-50 text-purple-600 border-purple-200" },
-  REFUND: { label: "退款", badge: "bg-rose-50 text-rose-600 border-rose-200" },
+/** 消费类型展示元信息（与 billing_record.type 枚举保持一致；中文标签来自数据库字典，仅配色留前端） */
+const CONSUMPTION_TYPE_BADGE: Record<string, string> = {
+  TOKEN_RECHARGE: "bg-amber-50 text-amber-600 border-amber-200",
+  PLAN_UPGRADE: "bg-blue-50 text-[#2b6cb0] border-blue-200",
+  MEMBERSHIP: "bg-purple-50 text-purple-600 border-purple-200",
+  REFUND: "bg-rose-50 text-rose-600 border-rose-200",
 };
 
 function getConsumptionTypeMeta(type: string): { label: string; badge: string } {
-  return (
-    CONSUMPTION_TYPE_META[type] || {
-      label: type || "其他",
-      badge: "bg-slate-50 text-slate-500 border-slate-200",
-    }
-  );
+  return {
+    label: lookupBillingValueLabel(type) || type || "其他",
+    badge: CONSUMPTION_TYPE_BADGE[type] || "bg-slate-50 text-slate-500 border-slate-200",
+  };
 }
 
 /** 消费类型对应图标（参考管理员后台样式：徽章统一带左侧 icon） */
@@ -98,21 +98,20 @@ function getConsumptionTypeIcon(type: string): React.ComponentType<any> {
   return CONSUMPTION_TYPE_ICONS[type] || Layers;
 }
 
-/** 账单状态展示元信息（与 billing_record.status 枚举保持一致，替代此前恒显"成功"的写死文案） */
-const BILLING_STATUS_META: Record<string, { label: string; badge: string }> = {
-  SUCCESS: { label: "成功", badge: "bg-emerald-50 text-emerald-600 border-emerald-200" },
-  PENDING: { label: "处理中", badge: "bg-amber-50 text-amber-600 border-amber-200" },
-  FAILED: { label: "失败", badge: "bg-rose-50 text-rose-600 border-rose-200" },
-  REFUNDED: { label: "已退款", badge: "bg-slate-100 text-slate-500 border-slate-200" },
+/** 账单状态展示元信息（与 billing_record.status 枚举保持一致；中文标签来自数据库字典，仅配色留前端） */
+const BILLING_STATUS_BADGE: Record<string, string> = {
+  SUCCESS: "bg-emerald-50 text-emerald-600 border-emerald-200",
+  PENDING: "bg-amber-50 text-amber-600 border-amber-200",
+  FAILED: "bg-rose-50 text-rose-600 border-rose-200",
+  REFUNDED: "bg-slate-100 text-slate-500 border-slate-200",
+  EXPIRED: "bg-slate-100 text-slate-400 border-slate-200",
 };
 
 function getBillingStatusMeta(status: string): { label: string; badge: string } {
-  return (
-    BILLING_STATUS_META[status] || {
-      label: status || "未知",
-      badge: "bg-slate-50 text-slate-500 border-slate-200",
-    }
-  );
+  return {
+    label: lookupBillingValueLabel(status) || status || "未知",
+    badge: BILLING_STATUS_BADGE[status] || "bg-slate-50 text-slate-500 border-slate-200",
+  };
 }
 
 /** 字节格式化：自动转换为 GB（保留 1 位小数） */
@@ -149,6 +148,9 @@ export default function BillingCenterPage() {
     totalUsedTokens: 0,
   });
   const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
+  // 账单分页加载状态
+  const [billingHasMore, setBillingHasMore] = useState(false);
+  const [loadingMoreBills, setLoadingMoreBills] = useState(false);
   /** 算力点流水（pointledger，经 /api/user/points）：组件执行的押金/实扣/退款等真实流水 */
   const [pointsLedger, setPointsLedger] = useState<Array<{ id: string; type: string; direction: string; points: number; title: string; createdAt: string; balanceAfter: number }>>([]);
   /** 账单 API 错误信息（用于表格顶部显式提示用户） */
@@ -164,6 +166,28 @@ export default function BillingCenterPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
+
+  // 加载账单显示字典（来源：数据库 system_config.billing_display_dict，经 /api/user/billing-dict 下发）。
+  // 本页全部枚举中文（消费类型 / 账单状态 / 算力点类型 / 导出筛选条件）均由此数据库字典驱动，前端不内置任何业务字典。
+  useEffect(() => {
+    if (!mounted || !userState.isLoggedIn) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch("/api/user/billing-dict", {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!cancelled && res.ok && d.success && d.data) setBillingDicts(d.data);
+      } catch {
+        // 字典缺失时回退原始枚举值展示，绝不阻塞主流程
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, userState.isLoggedIn]);
 
   // 初始化选中空间：URL ?workspaceId 优先，否则用户空间列表首个
   useEffect(() => {
@@ -205,29 +229,34 @@ export default function BillingCenterPage() {
     return () => timers.forEach(clearTimeout);
   }, [mounted, loading, navTick]);
 
-  /** 拉取账单流水（数据库 billing_record 表）：账号级全量 */
-  const loadBillingRecords = useCallback(async () => {
+  /** 拉取账单流水（数据库 billing_record 表）：分页加载，"加载更多"追加下一页，杜绝静默截断 */
+  const loadBillingRecords = useCallback(async (mode?: "more") => {
     try {
-      setBillingError(null);
+      if (mode === "more") {
+        setLoadingMoreBills(true);
+      } else {
+        setBillingError(null);
+      }
       const authToken = getAuthToken();
-      const billRes = await fetch(`/api/billing/records`, {
+      const skip = mode === "more" ? billingHistory.length : 0;
+      const billRes = await fetch(`/api/billing/records?limit=50&skip=${skip}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
       });
       if (billRes.ok) {
         const bData = await billRes.json();
         if (bData.success && Array.isArray(bData.data)) {
-          setBillingHistory(
-            bData.data
-              .filter((r: any) => r.type !== "INVOICE_APPLY")
-              .map((r: any) => ({
+          const mapped = bData.data
+            .filter((r: any) => r.type !== "INVOICE_APPLY")
+            .map((r: any) => ({
               id: r.id,
               type: r.type,
               title: r.title,
               amount: `¥ ${((r.amount ?? 0) / 100).toFixed(2)}`,
               status: r.status,
               date: formatBillingDate(r.date ?? r.createdAt),
-            }))
-          );
+            }));
+          setBillingHistory((prev) => (mode === "more" ? [...prev, ...mapped] : mapped));
+          setBillingHasMore(bData.data.length >= 50);
           return;
         }
         setBillingError(bData.error || "账单服务返回异常");
@@ -237,8 +266,10 @@ export default function BillingCenterPage() {
     } catch (err) {
       console.error("加载账单流水失败:", err);
       setBillingError("网络异常，无法连接到账单服务");
+    } finally {
+      setLoadingMoreBills(false);
     }
-  }, []);
+  }, [billingHistory.length]);
 
   /** 全量加载：用户/会员等级/使用统计/账号配额/账单流水（并行非阻塞） */
   const loadBillingData = useCallback(async () => {
@@ -403,26 +434,24 @@ export default function BillingCenterPage() {
       ]
     : [];
 
-  // 电子凭证下载（纯前端 Blob 导出，不依赖后端）
+  // 电子凭证下载（纯前端对账摘要导出，不依赖后端）
+  // 诚实口径：这是本机生成的对账摘要，不是平台签发的防伪票据；不可查验的说法一律不写
   const handleDownloadInvoice = (invId: string) => {
-    const inv =
-      billingHistory.find((b) => b.id === invId) || {
-        id: invId,
-        type: "TOKEN_RECHARGE",
-        title: "知阁·舟坊算力充值交易凭证",
-        amount: "¥ 0.00",
-        date: new Date().toLocaleString(),
-      };
-    const content = `# 知阁·舟坊 官方电子交易对账凭证\n\n**凭证编号**: ${inv.id}\n**消费类型**: ${getConsumptionTypeMeta(inv.type).label}\n**交易描述**: ${inv.title}\n**交易金额**: ${inv.amount}\n**交易时间**: ${inv.date}\n**盖章单位**: 知阁·舟坊 平台结算中心\n\n---\n*本电子凭证由 MySQL 数据库交易日志自动生成，具备物理查验效力。*`;
+    const inv = billingHistory.find((b) => b.id === invId);
+    if (!inv) {
+      toast.error("未找到该笔交易记录，无法生成对账摘要");
+      return;
+    }
+    const content = `# 知阁·舟坊 交易对账摘要（本机导出）\n\n**记录编号**: ${inv.id}\n**消费类型**: ${getConsumptionTypeMeta(inv.type).label}\n**交易描述**: ${inv.title}\n**交易金额**: ${inv.amount}\n**交易时间**: ${inv.date}\n\n---\n*本文件为用户在本机导出的对账摘要，仅供参考与个人记账使用，不具备票据/防伪效力；如需正式凭证请联系平台客服申请。*`;
     const blob = new Blob([content], { type: "text/markdown;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.setAttribute("download", `Invoice_${inv.id}.md`);
+    link.setAttribute("download", `Statement_${inv.id}.md`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-    toast.success(`交易凭证 [${invId}] 已成功导出并触发下载`);
+    toast.success(`对账摘要 [${invId}] 已导出`);
   };
 
   // 导出「我的算力点流水」：仅本人数据（接口按登录态过滤），留痕落入用户端审计
@@ -445,24 +474,16 @@ export default function BillingCenterPage() {
         toast.warning("当前暂无算力点流水可导出");
         return;
       }
-      const POINT_TYPE_LABEL: Record<string, string> = {
-        CONSUME: "组件执行扣点",
-        REFUND: "退款",
-        RECHARGE: "充值",
-        OFFLINE_RECHARGE: "线下充值",
-        GIFT_REGISTER: "注册赠送",
-        MEMBERSHIP_GRANT: "会员发放",
-        GIFT_EXPIRE: "赠送过期",
-        MANUAL_ADJUST: "手动调整",
-      };
       exportToExcel({
         filename: "我的算力点流水",
         sheetName: "我的算力点流水",
         maxRows: maxRows,
+        // 筛选条件文案由 Excel 工具按数据库字典自动生成（type → 类型 / all → 全部），前端不内置映射
         trace: { exportType: "我的算力点流水", filters: { type: "all" }, rowCount: list.length, page: "/user/billing-center" },
         columns: [
           { header: "时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
-          { header: "类型", key: "type", width: 16, formatter: (v: string, row: any) => POINT_TYPE_LABEL[v] || row.typeLabel || v },
+          // 算力点类型中文来自数据库字典（billing_display_dict.values），无字典时回退原始枚举值
+          { header: "类型", key: "type", width: 16, formatter: (v: string, row: any) => lookupBillingValueLabel(v) || row.typeLabel || v },
           { header: "说明", key: "title", width: 30 },
           { header: "点数变动", key: "points", width: 14, formatter: (v: number) => (Number(v) > 0 ? `+${v}` : String(v)) },
           { header: "变动后余额", key: "balanceAfter", width: 14 },
@@ -504,25 +525,31 @@ export default function BillingCenterPage() {
 
     try {
       setSubmittingInvoice(true);
-      const res = await fetch("/api/feedback", {
+      // 统一走正式开票接口（复用 billingrecord，开票记录可在账单列表追踪），
+      // 废弃旧的 /api/feedback 工单通道（数据不进 billingrecord，状态无法追踪）
+      const authToken = getAuthToken();
+      const res = await fetch("/api/user/invoice/apply", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
         body: JSON.stringify({
-          type: "invoice",
-          title: `发票开具申请: ${invoiceTitle}`,
-          content: `开票抬头: ${invoiceTitle}\n纳税人识别号: ${taxId || "无"}\n接收邮箱: ${
-            invoiceEmail || userInfo?.email || "无"
-          }`,
-          contact: invoiceEmail || userInfo?.email || "",
+          title: invoiceTitle.trim(),
+          taxNo: taxId.trim() || undefined,
+          email: invoiceEmail || userInfo?.email || undefined,
+          type: taxId.trim() ? "VAT" : "PLAIN",
+          remark: `来源：账务中心开票弹窗；接收邮箱: ${invoiceEmail || userInfo?.email || "无"}`,
         }),
       });
-      if (res.ok) {
-        toast.success("电子发票开具申请已成功提交至工单中心，系统将在 1 个工作日内发送至您的邮箱！");
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.success) {
+        toast.success(data.message || "电子发票开具申请已提交，财务核对后将开具电子发票！");
         setIsInvoiceModalOpen(false);
         setInvoiceTitle("");
         setTaxId("");
       } else {
-        toast.error("提交发票申请失败，请稍后重试");
+        toast.error(data.error || "提交发票申请失败，请稍后重试");
       }
     } catch (err) {
       console.error("提交发票申请失败:", err);
@@ -855,7 +882,7 @@ export default function BillingCenterPage() {
                     增值税电子普通 / 专用发票
                   </h3>
                   <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                    支持按个人或企业抬头一键开具，开票历史随时可查与电子凭证导出。
+                    支持按个人或企业抬头一键开具，开票历史随时可查与对账摘要导出。
                   </p>
                 </div>
                 <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
@@ -986,7 +1013,7 @@ export default function BillingCenterPage() {
                                 className="text-[#3182ce] hover:underline font-bold text-xs cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
                               >
                                 <Download className="w-3 h-3 shrink-0" />
-                                电子凭证
+                                对账摘要
                               </button>
                             </td>
                           </tr>
@@ -996,6 +1023,17 @@ export default function BillingCenterPage() {
                   </tbody>
                 </table>
               </div>
+              {billingHasMore && (
+                <div className="pt-3 text-center">
+                  <button
+                    onClick={() => loadBillingRecords("more")}
+                    disabled={loadingMoreBills}
+                    className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {loadingMoreBills ? "加载中…" : "加载更多账单"}
+                  </button>
+                </div>
+              )}
             </div>
           </section>
 

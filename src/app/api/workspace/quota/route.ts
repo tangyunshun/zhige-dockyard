@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    console.log("用户信息:", user);
 
     if (!user) {
       console.error("用户不存在，userId:", userId);
@@ -44,7 +43,6 @@ export async function GET(request: NextRequest) {
       where: { name: user.membershipLevel },
     });
 
-    console.log("会员等级信息:", membershipLevel, "查询的 name:", user.membershipLevel);
 
     if (!membershipLevel) {
       console.error("会员等级不存在，查询的 name:", user.membershipLevel);

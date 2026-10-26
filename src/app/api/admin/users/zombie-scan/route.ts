@@ -1,4 +1,4 @@
-import { isPlatformAdminRole } from "@/lib/security";
+import { isPlatformAdminRole, writeAuditLog } from "@/lib/security";
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
@@ -27,6 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await scanAndNotifyZombies();
+    await writeAuditLog(auth.user.id, "user:zombie_scan", { zombieCount: result.zombieCount, notified: result.notified }, null, null, request);
     return NextResponse.json({
       success: true,
       message: `僵尸用户扫描完成，共识别 ${result.zombieCount} 个僵尸用户${result.notified ? `，已通知 ${result.notified} 位超级管理员` : ""}`,

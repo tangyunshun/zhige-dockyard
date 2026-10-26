@@ -169,6 +169,9 @@ export async function PATCH(
 
     // 其它字段更新 / 启用（启用只翻开关、不改回用户配置，符合需求）
     const row = await prisma.modeldeployment.update({ where: { id }, data });
+    if (!isEnabling) {
+      await writeAuditLog(auth.user?.id || "", "model_deployment:update", { deploymentId: id, providerId: exists.providerId, modelId: exists.modelId }, null, undefined, request);
+    }
     if (isEnabling) {
       await writeAuditLog(
         auth.user?.id || "",
@@ -273,6 +276,7 @@ export async function DELETE(
       // （modelpricing.deploymentId 另有 ON DELETE CASCADE 外键作为第二层保障。）
       await tx.modelpricing.deleteMany({ where: { deploymentId: id } });
       await tx.modeldeployment.delete({ where: { id } });
+      await writeAuditLog(auth.user?.id || "", "model_deployment:delete", { deploymentId: id, providerId: exists.providerId, modelId: exists.modelId }, null, null, request);
       return { status: 200 as const, body: { success: true } };
     });
 

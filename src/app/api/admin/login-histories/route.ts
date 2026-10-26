@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -199,6 +200,12 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "权限不足" }, { status: 403 });
     }
 
+    // 双层设防：细粒度权限（与规则层 audit:login_read 一致）
+    const permCheck = await requirePlatformPermission(request, "audit:login_read");
+    if (!permCheck.authorized) {
+      return permCheck.errorResponse || NextResponse.json({ error: "无权限删除登录历史" }, { status: 403 });
+    }
+
     const body = await request.json().catch(() => ({}));
     const { id, ids } = body;
 
@@ -207,6 +214,8 @@ export async function DELETE(request: NextRequest) {
       const result = await prisma.loginhistory.deleteMany({
         where: { id: { in: ids } },
       });
+
+      await writeAuditLog(auth.user.id, "audit:login_history_delete", { mode: "batch", count: result.count, ids }, null, null, request);
 
       return NextResponse.json({
         success: true,
@@ -224,6 +233,8 @@ export async function DELETE(request: NextRequest) {
     await prisma.loginhistory.delete({
       where: { id: targetId },
     });
+
+    await writeAuditLog(auth.user.id, "audit:login_history_delete", { mode: "single", id: targetId }, null, null, request);
 
     return NextResponse.json({
       success: true,

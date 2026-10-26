@@ -1,7 +1,7 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -125,9 +125,20 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "缺少 API Key ID" }, { status: 400 });
     }
 
+    const targetKey = await prisma.apikey.findUnique({
+      where: { id },
+      select: { id: true, name: true, keyPrefix: true, userId: true },
+    });
     await prisma.apikey.delete({
       where: { id },
     });
+
+    await writeAuditLog(auth.user?.id || "", "apikey:admin_delete", {
+      keyId: id,
+      name: targetKey?.name ?? null,
+      keyPrefix: targetKey?.keyPrefix ?? null,
+      ownerUserId: targetKey?.userId ?? null,
+    }, null, null, request);
 
     return NextResponse.json({
       success: true,

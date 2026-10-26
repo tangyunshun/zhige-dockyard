@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { withModelRegistryLock } from "@/lib/model-registry-lock";
 
 /**
@@ -185,6 +185,8 @@ export async function PUT(request: NextRequest) {
         });
       }
     });
+
+    await writeAuditLog(auth.user?.id || "", "platform_default:update", { freeCount: freeIds.length, paidCount: paidIds.length, giftEnabled, giftPoints, syncToAll }, null, null, request);
 
     // 可选：同步默认初始模型到所有已存在空间
     let syncResult: { synced: number; skipped: number } | null = null;

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdmin } from "@/lib/auth";
 import { buildDynamicPlanFeatures } from "@/lib/workspace-plan-service";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 function serializePlan(plan: any) {
   const maxComponents = Number(plan.maxComponents ?? 0);
@@ -183,6 +183,8 @@ export async function POST(request: NextRequest) {
         isActive: isActive !== false,
       },
     });
+
+    await writeAuditLog(authCheck.user?.id || "", "workspace_plan:create", { key: upperKey, name, priceMonthly, priceYearly, isActive }, null, null, request);
 
     return NextResponse.json({
       success: true,

@@ -29,8 +29,8 @@ interface DashboardSidebarNavProps {
   onNavigate: (href: string) => void;
   /** 折叠态点击图标时的附加动作（例如自动展开侧边栏） */
   onExpand?: () => void;
-  /** 菜单项角标（如后台待办数量），仅对指定 href 生效 */
-  badge?: { href: string; count: number };
+  /** 菜单项角标映射（href -> 待办数量），用于后台各审核入口的红色数字标识 */
+  badgeMap?: Record<string, number>;
   /** 搜索框占位文案 */
   searchPlaceholder?: string;
 }
@@ -43,7 +43,7 @@ export default function DashboardSidebarNav({
   collapsed,
   onNavigate,
   onExpand,
-  badge,
+  badgeMap,
   searchPlaceholder = "搜索菜单…",
 }: DashboardSidebarNavProps) {
   const pathname = usePathname();
@@ -92,8 +92,7 @@ export default function DashboardSidebarNav({
       )
     : [];
 
-  const badgeCountOf = (href: string) =>
-    badge && badge.href === href ? badge.count : 0;
+  const badgeCountOf = (href: string) => (badgeMap && badgeMap[href] ? badgeMap[href] : 0);
 
   /* ---------------- 折叠态：仅图标 ---------------- */
   const renderCollapsedItem = (item: SidebarNavItem) => {

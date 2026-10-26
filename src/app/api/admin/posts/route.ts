@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 岗位管理 API
@@ -182,6 +182,8 @@ export async function POST(request: NextRequest) {
         updatedAt: new Date(),
       },
     });
+
+    await writeAuditLog(adminId, "post:create", { id: post.id, name, workspaceId }, workspaceId, null, request);
 
     console.log(
       `[创建岗位] 管理员 ${adminId} 在工作空间 ${workspaceId} 创建了岗位 ${post.id}`

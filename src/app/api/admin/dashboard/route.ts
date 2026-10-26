@@ -8,6 +8,7 @@ import {
   translateResource,
   normalizeIpAddress,
 } from "@/lib/audit-dict";
+import { collectSystemHealthData } from "@/lib/system-health";
 
 export async function GET(request: NextRequest) {
   try {
@@ -45,6 +46,7 @@ export async function GET(request: NextRequest) {
       bannedUsers,
       todayOperations,
       modelStats,
+      pendingPostSubmissions,
     ] = await Promise.all([
       // 1. 用户总数
       prisma.user.count(),
@@ -147,9 +149,12 @@ export async function GET(request: NextRequest) {
           const startedAt = Date.now();
           try {
             const result = await runner();
+            const latencyMs = Date.now() - startedAt;
+            // 真实降级信号：链路存活但实测延迟 > 1000ms 时判定为需要关注（不再一律报正常）
+            const status = latencyMs > 1000 ? ("warning" as const) : ("normal" as const);
             return {
-              status: "normal" as const,
-              latencyMs: Date.now() - startedAt,
+              status,
+              latencyMs,
               message: normalMessage(result),
             };
           } catch (err) {
@@ -260,7 +265,8 @@ export async function GET(request: NextRequest) {
           prisma.modelpricing.count(),
           prisma.modelpricingperiod.count(),
           prisma.modelpricingperiod.count({ where: { enabled: true } }),
-          prisma.workspace_model_policy.count(),
+          // 授权覆盖必须统计「策略行对应的空间仍存在」的数量，孤儿策略行（空间已删）不计入
+          prisma.$queryRawUnsafe(`SELECT COUNT(*) AS n FROM workspace_model_policy p INNER JOIN workspace w ON w.id = p.workspaceId`).then((r: any) => Number(r?.[0]?.n ?? 0)),
         ]);
         const healthGroups = await prisma.modeldeployment.groupBy({
           by: ["health"],
@@ -286,6 +292,15 @@ export async function GET(request: NextRequest) {
           periodEnabled: perEnabled,
           policyTotal,
         };
+      })(),
+
+      // 19. 待审核的企业空间岗位提报数（用户提交、等待超管审核的新增岗位提报）
+      (async () => {
+        const cfg = await prisma.systemconfig.findUnique({
+          where: { key: "PLATFORM_WORKSPACE_SUBMITTED_POSTS_V1" },
+        });
+        const list = cfg?.value ? (JSON.parse(cfg.value) as Array<{ status: string }>) : [];
+        return list.filter((i) => i.status === "PENDING").length;
       })(),
     ]);
 
@@ -339,21 +354,9 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 5);
 
-    const baseHealth = 100;
-    const pendingPenalty = Math.min(upgradeApplications * 2, 20);
-    const inactiveRate =
-      totalTenants > 0 ? (totalTenants - activeTenants) / totalTenants : 0;
-    const inactivePenalty = Math.floor(inactiveRate * 10);
-
-    const servicePenalty =
-      (systemServices as Array<{ status: string }>).filter(
-        (service) => service.status !== "normal",
-      ).length * 10;
-
-    const systemHealth = Math.max(
-      baseHealth - pendingPenalty - inactivePenalty - servicePenalty,
-      0,
-    );
+    // 综合健康评分统一复用 /api/admin/system-status 的同一套真实探针与算法，
+    // 确保 /admin 弹窗与 /admin/system-status 页面展示的"系统综合健康度"严格一致
+    const systemHealth = (await collectSystemHealthData()).healthScore;
 
     const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
 
@@ -396,6 +399,7 @@ export async function GET(request: NextRequest) {
         totalTenants: enterpriseWorkspaces,
         activeTenants: enterpriseWorkspaces,
         pendingReviews: upgradeApplications,
+        pendingPostSubmissions,
         systemHealth,
         systemServices,
 

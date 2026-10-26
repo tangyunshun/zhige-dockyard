@@ -4,6 +4,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Clipboard, FileDown, ChevronDown, BookOpen, Layers, FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { describeMimeType } from "@/lib/fileConstraintsFormat";
+import TaskRatingBar from "@/components/studio/TaskRatingBar";
 
 /** 行内 Markdown 片段渲染：**粗体** / *斜体* / `代码` / [链接](url)，纯 React 元素输出，天然防 XSS */
 function renderInlineMarkdown(text: string, keyBase: string): React.ReactNode[] {
@@ -1024,6 +1025,10 @@ export function ResultViewer({
   // 核心内容区渲染
   const renderViewerBody = () => (
     <div className="bg-white rounded-3xl w-full h-full shadow-2xl border border-slate-100 flex flex-col min-h-0 overflow-hidden font-sans text-left">
+      {/* 真实使用者评分条：仅执行成功且可定位组件时展示（评分闭环见 TaskRatingBar） */}
+      {task.status === "SUCCESS" && task.componentId && (
+        <TaskRatingBar componentId={task.componentId} componentName={displayCompName} />
+      )}
       {/* Header */}
       <div className="px-6 py-4 bg-gradient-to-r from-slate-50 via-blue-50/30 to-white border-b border-slate-100 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3">

@@ -69,6 +69,7 @@ export async function GET(request: NextRequest) {
     const where: any = {};
     if (search) {
       where.OR = [
+        { id: { contains: search } },
         { name: { contains: search } },
         { description: { contains: search } },
       ];
@@ -124,6 +125,28 @@ export async function GET(request: NextRequest) {
   }
 }
 
+/**
+ * 分类区间一致性校验：编号形如 C##（两位纯数字）的组件必须落在分类声明区间（range，如 "C01-C06"）内。
+ * 目的：防止管理员把编号组件挂到错位分类，导致大厅分类区间文案逐渐失真。
+ * 非编号 ID（如自定义/时间戳 ID）不参与校验，不影响新组件自由命名。
+ */
+async function assertCategoryRangeFits(categoryKey: string, componentId: string) {
+  const idMatch = /^C(\d{1,4})$/i.exec(componentId.trim());
+  if (!idMatch) return;
+  const cat = await prisma.componentcategory.findUnique({ where: { key: categoryKey } });
+  if (!cat?.range) return;
+  const rangeMatch = /C(\d+)\s*[-~－至]\s*C(\d+)/i.exec(cat.range);
+  if (!rangeMatch) return;
+  const num = parseInt(idMatch[1], 10);
+  const lo = parseInt(rangeMatch[1], 10);
+  const hi = parseInt(rangeMatch[2], 10);
+  if (num < lo || num > hi) {
+    throw new RangeError(
+      `组件编号 C${String(num).padStart(2, "0")} 超出分类「${cat.name}」声明的编号区间 ${cat.range}，请改选正确分类。`,
+    );
+  }
+}
+
 async function handleUpsert(request: NextRequest, isUpdate: boolean) {
   const body = await request.json();
   const { name, description, type, icon, category, tags, isPublished } = body;
@@ -173,10 +196,34 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
   }
 
   // 服务端强校验：算力成本必须是合法正整数（前端校验不能作为唯一防线）。
-  // 新建必填；更新仅在显式携带时校验并写入，未携带则保持数据库原值，绝不重置为 0
-  const costDecision = resolveComponentCost(body.estimatedModelTokens, isUpdate);
-  if (!costDecision.ok) {
-    return NextResponse.json({ error: costDecision.message }, { status: 400 });
+  // 【P1 缺口修复】estimatedModelTokens 为 0 / 空时允许保存，但响应必须携带 warning 字段，
+  // 由前端二次确认（不阻断保存）——避免"必填拦截"逼管理员乱填兜底值；
+  // 未携带字段仍保持原语义：更新时保持数据库原值（provided=false），绝不误写 0；
+  // 其余非法值（负数 / 小数 / 非法字符串）依旧 400 拒绝。
+  const COMPONENT_COST_EMPTY_WARNING =
+    "估算 Token 成本未填写，该组件将无法执行（执行时会提示算力成本未配置）";
+  const rawCost = body.estimatedModelTokens;
+  const isAbsentCost = rawCost === undefined || rawCost === null;
+  const isExplicitZeroCost =
+    rawCost === "" ||
+    (typeof rawCost === "number" && rawCost === 0) ||
+    (typeof rawCost === "string" && /^\d+$/.test(rawCost) && Number(rawCost) === 0);
+
+  let costDecision: ReturnType<typeof resolveComponentCost>;
+  let costWarning: string | null = null;
+  if (isAbsentCost && !isUpdate) {
+    // 新建未携带成本：允许保存并给出 warning（引导补填），不再直接 400
+    costDecision = { ok: true, provided: true, value: 0 };
+    costWarning = COMPONENT_COST_EMPTY_WARNING;
+  } else if (isExplicitZeroCost) {
+    // 显式 0 / 空字符串：允许保存但给出 warning（前端已二次确认，服务端兜底提示）
+    costDecision = { ok: true, provided: true, value: 0 };
+    costWarning = COMPONENT_COST_EMPTY_WARNING;
+  } else {
+    costDecision = resolveComponentCost(rawCost, isUpdate);
+    if (!costDecision.ok) {
+      return NextResponse.json({ error: costDecision.message }, { status: 400 });
+    }
   }
 
   // 更新场景：提前读取数据库组件（用于成本底线校验判定「未携带成本字段」时的原值，以及下架门禁）
@@ -334,6 +381,17 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
       body.detail !== undefined
         ? { ...((current.detail as any) || {}), ...(body.detail as any) }
         : undefined;
+    // 分类区间校验：本次显式变更分类、或组件本身是编号 ID 时执行
+    if (categoryKey || /^C\d{1,4}$/i.test(componentId)) {
+      try {
+        await assertCategoryRangeFits(categoryKey || current.category, componentId);
+      } catch (e) {
+        if (e instanceof RangeError) {
+          return NextResponse.json({ error: e.message, code: "CATEGORY_RANGE_MISMATCH" }, { status: 400 });
+        }
+        throw e;
+      }
+    }
     component = await prisma.componentcatalog.update({
       where: { id: componentId },
       data: {
@@ -355,6 +413,17 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     );
   } else {
     const componentId = `C-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    // 自定义编号 ID（body 指定且形如 C##）需通过分类区间校验；时间戳 ID 自动跳过
+    if (/^C\d{1,4}$/i.test(body.id || "")) {
+      try {
+        await assertCategoryRangeFits(categoryKey, body.id);
+      } catch (e) {
+        if (e instanceof RangeError) {
+          return NextResponse.json({ error: e.message, code: "CATEGORY_RANGE_MISMATCH" }, { status: 400 });
+        }
+        throw e;
+      }
+    }
     component = await prisma.componentcatalog.create({
       data: {
         id: componentId,
@@ -401,6 +470,8 @@ async function handleUpsert(request: NextRequest, isUpdate: boolean) {
     success: true,
     data: toCatalogView(component, categoryInfo?.name),
     message: isUpdate ? "更新组件成功" : "创建组件成功",
+    // 【P1】成本为 0/空时的非阻断警告，前端弹提示引导补填
+    ...(costWarning ? { warning: costWarning } : {}),
   });
 }
 

@@ -240,7 +240,7 @@ export default function DeveloperCenterPage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => copy(`${k.keyPrefix}••••`, "已复制 Key 前缀")}
+                  onClick={() => copy(k.keyPrefix, "已复制 Key 前缀（完整密钥仅在创建时展示一次）")}
                   className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
                   title="复制前缀"
                 >

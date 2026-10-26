@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /** 只读暴露少量管理后台展示用配置（价格凭证确认 / 对账起点），不含任何密钥 */
 export async function GET(request: NextRequest) {
@@ -60,6 +60,8 @@ export async function POST(request: NextRequest) {
         create: { key: "reconciliation.startDate", value: String(reconciliationStartDate ?? "") },
       });
     }
+
+    await writeAuditLog(auth.user?.id || null, "systemconfig:value_update", { pricingPriceVoucherNoteUpdated: pricingPriceVoucherNote !== undefined, reconciliationStartDateUpdated: reconciliationStartDate !== undefined }, null, null, request);
 
     return NextResponse.json({
       success: true,

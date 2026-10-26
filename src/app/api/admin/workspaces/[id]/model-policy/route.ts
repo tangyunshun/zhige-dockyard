@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission, isPlatformAdminRole } from "@/lib/security";
+import { requirePlatformPermission, isPlatformAdminRole, writeAuditLog } from "@/lib/security";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
 import { loadFreeDefaultDeploymentIds } from "@/lib/platform-default-models";
 
@@ -157,6 +157,8 @@ export async function PUT(
               allowedDeploymentIds: allowed,
             },
           });
+
+      await writeAuditLog(auth.user?.id || null, "model_policy:update", { workspaceId, defaultDeploymentId: defaultId, allowedCount: allowed.length }, workspaceId, null, request);
 
       return { status: 200 as const, body: { success: true, data: row } };
     });

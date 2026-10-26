@@ -4,7 +4,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import crypto from "crypto";
-import { requireSystemSettingsAdmin } from "@/lib/security";
+import { requireSystemSettingsAdmin, writeAuditLog } from "@/lib/security";
 
 /**
  * 平台系统 Logo 上传 API
@@ -71,6 +71,8 @@ export async function POST(request: NextRequest) {
       create: { key: "logo", value: logoUrl },
       update: { value: logoUrl },
     });
+
+    await writeAuditLog(result.user?.id || null, "system:upload_logo", { fileName, logoUrl }, null, null, request);
 
     return NextResponse.json({
       success: true,

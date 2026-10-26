@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { stripCatalogInternals } from "@/lib/catalog-sanitize";
 
 /**
  * GET /api/components
@@ -20,6 +21,7 @@ export async function GET(request: NextRequest) {
     }
     if (search) {
       where.OR = [
+        { id: { contains: search } },
         { name: { contains: search } },
         { description: { contains: search } },
       ];
@@ -32,16 +34,20 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
       prisma.componentcategory.findMany({
+        where: { isActive: true },
         orderBy: { sortOrder: "asc" },
       }),
     ]);
 
     const categoryNameMap = new Map(categories.map((c) => [c.key, c.name]));
-    const mappedComponents = components.map((c) => ({
-      ...c,
-      type: c.category,
-      category: categoryNameMap.get(c.category) || c.category,
-    }));
+    // 对外脱敏：剔除平台内部成本/定价字段（本接口对游客开放，能看≠能带走）
+    const mappedComponents = components.map((c) =>
+      stripCatalogInternals({
+        ...c,
+        type: c.category,
+        category: categoryNameMap.get(c.category) || c.category,
+      }),
+    );
 
     return NextResponse.json({
       success: true,

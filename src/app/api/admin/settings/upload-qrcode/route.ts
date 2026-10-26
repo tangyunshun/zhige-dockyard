@@ -4,7 +4,7 @@ import { writeFile, mkdir } from "fs/promises";
 import { join } from "path";
 import { existsSync } from "fs";
 import crypto from "crypto";
-import { requireSystemSettingsAdmin } from "@/lib/security";
+import { requireSystemSettingsAdmin, writeAuditLog } from "@/lib/security";
 
 /**
  * 社交二维码（微信、QQ群、微博）上传 API
@@ -79,6 +79,8 @@ export async function POST(request: NextRequest) {
         update: { value: qrUrl },
       });
     }
+
+    await writeAuditLog(result.user?.id || null, "system:upload_qrcode", { fileName, qrUrl, configKey }, null, null, request);
 
     return NextResponse.json({
       success: true,

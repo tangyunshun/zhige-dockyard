@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { testProviderConnection } from "@/lib/model-registry";
 
 /**
@@ -32,6 +32,12 @@ export async function POST(
       .catch(() => {
         // 供应商可能已被删除，忽略落库失败（不影响返回测试结果）
       });
+
+    await writeAuditLog(auth.user?.id || "", "model_provider:test", {
+      providerId: id,
+      ok: result.ok,
+      health,
+    }, null, null, request);
 
     return NextResponse.json({ success: result.ok, health, ...result });
   } catch (error) {

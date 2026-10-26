@@ -44,6 +44,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
     }
 
+    // 个人空间不支持成员协作，不允许生成邀请码
+    if (workspace.type !== "ENTERPRISE") {
+      return NextResponse.json({ error: "个人空间不支持成员邀请" }, { status: 400 });
+    }
+
     // 验证用户权限
     if (workspace.ownerId !== userId) {
       const member = workspace.workspacemember.find(

@@ -99,6 +99,7 @@ export default function WorkspaceComponentsPage() {
   // 过滤组件列表
   const filteredComponents = COMPONENTS.filter((c) => {
     const matchesSearch =
+      c.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.tags.some((t) => t.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -127,7 +128,7 @@ export default function WorkspaceComponentsPage() {
             <SearchInput
               value={searchQuery}
               onChange={setSearchQuery}
-              placeholder="搜索组件名称或属性要点..."
+              placeholder="搜索组件ID、名称或属性要点..."
             />
           </div>
           

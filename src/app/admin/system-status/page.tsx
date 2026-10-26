@@ -12,9 +12,6 @@ import {
   Clock,
   Server,
   Activity,
-  Layers,
-  Users,
-  Box,
   FileText,
   ShieldCheck,
   Zap,
@@ -26,8 +23,6 @@ import {
   Play,
   Loader2,
   AlertCircle,
-  CreditCard,
-  Coins,
   Key,
   BookOpen,
 } from "lucide-react";
@@ -499,14 +494,34 @@ export default function SystemStatusPage() {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black text-slate-800">系统运行安全状态评估</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  安全正常
-                </span>
+                {data?.inMaintenance ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                    维护模式
+                  </span>
+                ) : (data?.recentAlertCount || 0) > 0 ? (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                    存在风险
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    安全正常
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-slate-500 font-medium mt-0.5">
-                近 24 小时记录的异常或受阻操作共{" "}
-                <strong className="text-slate-700 font-black">{data?.recentAlertCount || 0}</strong>{" "}
-                项；所有核心业务服务与数据库连接保持畅通。
+                {data?.inMaintenance ? (
+                  <>平台当前处于全站停机维护模式，普通用户访问已受限。</>
+                ) : (data?.recentAlertCount || 0) > 0 ? (
+                  <>
+                    近 24 小时记录{" "}
+                    <strong className="text-amber-700 font-black">{data?.recentAlertCount || 0}</strong>{" "}
+                    项异常或受阻操作，建议进入操作审计日志排查；核心服务与数据库连通正常。
+                  </>
+                ) : (
+                  <>
+                    近 24 小时无异常或受阻操作，所有核心业务服务与数据库连接保持畅通。
+                  </>
+                )}
               </p>
             </div>
           </div>
@@ -547,14 +562,16 @@ export default function SystemStatusPage() {
                   <th className="py-3 px-5 whitespace-nowrap">响应延迟</th>
                   <th className="py-3 px-5 whitespace-nowrap">运行状态说明</th>
                   <th className="py-3 px-5 whitespace-nowrap">健康评级</th>
-                  <th className="py-3 px-5 whitespace-nowrap text-right">运维操作</th>
+                  <th className="py-3 px-5 whitespace-nowrap text-right sticky right-0 z-10 bg-slate-50/80 border-l border-slate-200">
+                    运维操作
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
                 {data?.services?.map((srv) => {
                   const isTestingThis = testingServiceId === srv.id;
                   return (
-                    <tr key={srv.id} className="hover:bg-blue-50/30 transition-colors">
+                    <tr key={srv.id} className="group hover:bg-blue-50/30 transition-colors">
                       <td className="py-3.5 px-5 whitespace-nowrap font-bold text-slate-800 flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold shrink-0">
                           <Server className="w-4 h-4" />
@@ -616,12 +633,12 @@ export default function SystemStatusPage() {
                       </td>
 
                       {/* 单项服务测试连通性按钮（真实独立测试） */}
-                      <td className="py-3.5 px-5 whitespace-nowrap text-right">
+                      <td className="py-3.5 px-5 whitespace-nowrap text-right sticky right-0 z-10 bg-white group-hover:bg-blue-50/30 border-l border-slate-200">
                         <button
                           type="button"
                           onClick={() => handleTestSingleService(srv.id)}
                           disabled={isTestingThis}
-                          className="px-2.5 py-1 text-xs font-bold text-[#3182ce] hover:bg-blue-50 rounded-lg border border-blue-200/80 transition-all cursor-pointer inline-flex items-center gap-1 active:scale-95 disabled:opacity-50"
+                          className="h-8 px-3 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 shadow-2xs transition-all cursor-pointer inline-flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
                           title="对该服务发起连通性检测"
                         >
                           {isTestingThis ? (
@@ -642,66 +659,53 @@ export default function SystemStatusPage() {
 
         {/* 底部双栏：平台核心数据存量与系统运行环境（纯中文平实表述，100% 数据库真实数据） */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* 左栏：平台实时核心数据存量（包含活跃度、封禁、待办等真实数据库统计） */}
+          {/* 左栏：系统运行风险与运维待办（系统状态页专属指标，不与业务总览/顶部横幅/右侧运行环境面板重复） */}
           <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-xs space-y-4">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-2 h-3.5 rounded-full bg-purple-500" />
                 <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  平台核心业务数据统计
+                  系统运行风险与运维待办
                 </h4>
               </div>
-              <span className="text-[11px] text-slate-400 font-medium">平台业务指标汇总</span>
+              <span className="text-[11px] text-slate-400 font-medium">系统状态专属指标 · 100% 真实数据库统计</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-1">
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">注册用户数</div>
-                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.userCount || 0}
+                  <div className="text-[11px] text-slate-400 font-bold">24h 异常拦截</div>
+                  <div className={`text-xl font-black font-mono mt-0.5 ${(data?.recentAlertCount || 0) > 0 ? "text-red-500" : "text-slate-800"}`}>
+                    {data?.recentAlertCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    24h活跃: {data?.stats?.active24hCount || 0} · 封禁: {data?.stats?.bannedUserCount || 0}
+                    近24小时审计风险事件（项）
                   </div>
                 </div>
-                <Users className="w-5 h-5 text-[#3182ce] opacity-70 shrink-0 ml-2" />
+                <AlertTriangle className="w-5 h-5 text-red-500 opacity-70 shrink-0 ml-2" />
               </div>
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">工作空间数</div>
-                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.workspaceCount || 0}
+                  <div className="text-[11px] text-slate-400 font-bold">待审申诉工单</div>
+                  <div className={`text-xl font-black font-mono mt-0.5 ${(data?.pendingAppealCount || 0) > 0 ? "text-amber-600" : "text-slate-800"}`}>
+                    {data?.pendingAppealCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    活跃: {data?.stats?.activeWorkspaceCount || 0} · 管控: {data?.stats?.disabledWorkspaceCount || 0}
+                    风控复核运维待办（项）
                   </div>
                 </div>
-                <Layers className="w-5 h-5 text-purple-600 opacity-70 shrink-0 ml-2" />
+                <Radio className="w-5 h-5 text-orange-500 opacity-70 shrink-0 ml-2" />
               </div>
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">功能组件矩阵</div>
+                  <div className="text-[11px] text-slate-400 font-bold">今日审计流水</div>
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.componentCount || 0}
+                    {data?.stats?.todayLogCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    已上架: {data?.stats?.publishedComponentCount || 0} · 任务: {data?.stats?.componentTaskCount || 0}
-                  </div>
-                </div>
-                <Box className="w-5 h-5 text-emerald-600 opacity-70 shrink-0 ml-2" />
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] text-slate-400 font-bold">操作审计日志</div>
-                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.logCount || 0}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    今日: {data?.stats?.todayLogCount || 0} · 告警: {data?.recentAlertCount || 0}
+                    累计存证: {data?.stats?.logCount || 0} 条
                   </div>
                 </div>
                 <FileText className="w-5 h-5 text-amber-600 opacity-70 shrink-0 ml-2" />
@@ -709,15 +713,29 @@ export default function SystemStatusPage() {
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">风控申诉工单</div>
+                  <div className="text-[11px] text-slate-400 font-bold">服务探针汇总</div>
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.totalAppealCount || 0}
+                    {(data?.services || []).filter((s) => s.status === "healthy").length}
+                    <span className="text-xs font-normal text-slate-400"> / {(data?.services || []).length}</span>
                   </div>
-                  <div className={`text-[10px] font-bold mt-0.5 ${((data?.stats?.pendingAppealCount || 0) > 0) ? "text-amber-600" : "text-slate-500"}`}>
-                    待审核: {data?.stats?.pendingAppealCount || 0} 项
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    正常/总数 · 告警 {(data?.services || []).filter((s) => s.status === "warning").length} · 宕机 {(data?.services || []).filter((s) => s.status === "down").length}
                   </div>
                 </div>
-                <Radio className="w-5 h-5 text-red-500 opacity-70 shrink-0 ml-2" />
+                <Activity className="w-5 h-5 text-emerald-600 opacity-70 shrink-0 ml-2" />
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">系统通知广播</div>
+                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
+                    {data?.stats?.notificationCount || 0}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    累计下发记录（条）
+                  </div>
+                </div>
+                <Bell className="w-5 h-5 text-indigo-500 opacity-70 shrink-0 ml-2" />
               </div>
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
@@ -735,41 +753,28 @@ export default function SystemStatusPage() {
 
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
                 <div>
-                  <div className="text-[11px] text-slate-400 font-bold">算力流水与订单</div>
-                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {data?.stats?.pointsLedgerCount || 0}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    充值工单: {data?.stats?.rechargeOrderCount || 0} 笔
-                  </div>
-                </div>
-                <Coins className="w-5 h-5 text-amber-500 opacity-70 shrink-0 ml-2" />
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] text-slate-400 font-bold">套餐与会员体系</div>
-                  <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
-                    {(data?.stats?.workspacePlanCount || 0) + (data?.stats?.membershipLevelCount || 0)}
-                  </div>
-                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    空间套餐: {data?.stats?.workspacePlanCount || 0} · 会员: {data?.stats?.membershipLevelCount || 0}
-                  </div>
-                </div>
-                <CreditCard className="w-5 h-5 text-indigo-500 opacity-70 shrink-0 ml-2" />
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
-                <div>
-                  <div className="text-[11px] text-slate-400 font-bold">系统配置与权限</div>
+                  <div className="text-[11px] text-slate-400 font-bold">系统配置参数</div>
                   <div className="text-xl font-black font-mono text-slate-800 mt-0.5">
                     {data?.stats?.configCount || 0}
                   </div>
                   <div className="text-[10px] text-slate-500 font-medium mt-0.5">
-                    参数项: {data?.stats?.configCount || 0} · 权限: {data?.stats?.permissionCount || 0}
+                    权限规则: {data?.stats?.permissionCount || 0} 条
                   </div>
                 </div>
                 <Key className="w-5 h-5 text-teal-600 opacity-70 shrink-0 ml-2" />
+              </div>
+
+              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-100 flex items-center justify-between">
+                <div>
+                  <div className="text-[11px] text-slate-400 font-bold">维护模式</div>
+                  <div className={`text-base font-black mt-1 ${data?.inMaintenance ? "text-amber-600" : "text-emerald-600"}`}>
+                    {data?.inMaintenance ? "维护中" : "未开启"}
+                  </div>
+                  <div className="text-[10px] text-slate-500 font-medium mt-0.5">
+                    全站停机维护窗口状态
+                  </div>
+                </div>
+                <ShieldCheck className="w-5 h-5 text-indigo-500 opacity-70 shrink-0 ml-2" />
               </div>
             </div>
           </div>

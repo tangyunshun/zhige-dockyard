@@ -25,6 +25,7 @@ export const GET = withAuth(async (req, user) => {
         lastLoginDevice: true,
         passwordChangedAt: true,
         deletionRequestedAt: true,
+        bio: true,
       },
     });
 
@@ -35,7 +36,9 @@ export const GET = withAuth(async (req, user) => {
     let isPendingDeletion = false;
     let deletionDeadline: string | null = null;
     let daysRemaining: number | null = null;
-    let deletionCooldownDays: number | null = null;
+
+    // 冷静期总天数（可配置）恒返回：前端注销弹窗文案不能依赖"是否已申请注销"才拿得到真实配置
+    const deletionCooldownDays = await getDeletionCooldownDays();
 
     // deletionRequestedAt 存的是冷静期截止日（申请时间 + 冷静期天数），直接与当前时间比较
     if (dbUser.deletionRequestedAt) {
@@ -50,9 +53,6 @@ export const GET = withAuth(async (req, user) => {
             (24 * 60 * 60 * 1000),
         );
       }
-
-      // 冷静期总天数（可配置，用于前端文案展示）
-      deletionCooldownDays = await getDeletionCooldownDays();
     }
 
     // 附带查询用户当前个人空间的可用算力点（只读实际余额，不赠送/兜底）
@@ -181,7 +181,7 @@ export const GET = withAuth(async (req, user) => {
 // PUT - 更新用户信息（P0-2 修复：统一走 withAuth 状态机校验）
 export const PUT = withAuth(async (req, user) => {
   try {
-    const { name, email, phone, smsCode } = await req.json();
+    const { name, email, phone, smsCode, bio, verifyToken } = await req.json();
 
     // 验证昵称
     if (!name || !String(name).trim()) {
@@ -291,9 +291,35 @@ export const PUT = withAuth(async (req, user) => {
               { status: 400 },
             );
           }
+
+          // 登录凭据变更属高危操作：必须先过二次身份验证（与注销同级的密码验证），
+          // 堵住"拿到会话即可静默替换登录邮箱"的攻击面
+          const { requireStepUp } = await import("@/lib/step-up");
+          const stepUp = await requireStepUp(req, "change_email", user.id, { verifyToken });
+          if (!stepUp.ok) {
+            return NextResponse.json(
+              {
+                error: stepUp.error,
+                message:
+                  stepUp.error === "SEC_AUTH_REQUIRED"
+                    ? "修改登录邮箱属于敏感操作，需要进行二次身份验证"
+                    : "验证令牌无效或已过期，请重新验证",
+              },
+              { status: stepUp.status },
+            );
+          }
           targetEmail = rawEmail;
         }
       }
+    }
+
+    // 个人签名/团队寄语：真实落库（长度约束 200 字符）
+    const trimmedBio = bio !== undefined && bio !== null ? String(bio).trim() : undefined;
+    if (trimmedBio && trimmedBio.length > 200) {
+      return NextResponse.json(
+        { error: "个人签名不能超过 200 个字符" },
+        { status: 400 },
+      );
     }
 
     // 更新用户信息
@@ -303,6 +329,7 @@ export const PUT = withAuth(async (req, user) => {
         name: String(name).trim(),
         email: targetEmail,
         phone: trimmedPhone || null,
+        ...(trimmedBio !== undefined ? { bio: trimmedBio || null } : {}),
       },
       select: {
         id: true,
@@ -310,8 +337,18 @@ export const PUT = withAuth(async (req, user) => {
         email: true,
         phone: true,
         avatar: true,
+        bio: true,
       },
     });
+
+    // 写操作留痕（非阻断式）
+    const { writeAuditLog } = await import("@/lib/security");
+    await writeAuditLog(user.id, "user:profile_update", {
+      nameChanged: true,
+      emailChanged: rawEmail !== undefined && targetEmail !== currentUser.email,
+      phoneChanged: !!(trimmedPhone && trimmedPhone !== currentPhone),
+      bioChanged: trimmedBio !== undefined,
+    }, null, null, req).catch(() => {});
 
     return NextResponse.json({
       success: true,

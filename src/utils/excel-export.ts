@@ -1,5 +1,9 @@
 import * as XLSX from "xlsx-js-style";
 import { getAuthToken } from "@/utils/auth";
+// 筛选条件中文文案一律来自数据库字典（system_config），前端不内置任何业务映射：
+// 账单类导出走 billing_display_dict，其余回退审计字典 audit_display_dict；两者皆缺失才保留原始键。
+import { lookupBillingFieldLabel, lookupBillingValueLabel } from "@/lib/billing-display-dict";
+import { lookupFieldLabel as lookupAuditFieldLabel, lookupValueLabel as lookupAuditValueLabel } from "@/lib/audit-dictionaries";
 
 /** 导出留痕信息：文件成功下载后由工具自动 POST 到审计接口（fire-and-forget） */
 export interface ExportTrace {
@@ -113,6 +117,20 @@ async function resolveExportedBy(override?: string): Promise<string> {
 }
 
 /**
+ * 将单个筛选键值对翻译为「中文标签：中文值」的可读条目。
+ * 文案全部来自数据库字典（system_config）：优先账单字典 billing_display_dict，
+ * 其次审计字典 audit_display_dict；两者皆无对应条目时保留原始键（不作任何硬编码兜底）。
+ */
+function translateFilterEntry(k: string, v: unknown): string {
+  const label =
+    lookupBillingFieldLabel(k) ?? lookupAuditFieldLabel(k) ?? k;
+  const rawText = Array.isArray(v) ? v.join("、") : String(v);
+  const display =
+    lookupBillingValueLabel(rawText) ?? lookupAuditValueLabel(rawText) ?? rawText;
+  return `${label}：${display}`;
+}
+
+/**
  * 解析本次导出应展示的筛选条件文案：优先使用调用方显式传入的 filterLabels，
  * 否则回退从 trace.filters（原始查询参数）生成可读条目，跳过分页/排序/令牌等噪音字段。
  */
@@ -137,7 +155,7 @@ function resolveFilterLabels(opts: ExportToExcelOptions): string[] {
     ]);
     return Object.entries(f)
       .filter(([k, v]) => v !== undefined && v !== null && v !== "" && !skip.has(k.toLowerCase()))
-      .map(([k, v]) => `${k}：${Array.isArray(v) ? v.join("、") : String(v)}`);
+      .map(([k, v]) => translateFilterEntry(k, v));
   }
   return [];
 }

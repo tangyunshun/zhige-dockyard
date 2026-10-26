@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS, MODEL_INPUT_LIMITS, validateModelNameField, validateModelBaseUrlLength, validateModelApiKeyLength } from "@/lib/model-endpoint";
 import { encryptSecret, decryptSecret } from "@/lib/crypto-secrets";
 
@@ -106,6 +106,9 @@ export async function POST(request: NextRequest) {
         sortOrder: Number.isFinite(Number(body.sortOrder)) ? Number(body.sortOrder) : 0,
       },
     });
+
+    await writeAuditLog(auth.user?.id || "", "model_provider:create", { name, protocol, baseUrl: endpoint.url, keySet: !!(apiKeyPlain || apiKeyEnv) }, null, null, request);
+
     return NextResponse.json({ success: true, data: row }, { status: 201 });
   } catch (error) {
     const code = (error as { code?: string })?.code;

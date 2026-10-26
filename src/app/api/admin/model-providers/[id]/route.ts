@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { isSupportedModelProtocol, validateModelBaseUrlForRequest, SUPPORTED_MODEL_PROTOCOLS, MODEL_INPUT_LIMITS, validateModelBaseUrlLength, validateModelApiKeyLength } from "@/lib/model-endpoint";
 import { encryptSecret } from "@/lib/crypto-secrets";
 import { withModelRegistryLock, ModelRegistryLockTimeoutError } from "@/lib/model-registry-lock";
@@ -150,6 +150,10 @@ export async function PATCH(
     }
 
     const row = await prisma.modelprovider.update({ where: { id }, data });
+
+    const changedFields = Object.keys(data).filter((k) => k !== "updatedAt");
+    await writeAuditLog(auth.user?.id || null, "model_provider:update", { id, name: exists.name, changed: changedFields, keyReplaced: "apiKeyCipher" in data }, null, null, request);
+
     return NextResponse.json({ success: true, data: row });
   } catch (error) {
     const code = (error as { code?: string })?.code;
@@ -214,6 +218,7 @@ export async function DELETE(
         };
       }
       await tx.modelprovider.delete({ where: { id } });
+      await writeAuditLog(auth.user?.id || null, "model_provider:delete", { id, name: exists.name }, null, null, request);
       return { status: 200 as const, body: { success: true } };
     });
     return NextResponse.json(result.body, { status: result.status });

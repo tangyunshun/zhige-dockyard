@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { testDeploymentConnection } from "@/lib/model-registry";
 
 /**
@@ -29,6 +29,12 @@ export async function POST(
     await prisma.modeldeployment
       .update({ where: { id }, data: { health, lastTestedAt: new Date() } })
       .catch(() => {});
+
+    await writeAuditLog(auth.user?.id || "", "model_deployment:test", {
+      deploymentId: id,
+      ok: result.ok,
+      health,
+    }, null, null, request);
 
     return NextResponse.json({ success: result.ok, health, ...result });
   } catch (error) {

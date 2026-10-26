@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import {
   LayoutDashboard,
   Users,
@@ -365,8 +366,14 @@ export default function AdminLayout({
     { id: string; label: string; href: string; description: string; requiredPermission: string }[]
   >([]);
   const [isCollapsed, setIsCollapsed] = useState(false);
-  // 管理员待办角标（待审核申诉 + 待审批充值工单），展示在「后台总览」菜单项旁
-  const [pendingTaskCount, setPendingTaskCount] = useState(0);
+  // 统一审核提醒：各待审核分类及其数量，驱动左侧角标与顶部汇总条
+  const [pendingItems, setPendingItems] = useState<
+    { key: string; label: string; href: string; count: number }[]
+  >([]);
+  const pendingTotal = pendingItems.reduce((sum, i) => sum + i.count, 0);
+  const pendingBadgeMap = Object.fromEntries(
+    pendingItems.map((i) => [i.href, i.count])
+  );
 
   const getCleanRole = (role: string | null | undefined): string => {
     if (!role) return "USER";
@@ -427,7 +434,7 @@ export default function AdminLayout({
         const res = await fetch("/api/admin/pending-tasks");
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled) setPendingTaskCount(Number(data?.total) || 0);
+        if (!cancelled) setPendingItems(Array.isArray(data?.items) ? data.items : []);
       } catch (error) {
         console.error("Fetch pending tasks error:", error);
       }
@@ -745,7 +752,7 @@ export default function AdminLayout({
           collapsed={isCollapsed}
           onNavigate={(href) => router.push(href)}
           onExpand={() => setIsCollapsed(false)}
-          badge={{ href: "/admin", count: pendingTaskCount }}
+          badgeMap={pendingBadgeMap}
           searchPlaceholder="搜索后台功能…"
         />
 
@@ -926,7 +933,7 @@ export default function AdminLayout({
                 router.push(href);
                 setShowMobileMenu(false);
               }}
-              badge={{ href: "/admin", count: pendingTaskCount }}
+              badgeMap={pendingBadgeMap}
               searchPlaceholder="搜索后台功能…"
             />
 
@@ -996,6 +1003,33 @@ export default function AdminLayout({
             </span>
           </div>
         </header>
+
+        {/* 统一审核提醒：顶部集中展示所有待管理员审核的记录，并提供逐条快速跳转入口 */}
+        {pendingTotal > 0 && (
+          <div className="shrink-0 bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-1.5 text-amber-800 font-bold text-sm shrink-0">
+              <AlertCircle className="w-4 h-4" />
+              <span>待审核事项（{pendingTotal}）</span>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {pendingItems
+                .filter((i) => i.count > 0)
+                .map((item) => (
+                  <Link
+                    key={item.key}
+                    href={item.href}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white border border-amber-300 text-amber-800 text-xs font-bold hover:bg-amber-100 transition-colors"
+                  >
+                    <span>{item.label}</span>
+                    <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-black flex items-center justify-center">
+                      {item.count > 99 ? "99+" : item.count}
+                    </span>
+                    <span className="text-amber-500">去审核 →</span>
+                  </Link>
+                ))}
+            </div>
+          </div>
+        )}
 
         {/* 内容区 - 局部滚动 */}
         <AdminPermissionProvider user={user} permissions={permissions} loading={loading}>

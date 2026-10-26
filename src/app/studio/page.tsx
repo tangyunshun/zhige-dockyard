@@ -45,12 +45,13 @@ function StudioContent() {
     null;
 
   const [workspaceToken, setWorkspaceToken] = useState<number>(0);
+  // 余额是否仍在加载：加载完成前不渲染「算力不足」警告，避免初始 0 值误闪警告后跳回真实余额
+  const [tokenLoading, setTokenLoading] = useState<boolean>(true);
   const [restrictedComponentIds, setRestrictedComponentIds] = useState<string[]>([]);
 
   // 1. 核心自动重定向调度：已登录用户如果带有组件参数，一律无缝分发重定向到工作空间进行物理运行
   useEffect(() => {
     if (userState?.isLoggedIn && queryComponentId && currentWorkspace?.id) {
-      console.log(`[Studio] Auto redirecting Component ${queryComponentId} to Workspace ${currentWorkspace.id}`);
       router.push(`/workspace/${currentWorkspace.id}?componentId=${queryComponentId}`);
     }
   }, [userState?.isLoggedIn, queryComponentId, currentWorkspace?.id, router]);
@@ -61,8 +62,10 @@ function StudioContent() {
       if (!currentWorkspace || !userState.isLoggedIn) {
         setRestrictedComponentIds([]);
         setWorkspaceToken(0);
+        setTokenLoading(false);
         return;
       }
+      setTokenLoading(true);
       try {
         const authToken = getAuthToken();
         if (!authToken) return;
@@ -97,6 +100,9 @@ function StudioContent() {
         setWorkspaceToken(tokenVal);
       } catch (e) {
         console.error("加载空间数据失败:", e);
+      } finally {
+        // 无论成功失败，余额拉取阶段结束：解除「加载中」占位，此后才允许渲染不足警告
+        setTokenLoading(false);
       }
     };
     loadWorkspaceData();
@@ -124,12 +130,12 @@ function StudioContent() {
           workspaceId={currentWorkspace?.id || null}
           workspaceName={currentWorkspace?.name || ""}
           workspaceToken={workspaceToken}
+          tokenLoading={tokenLoading}
           restrictedComponentIds={restrictedComponentIds}
           onSelectComponent={(compId, targetWsId) => {
             if (userState?.isLoggedIn) {
               const routeWsId = targetWsId || currentWorkspace?.id;
               if (routeWsId) {
-                console.log(`[Studio] Selected component ${compId}, routing to workspace ${routeWsId}`);
                 router.push(`/workspace/${routeWsId}?componentId=${compId}`);
               } else {
                 toast.error("您尚未创建工作空间，请先创建空间");
@@ -140,7 +146,6 @@ function StudioContent() {
               router.push(`/auth/login?redirect=${encodeURIComponent(`/studio?componentId=${compId}`)}`);
             }
           }}
-          onTokenUpdate={(newToken) => setWorkspaceToken(newToken)}
         />
       </main>
       <Footer />

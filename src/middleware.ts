@@ -14,6 +14,9 @@ const PUBLIC_PREFIXES = [
   "/api/components",
   // 开放接口：使用 API Key（而非会话 JWT）鉴权，由各路由自行完成鉴权
   "/api/open",
+  // 支付回调：来自微信/支付宝服务器的异步通知，无登录态；安全靠回调验签（平台证书/RSA2）保证。
+  // 注意：仅放行 notify 子路径，其余支付接口（下单/确认/查询）仍需登录。
+  "/api/payments/notify",
   // 公共营销页面 - 未登录可查看（与客户端 AuthCheck / RouterGuards 保持一致）
   "/solutions",
   "/security",

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Plus, Trash2, ShieldCheck, Check, Lock, Save, Download, Crown, Users, RefreshCw, AlertTriangle, RotateCcw, AlertCircle, ArrowUp, ArrowDown, GripVertical, Eye, CheckCircle2, Globe } from "lucide-react";
+import { Plus, Trash2, ShieldCheck, Check, Lock, Save, Download, Crown, Users, RefreshCw, AlertTriangle, RotateCcw, AlertCircle, ArrowUp, ArrowDown, GripVertical, Eye, CheckCircle2, Globe, Inbox } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
 import { PostIcon, POST_ICON_MAP, DEFAULT_POST_ICON, isValidPostIcon } from "./PostIcon";
@@ -44,6 +44,25 @@ interface CompRow {
   id: string;
   name: string;
   description: string;
+}
+
+// 用户本人的岗位提报记录
+interface MySubmissionItem {
+  id: string;
+  name: string;
+  code: string;
+  description: string;
+  color: string;
+  icon?: string;
+  workspaceId: string;
+  workspaceName: string;
+  visibility: "PRIVATE" | "SYSTEM";
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN";
+  adminNote?: string;
+  reviewedAt?: string;
+  createdAt: string;
+  rewardGranted?: boolean;
+  rewardExpiresAt?: string;
 }
 
 // 平台岗位商务图标库条目（posticonlibrary）
@@ -108,10 +127,68 @@ export default function WorkspacePostsPermissionsTab({
   const [newPosDesc, setNewPosDesc] = useState("");
   // 同步至系统岗位库确认 二次确认 Modal
   const [showSyncConfirmModal, setShowSyncConfirmModal] = useState(false);
+  // 新建岗位提交时的可见范围选择（个人使用 / 共享给系统）
+  const [submitVisibility, setSubmitVisibility] = useState<"PRIVATE" | "SYSTEM">("PRIVATE");
 
   // 移除确认 Modal
   const [postToRemove, setPostToRemove] = useState<WorkspacePostItem | null>(null);
   const [removing, setRemoving] = useState(false);
+
+  // 我的投稿 Modal
+  const [showMySubmissions, setShowMySubmissions] = useState(false);
+  const [mySubmissions, setMySubmissions] = useState<MySubmissionItem[]>([]);
+  const [loadingSubs, setLoadingSubs] = useState(false);
+  const [actingSubId, setActingSubId] = useState<string | null>(null);
+
+  // 拉取当前用户本人的岗位提报记录
+  const loadMySubmissions = useCallback(async () => {
+    try {
+      setLoadingSubs(true);
+      const res = await fetch("/api/user/workspace-hub/posts/submissions", {
+        headers: { Authorization: `Bearer ${getAuthToken()}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMySubmissions(data.submissions || []);
+      } else {
+        toast.error(data.error || "获取提报记录失败");
+      }
+    } catch (err) {
+      console.error("获取我的投稿失败:", err);
+      toast.error("获取提报记录失败，请检查网络");
+    } finally {
+      setLoadingSubs(false);
+    }
+  }, [toast]);
+
+  // 用户侧操作：撤回 / 重新提交 / 删除记录
+  const handleSubAction = useCallback(
+    async (subId: string, action: "WITHDRAW" | "RESUBMIT" | "DELETE") => {
+      try {
+        setActingSubId(subId);
+        const res = await fetch("/api/user/workspace-hub/posts/submissions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${getAuthToken()}` },
+          credentials: "include",
+          body: JSON.stringify({ submissionId: subId, action }),
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          toast.success(data.message || "操作成功");
+          await loadMySubmissions();
+        } else {
+          toast.error(data.error || "操作失败");
+        }
+      } catch (err) {
+        console.error("岗位提报操作失败:", err);
+        toast.error("操作失败，请检查网络");
+      } finally {
+        setActingSubId(null);
+      }
+    },
+    [toast, loadMySubmissions]
+  );
 
   // 客户端挂载标记（确保 createPortal 仅在浏览器端运行）
   const [mounted, setMounted] = useState(false);
@@ -666,8 +743,9 @@ export default function WorkspacePostsPermissionsTab({
     setShowSyncConfirmModal(true);
   };
 
-  // 第二步：二次确认（选择是否同步至全平台系统标准岗位集合）
-  const handleConfirmCreatePosition = async (syncToSystem: boolean) => {
+  // 第二步：确认创建（携带可见范围：个人使用 PRIVATE / 共享给系统 SYSTEM）
+  const handleConfirmCreatePosition = async (visibility: "PRIVATE" | "SYSTEM") => {
+    const isShared = visibility === "SYSTEM";
     try {
       setSaving(true);
       const res = await fetch("/api/user/workspace-hub/posts", {
@@ -681,15 +759,15 @@ export default function WorkspacePostsPermissionsTab({
           description: newPosDesc.trim(),
           color: COLOR_PALETTE[posts.length % COLOR_PALETTE.length],
           icon: isValidPostIcon(newPosIcon) ? newPosIcon : DEFAULT_POST_ICON,
-          syncToSystem,
+          visibility,
         }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        if (syncToSystem) {
-          toast.success(`自定义岗位「${newPosName.trim()}」创建成功，并已同步提报至全平台官方标准岗位审核池等待超管审核！`);
+        if (isShared) {
+          toast.success(`自定义岗位「${newPosName.trim()}」创建成功，已提交至平台官方标准库审核池，审核通过与算力点奖励将以站内消息通知您！`);
         } else {
-          toast.success(`自定义岗位「${newPosName.trim()}」创建成功（仅在当前企业空间自治使用）`);
+          toast.success(`自定义岗位「${newPosName.trim()}」创建成功（仅限当前企业空间内使用）`);
         }
         if (data.data?.id) pendingActiveIdRef.current = data.data.id;
         setShowSyncConfirmModal(false);
@@ -796,6 +874,17 @@ export default function WorkspacePostsPermissionsTab({
           >
             <Plus className="w-3.5 h-3.5 text-[#3182ce]" />
             <span>新建自定义岗位</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowMySubmissions(true);
+              loadMySubmissions();
+            }}
+            className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-bold rounded-lg transition-all inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+          >
+            <Inbox className="w-3.5 h-3.5 text-[#3182ce]" />
+            <span>岗位提报记录</span>
           </button>
           <button
             type="button"
@@ -1611,10 +1700,10 @@ export default function WorkspacePostsPermissionsTab({
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-black text-slate-900">
-                  同步至系统岗位库确认
+                  选择岗位可见范围
                 </h3>
                 <p className="text-xs text-slate-500 mt-1 font-medium">
-                  是否将此岗位信息同步至系统岗位集合？
+                  请选择该岗位发布后的可见范围，提交后将按所选范围生效
                 </p>
               </div>
               <button
@@ -1649,14 +1738,67 @@ export default function WorkspacePostsPermissionsTab({
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-emerald-50/50 border border-emerald-100/80 text-xs text-slate-600 leading-relaxed space-y-1.5">
-              <p className="font-bold text-emerald-800 flex items-center gap-1.5">
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                <span>提报至全平台官方标准岗位池</span>
-              </p>
-              <p className="text-[11px] text-slate-500">
-                同步至系统集合后，该岗位将作为全网候选标准岗位提报至超级管理员审核池。审核通过后将正式纳入全平台官方标准库，供其他企业空间直接装配引用。空间内部敏感数据绝不会被泄露。
-              </p>
+            {/* 可见范围选择（个人使用 / 共享给系统） */}
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => setSubmitVisibility("PRIVATE")}
+                className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                  submitVisibility === "PRIVATE"
+                    ? "border-[#3182ce] bg-blue-50/50 ring-1 ring-[#3182ce]/30"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <span
+                      className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
+                        submitVisibility === "PRIVATE" ? "border-[#3182ce]" : "border-slate-300"
+                      }`}
+                    >
+                      {submitVisibility === "PRIVATE" && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-[#3182ce]" />
+                      )}
+                    </span>
+                    个人使用
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-400">仅当前企业空间</span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  岗位仅在你当前企业空间内部生效，其他空间不可见，不参与平台审核，无算力点奖励。
+                </p>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSubmitVisibility("SYSTEM")}
+                className={`w-full text-left p-3 rounded-xl border transition-all cursor-pointer ${
+                  submitVisibility === "SYSTEM"
+                    ? "border-emerald-500 bg-emerald-50/50 ring-1 ring-emerald-500/30"
+                    : "border-slate-200 bg-white hover:border-slate-300"
+                }`}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <span
+                      className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center ${
+                        submitVisibility === "SYSTEM" ? "border-emerald-500" : "border-slate-300"
+                      }`}
+                    >
+                      {submitVisibility === "SYSTEM" && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                      )}
+                    </span>
+                    共享给系统
+                  </span>
+                  <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                    可获算力点奖励
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                  提报至平台官方标准库审核池，审核通过后全网企业空间均可装配引用；<span className="font-bold text-emerald-700">且系统自动赠送你 10 个算力点（有效期 1 个月，到期未用完自动清零）</span>。
+                </p>
+              </button>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-100">
@@ -1671,29 +1813,19 @@ export default function WorkspacePostsPermissionsTab({
                 返回修改
               </button>
 
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleConfirmCreatePosition(false)}
-                  className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
-                >
-                  否，仅在当前空间使用
-                </button>
-                <button
-                  type="button"
-                  disabled={saving}
-                  onClick={() => handleConfirmCreatePosition(true)}
-                  className="px-4 py-2 text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-md shadow-emerald-600/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
-                >
-                  {saving ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-3.5 h-3.5" />
-                  )}
-                  <span>是，同步至系统集合（推荐）</span>
-                </button>
-              </div>
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => handleConfirmCreatePosition(submitVisibility)}
+                className="px-4 py-2 text-xs font-black text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-xl shadow-md shadow-[#3182ce]/20 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+              >
+                {saving ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                )}
+                <span>确认提交</span>
+              </button>
             </div>
           </div>
         </div>,
@@ -1753,6 +1885,151 @@ export default function WorkspacePostsPermissionsTab({
                 {removing ? "移除中..." : "确认移除"}
               </button>
             </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* 我的投稿 Modal */}
+      {mounted && typeof document !== "undefined" && showMySubmissions && createPortal(
+        <div
+          className="fixed inset-0 z-[10000] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200 text-left overflow-y-auto"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowMySubmissions(false);
+          }}
+        >
+          <div
+            className="bg-white rounded-[24px] shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 text-left space-y-4 border border-slate-100 animate-in zoom-in-95 duration-200 my-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <h3 className="text-base font-black text-slate-900 flex items-center gap-2">
+                <Inbox className="w-5 h-5 text-[#3182ce]" /> 岗位提报记录
+              </h3>
+              <button
+                onClick={() => setShowMySubmissions(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg font-black cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-[11px] text-slate-500 font-medium">
+              这里汇总你向平台提交的全部岗位提报记录，可查看审核状态、未通过原因与共享奖励发放情况，并对未通过的提报进行重新提交或删除。
+            </p>
+
+            {loadingSubs ? (
+              <div className="flex items-center justify-center py-10 text-slate-400 text-xs font-medium">
+                <RefreshCw className="w-4 h-4 animate-spin mr-2" /> 加载中…
+              </div>
+            ) : mySubmissions.length === 0 ? (
+              <div className="py-10 text-center text-slate-400 text-xs font-medium">
+                你还没有提交过任何岗位提报记录。点击「新建自定义岗位」并选择「共享给系统」即可提交。
+              </div>
+            ) : (
+              <div className="space-y-2.5">
+                {mySubmissions.map((sub) => {
+                  const statusMeta: Record<string, { label: string; cls: string }> = {
+                    PENDING: { label: "待审核", cls: "bg-blue-50 text-blue-700 border-blue-200" },
+                    ACCEPTED: { label: "已通过", cls: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+                    REJECTED: { label: "未通过", cls: "bg-rose-50 text-rose-700 border-rose-200" },
+                    WITHDRAWN: { label: "已撤回", cls: "bg-slate-100 text-slate-600 border-slate-200" },
+                  };
+                  const sm = statusMeta[sub.status] || statusMeta.PENDING;
+                  const isSystem = sub.visibility === "SYSTEM";
+                  const canResubmit = sub.status === "REJECTED" || sub.status === "WITHDRAWN";
+                  const canDelete = sub.status === "REJECTED" || sub.status === "WITHDRAWN";
+                  const canWithdraw = sub.status === "PENDING";
+                  return (
+                    <div
+                      key={sub.id}
+                      className="p-3.5 rounded-xl border border-slate-200 bg-white space-y-2"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <span
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-white shadow-2xs shrink-0"
+                          style={{ backgroundColor: sub.color || "#3182ce" }}
+                        >
+                          <PostIcon iconKey={isValidPostIcon(sub.icon) ? sub.icon! : DEFAULT_POST_ICON} className="w-4 h-4" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-extrabold text-xs text-slate-900 truncate">{sub.name}</span>
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded bg-white text-slate-600 border border-slate-200">
+                              {sub.code}
+                            </span>
+                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${sm.cls}`}>
+                              {sm.label}
+                            </span>
+                            <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold border ${isSystem ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}`}>
+                              {isSystem ? "共享给系统" : "个人使用"}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            {sub.description || "（无职责说明）"}
+                          </p>
+                          <p className="text-[10px] text-slate-400 mt-0.5">
+                            提交于 {new Date(sub.createdAt).toLocaleDateString("zh-CN")}
+                            {sub.workspaceName ? ` · 空间「${sub.workspaceName}」` : ""}
+                          </p>
+                        </div>
+                      </div>
+
+                      {sub.status === "REJECTED" && sub.adminNote && (
+                        <div className="rounded-lg bg-rose-50/60 border border-rose-100 px-2.5 py-1.5 text-[11px] text-rose-700 leading-relaxed">
+                          <strong className="font-bold">未通过原因：</strong>{sub.adminNote}
+                        </div>
+                      )}
+                      {sub.status === "ACCEPTED" && (
+                        <div className="rounded-lg bg-emerald-50/60 border border-emerald-100 px-2.5 py-1.5 text-[11px] text-emerald-700 leading-relaxed">
+                          {sub.rewardGranted
+                            ? `已纳入平台官方标准库，系统赠送的 10 算力点已到账（有效期至 ${sub.rewardExpiresAt ? new Date(sub.rewardExpiresAt).toLocaleDateString("zh-CN") : "—"}，到期未用完自动清零）。`
+                            : "已纳入平台官方标准库，全网企业空间均可装配引用。"}
+                        </div>
+                      )}
+
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-slate-100">
+                        {canWithdraw && (
+                          <button
+                            type="button"
+                            disabled={actingSubId === sub.id}
+                            onClick={() => handleSubAction(sub.id, "WITHDRAW")}
+                            className="px-3 py-1.5 text-xs font-bold text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-lg cursor-pointer disabled:opacity-50 transition-colors"
+                          >
+                            {actingSubId === sub.id ? "处理中…" : "撤回"}
+                          </button>
+                        )}
+                        {canResubmit && (
+                          <button
+                            type="button"
+                            disabled={actingSubId === sub.id}
+                            onClick={() => handleSubAction(sub.id, "RESUBMIT")}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-[#3182ce] hover:bg-[#2b6cb0] rounded-lg cursor-pointer disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            {actingSubId === sub.id ? "处理中…" : "重新提交"}
+                          </button>
+                        )}
+                        {canDelete && (
+                          <button
+                            type="button"
+                            disabled={actingSubId === sub.id}
+                            onClick={() => handleSubAction(sub.id, "DELETE")}
+                            className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg cursor-pointer disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            {actingSubId === sub.id ? "处理中…" : "删除记录"}
+                          </button>
+                        )}
+                        {sub.status === "ACCEPTED" && (
+                          <span className="text-[11px] text-slate-400 font-medium">已采纳，无需操作</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>,
         document.body

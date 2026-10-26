@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { requireSystemSettingsAdmin } from "@/lib/security";
+import { requireSystemSettingsAdmin, writeAuditLog, requirePlatformPermission } from "@/lib/security";
 import {
   DELETION_COOLDOWN_CONFIG_KEY,
   DEFAULT_DELETION_COOLDOWN_DAYS,
@@ -67,6 +67,12 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: auth.message }, { status: auth.status });
     }
 
+    // 双层设防：细粒度权限（与规则层 system:manage 一致；assertAdmin 已含，此处显式再校验）
+    const dbl = await requirePlatformPermission(request, "system:manage");
+    if (!dbl.authorized) {
+      return dbl.errorResponse || NextResponse.json({ error: "无权限更新账号注销配置" }, { status: 403 });
+    }
+
     const { cooldownDays } = await request.json();
     const days = Number(cooldownDays);
     if (!Number.isInteger(days) || days < COOLDOWN_DAYS_MIN || days > COOLDOWN_DAYS_MAX) {
@@ -81,6 +87,8 @@ export async function PUT(request: NextRequest) {
       create: { key: DELETION_COOLDOWN_CONFIG_KEY, value: String(days) },
       update: { value: String(days) },
     });
+
+    await writeAuditLog(auth.adminId, "account_deletion:config_update", { cooldownDays: days }, null, null, request);
 
     // 失效内存缓存，确保立即生效
     invalidateDeletionCooldownCache();

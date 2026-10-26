@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const typeFilter = (searchParams.get("type") || "all").toLowerCase();
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "20", 10) || 20, 1), 100);
+    const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "20", 10) || 20, 1), 5000);
 
     // 我加入的空间
     const members = await prisma.workspacemember.findMany({
@@ -118,7 +118,7 @@ export async function GET(request: NextRequest) {
 
     const stats = {
       totalRecharged: sumBy("IN", ["RECHARGE", "OFFLINE_RECHARGE"]),
-      totalGift: sumBy("IN", ["GIFT_REGISTER", "MEMBERSHIP_GRANT", "REFUND", "MANUAL_ADJUST"]),
+      totalGift: sumBy("IN", ["GIFT_REGISTER", "MEMBERSHIP_GRANT"]),
       totalConsumed: sumBy("OUT", ["CONSUME"]),
       totalExpired: sumBy("OUT", ["GIFT_EXPIRE"]),
       walletBalance,

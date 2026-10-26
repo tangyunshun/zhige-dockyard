@@ -15,11 +15,9 @@ import {
   EyeOff,
   Crown,
   Users,
-  Box,
   Database,
   TrendingUp,
   ArrowLeft,
-  Check,
   X,
   Zap,
   Ban,
@@ -630,62 +628,17 @@ export default function AdminMembershipLevelsPage() {
         </button>
       </MembershipNavHeader>
 
-      {/* 算力点统一定价规则极简提示条 */}
-      <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl px-4 py-2.5 flex items-center justify-between gap-3 text-xs shadow-2xs">
-        <div className="flex items-center gap-2 text-amber-900 font-bold shrink-0">
+      {/* 算力点统一定价规则极简提示条（整体允许换行，窄屏不再溢出） */}
+      <div className="bg-amber-50/90 border border-amber-200/80 rounded-xl px-4 py-2.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs shadow-2xs leading-relaxed">
+        <div className="flex items-center gap-2 text-amber-900 font-bold">
           <Zap className="w-4 h-4 text-amber-600 shrink-0" />
           <span className="font-black text-amber-950">算力定价规则：</span>
           <span className="font-mono text-amber-800">100 算力点 = 1 元</span>
-          <span className="text-amber-700 text-[11px] font-normal">(等值点仅作参考价；订阅月付独立设置，年付 = 月付 × 10)</span>
         </div>
-        <div className="text-[11px] text-amber-700 font-medium shrink-0 hidden md:block">
+        <span className="text-amber-700 text-[11px] font-normal">(等值点仅作参考价；订阅月付独立设置，年付 = 月付 × 10)</span>
+        <span className="text-[11px] text-amber-700 font-medium">
           💡 价格、算力点参考额度、算力包折扣均为独立配置，修改参考额度不会自动改写价格。启用中的等级不可编辑/删除，请先禁用。
-        </div>
-      </div>
-
-      {/* 4 大 Bento 统计数据卡片 */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">会员等级总数</div>
-            <div className="text-2xl font-black font-mono text-slate-900">{total || levels.length} <span className="text-xs font-normal text-slate-400">个方案</span></div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold">
-            <Crown className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">当前在用/已启用</div>
-            <div className="text-2xl font-black font-mono text-emerald-600">{levels.filter((l) => l.isActive).length} <span className="text-xs font-normal text-slate-400">个激活</span></div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
-            <Check className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">热门/推荐标记</div>
-            <div className="text-2xl font-black font-mono text-amber-600">{levels.filter((l) => l.isPopular || l.isRecommended).length} <span className="text-xs font-normal text-slate-400">个热销</span></div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-            <TrendingUp className="w-5 h-5" />
-          </div>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">免费与付费梯队</div>
-            <div className="text-2xl font-black font-mono text-purple-600">
-              {levels.filter((l) => l.priceMonthly === 0).length} / {levels.filter((l) => l.priceMonthly > 0).length}
-            </div>
-          </div>
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-            <Box className="w-5 h-5" />
-          </div>
-        </div>
+        </span>
       </div>
 
       {/* 筛选与搜索控制栏 */}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
+import { writeAuditLog } from "@/lib/security";
 import { upgradePersonalToEnterprise } from "@/lib/workspace-upgrade-service";
 
 /**
@@ -48,6 +49,8 @@ export async function POST(
       source: "ADMIN_MANUAL",
       actorId: user.id,
     });
+
+    await writeAuditLog(user.id, "workspace:upgrade_enterprise", { workspaceId: id, workspaceName: workspace.name, planKey, billingCycle }, id, null, request);
 
     return NextResponse.json({
       success: true,

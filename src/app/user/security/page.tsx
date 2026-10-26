@@ -54,7 +54,7 @@ interface UserSecurityProfile {
  * 彻底杜绝原始 ::1 暴露，本地地址友好展示为 127.0.0.1 (本地局域网 / 本机)
  */
 function formatFriendlyIp(rawIp?: string | null): { ip: string; note: string } {
-  if (!rawIp || rawIp === "unknown") return { ip: "127.0.0.1", note: "本地局域网" };
+  if (!rawIp || rawIp === "unknown") return { ip: "—", note: "来源未记录" };
   let ip = rawIp.trim();
   if (ip.startsWith("::ffff:")) {
     ip = ip.replace("::ffff:", "");
@@ -457,7 +457,15 @@ export default function UserSecurityPage() {
       });
 
       if (res.ok) {
-        toast.success("密码修改成功，请妥善保管新凭证");
+        toast.success("密码修改成功，所有登录会话已失效，请使用新密码重新登录");
+        // 后端改密会清空全部会话令牌：本地的旧 token 已失效，立即登出跳转，
+        // 避免用户滞留在已失效会话中直到下一个请求 401 才发现
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("auth_token");
+          setTimeout(() => {
+            window.location.href = "/auth/login";
+          }, 1200);
+        }
         setFormData({
           currentPassword: "",
           newPassword: "",
@@ -752,7 +760,7 @@ export default function UserSecurityPage() {
               </button>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed bg-slate-50/70 p-3 rounded-xl border border-slate-100">
-              开启后，在执行包括<strong>注销账号</strong>、<strong>批量转让工作空间</strong>、<strong>删除生产级组件</strong>或<strong>重置安全密钥</strong>等高敏感动作时，将强制校验当前会话身份凭证。
+              开启后，在执行包括<strong>注销账号</strong>、<strong>转让工作空间所有权</strong>、<strong>删除生产级组件</strong>或<strong>重置安全密钥</strong>等高敏感动作时，将强制校验当前会话身份凭证。
             </p>
           </div>
 
@@ -785,11 +793,11 @@ export default function UserSecurityPage() {
             <div className="space-y-2 text-[11px] text-slate-500">
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
                 <span>异地异常 IP 登录熔断保护</span>
-                <span className="font-bold text-emerald-600">已默认启用</span>
+                <span className="font-bold text-emerald-600">异常登录将触发保护</span>
               </div>
               <div className="flex items-center justify-between p-2 rounded-lg bg-slate-50 border border-slate-100">
                 <span>审计记录合规归档周期</span>
-                <span className="font-bold text-[#3182ce]">半年 (180天) 自动轮转</span>
+                <span className="font-bold text-[#3182ce]">记录留存并定期归档</span>
               </div>
             </div>
           </div>
@@ -939,7 +947,7 @@ export default function UserSecurityPage() {
             </div>
             <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-1">
               <Info className="w-3 h-3 text-slate-400 shrink-0" />
-              <span>登录审计记录保留半年（180天），系统每半年自动清理归档；支持手动删除</span>
+              <span>登录审计记录按平台留存策略自动清理归档；普通记录支持手动删除，安全类记录受合规保护</span>
             </p>
 
             {historyLoading ? (

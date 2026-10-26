@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
 import { isValidComponentCost } from "@/lib/component-cost";
+import MountComponentsModal from "@/app/admin/content/MountComponentsModal";
 import { YUAN_PER_POINT } from "@/lib/point-rate";
 import {
   Search,
@@ -17,6 +18,7 @@ import {
   Eye,
   EyeOff,
   Layers,
+  ArrowLeftRight,
   Star,
   RotateCcw,
   BookOpen,
@@ -29,6 +31,7 @@ import {
   FileCode,
   Braces,
   Settings,
+  X,
   Package,
   Wrench,
   Cloud,
@@ -688,6 +691,44 @@ export default function AdminComponentsPage() {
   const [loading, setLoading] = useState(true);
   const [components, setComponents] = useState<Component[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  // 阶段内「移动组件」弹窗（从其它阶段批量转移组件到当前阶段）
+  const [showMoveModal, setShowMoveModal] = useState(false);
+  // 【管理员专用】新增组件标准操作手册（存储于 systemconfig，不进文档中心）
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualLoading, setManualLoading] = useState(false);
+  const [manualData, setManualData] = useState<{
+    manual: {
+      title: string;
+      subtitle: string;
+      version: string;
+      steps: { step: number; title: string; blocks: { type: "text" | "warn" | "tip"; text: string }[] }[];
+    } | null;
+    updatedAt?: string;
+  } | null>(null);
+
+  const openManualModal = async () => {
+    setShowManualModal(true);
+    if (manualData) return; // 已加载过则直接复用
+    setManualLoading(true);
+    try {
+      const authToken = getAuthToken();
+      const res = await fetch("/api/admin/components/manual", {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      const json = await res.json();
+      if (res.ok && json?.data?.manual) {
+        setManualData({ manual: json.data.manual, updatedAt: json.data.updatedAt });
+      } else {
+        toast.error(json?.error || "读取操作手册失败");
+        setShowManualModal(false);
+      }
+    } catch {
+      toast.error("网络错误，读取操作手册失败");
+      setShowManualModal(false);
+    } finally {
+      setManualLoading(false);
+    }
+  };
   const [editingComponent, setEditingComponent] = useState<Component | null>(null);
   const [detailComp, setDetailComp] = useState<Component | null>(null);
 
@@ -900,7 +941,8 @@ export default function AdminComponentsPage() {
       }
 
       const data = await res.json();
-      const exportList: Component[] = data.components || [];
+      // 接口返回 { success, data: { components, ... } }（与列表加载 902 行同口径）
+      const exportList: Component[] = data?.data?.components || [];
 
       if (exportList.length === 0) {
         toast.error("当前筛选条件下暂无组件数据可导出");
@@ -1147,15 +1189,16 @@ export default function AdminComponentsPage() {
     });
   };
 
-  // 直达打开新增弹窗
+  // 直达打开新增弹窗（若当前处于某阶段筛选下，新组件直接归属于该阶段）
   const openCreateModal = () => {
+    const defaultCategory = filters.stage || categories[0]?.key || "REQ_DESIGN";
     setEditingComponent(null);
     setFormData({
       name: "",
       description: "",
-      type: categories[0]?.key || "REQ_DESIGN",
+      type: defaultCategory,
       icon: "package",
-      category: categories[0]?.key || "REQ_DESIGN",
+      category: defaultCategory,
       tags: "需求, 自动化",
       sortOrder: 0,
       isPublished: true,
@@ -1216,8 +1259,11 @@ export default function AdminComponentsPage() {
       newErrors.category = "请选择领域分类";
     }
 
-    // 算力成本必须是合法正整数，否则禁止保存（不得自动使用 5 等兜底值）
-    if (!isValidComponentCost(formData.estimatedModelTokens)) {
+    // 【P1】算力成本为 0（含清空）时：不再作为错误阻断，改为保存前二次确认；
+    // 其余非法值（负数/小数等表单输入不了，服务端仍会兜底拒绝）继续报错
+    const isZeroCost =
+      formData.estimatedModelTokens === 0 || formData.estimatedModelTokens === ("0" as unknown);
+    if (!isZeroCost && !isValidComponentCost(formData.estimatedModelTokens)) {
       newErrors.estimatedModelTokens = "请配置真实算力成本（合法正整数）";
     }
 
@@ -1231,9 +1277,10 @@ export default function AdminComponentsPage() {
       return;
     }
 
-    setSubmitting(true);
+    const doSubmit = async () => {
+      setSubmitting(true);
 
-    try {
+      try {
       const authToken = getAuthToken();
       const url = editingComponent
         ? `/api/admin/components?id=${editingComponent.id}`
@@ -1254,18 +1301,40 @@ export default function AdminComponentsPage() {
 
       if (res.ok) {
         toast.success(editingComponent ? "组件配置更新成功！" : "新增组件成功！");
+        // 【P1】服务端兜底警告（成本为 0/空保存成功时返回）：弹出提示引导补填
+        if (data.warning) {
+          toast.warning(data.warning);
+        }
         setShowCreateModal(false);
         loadComponents();
         loadStats();
       } else {
         toast.error(data.error || "操作失败");
       }
-    } catch (error) {
-      console.error("Submit component error:", error);
-      toast.error("操作失败");
-    } finally {
-      setSubmitting(false);
+      } catch (error) {
+        console.error("Submit component error:", error);
+        toast.error("操作失败");
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    // 【P1】零成本保存必须二次确认：明确告知后果（组件将无法执行），确认后才放行
+    if (isZeroCost) {
+      setConfirmDialog({
+        isOpen: true,
+        title: "估算 Token 成本未填写",
+        message:
+          "估算 Token 成本未填写，该组件将无法执行（执行时会提示算力成本未配置）。确定仍要保存吗？建议填写真实的每次执行扣点数。",
+        type: "warning",
+        onConfirm: () => {
+          doSubmit();
+        },
+      });
+      return;
     }
+
+    doSubmit();
   };
 
   // ============== 批量操作 ==============
@@ -1517,6 +1586,39 @@ export default function AdminComponentsPage() {
           </div>
         </div>
 
+        {/* 当前阶段操作条：阶段筛选激活时显示，将「组件归属管理」拆分为两个独立动作 */}
+        {filters.stage && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-[#3182ce]/25 shadow-sm p-4 mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Layers className="w-5 h-5 text-[#3182ce] shrink-0" />
+              <div className="min-w-0">
+                <p className="text-[11px] text-slate-400 font-bold leading-tight">当前所属阶段</p>
+                <p className="text-sm font-black text-slate-800 truncate">{getCategoryName(filters.stage)}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setShowMoveModal(true)}
+                className="inline-flex items-center gap-1.5 px-4 h-10 bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold rounded-xl text-xs transition-all duration-200 cursor-pointer shadow-2xs border border-amber-200/80 active:scale-95 whitespace-nowrap"
+                title="把其它阶段的现有组件转移（移动）到当前阶段"
+              >
+                <ArrowLeftRight className="w-4 h-4" />
+                移动组件
+              </button>
+              <button
+                type="button"
+                onClick={openCreateModal}
+                className="inline-flex items-center gap-1.5 px-4 h-10 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-bold rounded-xl text-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap cursor-pointer active:scale-95"
+                title="在当前阶段下直接新建组件（自动归属本阶段）"
+              >
+                <Plus className="w-4 h-4" />
+                新增组件
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* 操作工具栏 */}
         <div className="relative bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-white/90 shadow-sm overflow-hidden mb-6">
           <div className="relative space-y-3">
@@ -1525,7 +1627,7 @@ export default function AdminComponentsPage() {
                 <div className="relative w-full sm:flex-1">
                   <input
                     type="text"
-                    placeholder="搜索组件名称或功能描述..."
+                    placeholder="搜索组件ID（如 C10）、名称或功能描述..."
                     value={filters.search}
                     onChange={(e) => {
                       setFilters((prev) => ({ ...prev, search: e.target.value }));
@@ -1563,6 +1665,17 @@ export default function AdminComponentsPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* 【管理员专用】新增组件标准操作手册（存于 systemconfig，不进文档中心） */}
+                <button
+                  type="button"
+                  onClick={openManualModal}
+                  className="inline-flex items-center px-4 h-10 bg-violet-50 hover:bg-violet-100 text-violet-700 font-bold rounded-xl text-xs transition-all duration-200 cursor-pointer shadow-2xs border border-violet-200/80 active:scale-95 whitespace-nowrap"
+                  title="查看《以后新增组件的标准操作手册》"
+                >
+                  <BookOpen className="w-3.5 h-3.5 mr-1.5 text-violet-600" />
+                  操作手册
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -1589,16 +1702,8 @@ export default function AdminComponentsPage() {
                   <span>导出 Excel</span>
                 </button>
 
-                <Link
-                  href="/admin/components/contracts"
-                  className="inline-flex items-center gap-1.5 px-4 h-10 bg-blue-50 hover:bg-blue-100 text-[#2b6cb0] font-bold rounded-xl text-xs transition-all duration-200 cursor-pointer shadow-2xs border border-blue-200/80 active:scale-95 whitespace-nowrap"
-                  title="进入组件合同不可变版本配置中枢"
-                >
-                  <FileCode className="w-3.5 h-3.5 text-[#2b6cb0]" />
-                  <span>合同配置</span>
-                </Link>
-
-                {canCreate && (
+                {/* 新增组件：仅在「全部阶段」视图显示；处于某阶段筛选下时，入口收敛到上方「当前阶段」操作条（自动预填归属） */}
+                {canCreate && !filters.stage && (
                   <button
                     onClick={openCreateModal}
                     className="inline-flex items-center gap-1.5 px-5 h-10 bg-gradient-to-r from-[#4299e1] to-[#3182ce] text-white font-bold rounded-xl text-xs hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 whitespace-nowrap cursor-pointer active:scale-95"
@@ -1734,25 +1839,32 @@ export default function AdminComponentsPage() {
               {filters.stage && filters.published === "false"
                 ? `当前阶段【${getCategoryName(filters.stage)}】下暂无已下架组件，下架组件可能分布在其他阶段分类中。`
                 : filters.stage
-                ? `当前阶段【${getCategoryName(filters.stage)}】下暂无符合条件的组件。`
+                ? `当前阶段【${getCategoryName(filters.stage)}】下暂无符合条件的组件。您可以「移动组件到本阶段」把已有组件转移过来，或「新增组件」直接在本阶段新建。`
                 : filters.published === "false"
                 ? "全库当前暂无已下架的组件记录，所有组件均处于正常上架分发状态。"
                 : "当前筛选条件下暂无组件记录，您可以尝试更换关键词或清除筛选条件。"}
             </p>
             <div className="flex items-center justify-center gap-2 pt-2">
-              {filters.stage && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setFilters((prev) => ({ ...prev, stage: "" }));
-                    setCurrentPage(1);
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl bg-blue-50 hover:bg-blue-100 text-[#3182ce] text-xs font-bold transition-colors cursor-pointer shadow-2xs"
-                >
-                  查看全部阶段下的组件
-                </button>
-              )}
-              {(filters.search || filters.published || filters.stage) && (
+              {filters.stage ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setShowMoveModal(true)}
+                    className="px-4 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs font-bold transition-colors cursor-pointer shadow-2xs inline-flex items-center gap-1.5"
+                  >
+                    <ArrowLeftRight className="w-4 h-4" />
+                    移动组件到本阶段
+                  </button>
+                  <button
+                    type="button"
+                    onClick={openCreateModal}
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#4299e1] to-[#3182ce] hover:shadow-lg text-white text-xs font-bold transition-all duration-300 cursor-pointer inline-flex items-center gap-1.5 active:scale-95"
+                  >
+                    <Plus className="w-4 h-4" />
+                    新增组件
+                  </button>
+                </>
+              ) : (filters.search || filters.published) && (
                 <button
                   type="button"
                   onClick={() => {
@@ -2154,6 +2266,103 @@ export default function AdminComponentsPage() {
             )}
           </div>
         )}
+
+        {/* 阶段内「移动组件」弹窗：把其它阶段的组件批量转移到当前阶段 */}
+        {showMoveModal && filters.stage && (
+          <MountComponentsModal
+            stageKey={filters.stage}
+            stageName={getCategoryName(filters.stage)}
+            stages={categories}
+            onClose={() => setShowMoveModal(false)}
+            onMounted={() => {
+              setShowMoveModal(false);
+              clearSelection();
+              loadComponents();
+              loadStats();
+            }}
+          />
+        )}
+
+        {/* 【管理员专用】新增组件标准操作手册弹窗（Portal 到 body，规避毛玻璃容器的 fixed 定位失效问题） */}
+        {showManualModal &&
+          createPortal(
+            <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+                {/* Header */}
+                <div className="flex items-start justify-between px-6 py-4 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-white">
+                  <div className="min-w-0">
+                    <h2 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                      <BookOpen className="w-4 h-4 text-violet-600" />
+                      {manualData?.manual?.title || "以后新增组件的标准操作手册"}
+                    </h2>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                      {manualData?.manual?.subtitle || "组件 = 数据库合同（Prompt 模板为核心）。按这五步走，每一步都有校验兜底。"}
+                    </p>
+                    <p className="text-[10px] text-violet-500 mt-1 font-bold">
+                      {manualData?.manual?.version || ""}
+                      {manualData?.updatedAt ? ` · 更新于 ${new Date(manualData.updatedAt).toLocaleString("zh-CN")}` : ""}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowManualModal(false)}
+                    className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all cursor-pointer border border-slate-200/40 shrink-0 ml-3"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                {/* Body */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 min-h-0">
+                  {manualLoading ? (
+                    <div className="flex items-center justify-center py-16 text-xs text-slate-400">
+                      <RotateCcw className="w-4 h-4 animate-spin mr-2" /> 正在读取操作手册...
+                    </div>
+                  ) : manualData?.manual ? (
+                    <div className="space-y-5">
+                      {manualData.manual.steps.map((s) => (
+                        <div key={s.step} className="bg-slate-50/60 rounded-xl border border-slate-200/70 p-4">
+                          <h3 className="text-xs font-black text-slate-800 flex items-center gap-2 mb-3">
+                            <span className="w-5 h-5 rounded-lg bg-gradient-to-br from-[#4299e1] to-[#3182ce] text-white text-[10px] font-black flex items-center justify-center shrink-0">
+                              {s.step}
+                            </span>
+                            第 {s.step} 步：{s.title}
+                          </h3>
+                          <div className="space-y-2 pl-7">
+                            {s.blocks.map((b, i) => {
+                              if (b.type === "warn") {
+                                return (
+                                  <p key={i} className="text-[11px] leading-relaxed bg-rose-50 border border-rose-200 text-rose-700 rounded-lg px-3 py-2 font-medium">
+                                    <strong className="font-black">注意：</strong>
+                                    {b.text}
+                                  </p>
+                                );
+                              }
+                              if (b.type === "tip") {
+                                return (
+                                  <p key={i} className="text-[11px] leading-relaxed bg-sky-50 border border-sky-200 text-sky-700 rounded-lg px-3 py-2 font-medium">
+                                    <strong className="font-black">提示：</strong>
+                                    {b.text}
+                                  </p>
+                                );
+                              }
+                              return (
+                                <p key={i} className="text-xs leading-relaxed text-slate-600">
+                                  {b.text}
+                                </p>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-16 text-xs text-slate-400">手册内容为空</div>
+                  )}
+                </div>
+              </div>
+            </div>,
+            document.body
+          )}
       </main>
 
       {/* 权威组件详情 Modal (全景全方位补充) */}

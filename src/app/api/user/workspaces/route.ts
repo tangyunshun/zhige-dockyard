@@ -232,6 +232,24 @@ export async function DELETE(req: NextRequest) {
       );
     }
 
+    // 删除空间属高危操作：与空间中枢 /api/workspace/delete 同级要求二次身份验证，
+    // 堵住"绕过中枢 check-delete + step-up 门禁直接裸删"的旁路
+    const body = await req.json().catch(() => ({}));
+    const { requireStepUp } = await import("@/lib/step-up");
+    const stepUp = await requireStepUp(req, "delete_workspace", userId, { verifyToken: body?.verifyToken });
+    if (!stepUp.ok) {
+      return NextResponse.json(
+        {
+          error: stepUp.error,
+          message:
+            stepUp.error === "SEC_AUTH_REQUIRED"
+              ? "删除工作空间属于高危操作，需要进行二次身份验证"
+              : "验证令牌无效或已过期，请重新验证",
+        },
+        { status: stepUp.status },
+      );
+    }
+
     // 级联清理关联数据（componentusage / conversation 仅建立普通索引，不会随 workspace 级联删除）
     await prisma.workspacequota.deleteMany({ where: { workspaceId } });
     await prisma.workspacemember.deleteMany({ where: { workspaceId } });

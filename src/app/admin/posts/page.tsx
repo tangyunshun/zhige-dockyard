@@ -7,6 +7,7 @@ import {
   Plus,
   Edit2,
   Trash2,
+  Undo2,
   Save,
   Check,
   X,
@@ -76,7 +77,7 @@ export interface SubmittedPostItem {
   workspaceName: string;
   submittedByUserId: string;
   submittedByUserName?: string;
-  status: "PENDING" | "ACCEPTED" | "REJECTED";
+  status: "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN";
   adminNote?: string;
   reviewedAt?: string;
   createdAt: string;
@@ -142,8 +143,12 @@ function AdminPostsContent() {
 
   // 企业空间提报岗位状态
   const [submissions, setSubmissions] = useState<SubmittedPostItem[]>([]);
-  const [submissionFilter, setSubmissionFilter] = useState<"ALL" | "PENDING" | "ACCEPTED" | "REJECTED">("ALL");
+  const [submissionFilter, setSubmissionFilter] = useState<"ALL" | "PENDING" | "ACCEPTED" | "REJECTED" | "WITHDRAWN">("ALL");
   const [reviewingSubmissionId, setReviewingSubmissionId] = useState<string | null>(null);
+  // 提报记录多选与删除
+  const [selectedSubIds, setSelectedSubIds] = useState<string[]>([]);
+  const [batchDeleting, setBatchDeleting] = useState(false);
+  const [deletingSubId, setDeletingSubId] = useState<string | null>(null);
   // 审核操作（接收 / 不接收）二次确认模态框状态
   const [confirmReview, setConfirmReview] = useState<{
     submission: SubmittedPostItem;
@@ -571,6 +576,10 @@ function AdminPostsContent() {
       if (res.ok && data.success) {
         toast.success(data.message);
         loadStandardPosts();
+        // 审核完成后立即同步刷新顶部待审核提醒与左侧菜单角标
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("admin-pending-tasks-changed"));
+        }
       } else {
         toast.error(data.error || "审核操作失败");
       }
@@ -579,6 +588,52 @@ function AdminPostsContent() {
       toast.error("网络异常，审核操作失败");
     } finally {
       setReviewingSubmissionId(null);
+    }
+  };
+
+  // 重新拉取空间提报岗位列表（删除后刷新）
+  const loadSubmissions = async () => {
+    try {
+      const token = getAuthToken();
+      const res = await fetch("/api/admin/posts/submissions?status=ALL", {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      const data = await res.json();
+      if (res.ok && data.success) setSubmissions(data.submissions || []);
+    } catch (err) {
+      console.error("加载提报岗位列表失败:", err);
+    }
+  };
+
+  // 单条或批量删除提报记录（管理员）
+  const handleDeleteSubmissions = async (ids: string[]) => {
+    if (!ids || ids.length === 0) return;
+    if (!window.confirm(`确定删除选中的 ${ids.length} 条岗位提报记录吗？删除后不可恢复。`)) return;
+    try {
+      if (ids.length === 1) setDeletingSubId(ids[0]);
+      else setBatchDeleting(true);
+      const token = getAuthToken();
+      const res = await fetch("/api/admin/posts/submissions", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        credentials: "include",
+        body: JSON.stringify({ ids }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        toast.success(data.message || "删除成功");
+        setSelectedSubIds((prev) => prev.filter((id) => !ids.includes(id)));
+        await loadSubmissions();
+      } else {
+        toast.error(data.error || "删除失败");
+      }
+    } catch (err) {
+      console.error("删除提报记录失败:", err);
+      toast.error("网络异常，删除失败");
+    } finally {
+      setDeletingSubId(null);
+      setBatchDeleting(false);
     }
   };
 
@@ -1486,7 +1541,7 @@ function AdminPostsContent() {
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-1 font-medium">
-                审阅各企业空间（如西安云舜科技等）自主新建并同意同步至系统的专有岗位；超管可选择【接收】将其晋升为全网官方标准岗位，或【不接收】仅保留空间自治。
+              审阅各企业空间（如西安云舜科技等）自主新建并同意同步至系统的专有岗位；超管可选择【接收】将其晋升为全网官方标准岗位，或【不接收】仅保留在当前企业空间使用。
               </p>
             </div>
 
@@ -1506,9 +1561,14 @@ function AdminPostsContent() {
                   count: submissions.filter((s) => s.status === "ACCEPTED").length,
                 },
                 {
-                  label: "已拒绝(仅空间自治)",
+                  label: "已拒绝(仅留原空间)",
                   value: "REJECTED",
                   count: submissions.filter((s) => s.status === "REJECTED").length,
+                },
+                {
+                  label: "已撤回",
+                  value: "WITHDRAWN",
+                  count: submissions.filter((s) => s.status === "WITHDRAWN").length,
                 },
               ].map((tab) => (
                 <button
@@ -1539,6 +1599,52 @@ function AdminPostsContent() {
             </div>
           </div>
 
+          {/* 批量删除工具条（仅对已完成审核：已接收 / 已拒绝 的记录开放） */}
+          {paginatedSubmissions.some((s) => s.status === "ACCEPTED" || s.status === "REJECTED") && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 p-3 shadow-2xs flex items-center justify-between gap-3 flex-wrap">
+            <label className="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={
+                  (() => {
+                    const deletable = paginatedSubmissions.filter(
+                      (s) => s.status === "ACCEPTED" || s.status === "REJECTED"
+                    );
+                    return deletable.length > 0 && deletable.every((s) => selectedSubIds.includes(s.id));
+                  })()
+                }
+                onChange={(e) => {
+                  const deletableIds = paginatedSubmissions
+                    .filter((s) => s.status === "ACCEPTED" || s.status === "REJECTED")
+                    .map((s) => s.id);
+                  if (e.target.checked) {
+                    setSelectedSubIds((prev) => Array.from(new Set([...prev, ...deletableIds])));
+                  } else {
+                    setSelectedSubIds((prev) => prev.filter((id) => !deletableIds.includes(id)));
+                  }
+                }}
+                className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
+              />
+              <span>
+                全选本页可删除项（
+                {paginatedSubmissions.filter((s) => s.status === "ACCEPTED" || s.status === "REJECTED").length} 条）
+              </span>
+            </label>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500 font-medium">已选 {selectedSubIds.length} 项</span>
+              <button
+                type="button"
+                disabled={selectedSubIds.length === 0 || batchDeleting}
+                onClick={() => handleDeleteSubmissions(selectedSubIds)}
+                className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {batchDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                <span>批量删除</span>
+              </button>
+            </div>
+          </div>
+          )}
+
           {/* 提报卡片列表 */}
           {filteredSubmissions.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200/80 p-16 text-center shadow-2xs">
@@ -1558,6 +1664,7 @@ function AdminPostsContent() {
                   const isPending = sub.status === "PENDING";
                   const isAccepted = sub.status === "ACCEPTED";
                   const isRejected = sub.status === "REJECTED";
+                  const isWithdrawn = sub.status === "WITHDRAWN";
 
                   return (
                     <div
@@ -1566,7 +1673,22 @@ function AdminPostsContent() {
                     >
                       <div>
                         {/* 顶部标牌与状态 */}
-                        <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          {(isAccepted || isRejected) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedSubIds.includes(sub.id)}
+                            onChange={() =>
+                              setSelectedSubIds((prev) =>
+                                prev.includes(sub.id)
+                                  ? prev.filter((id) => id !== sub.id)
+                                  : [...prev, sub.id]
+                              )
+                            }
+                            className="mt-1 w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer shrink-0"
+                            title="选择该提报记录"
+                          />
+                          )}
                           <div className="flex items-center gap-2.5 min-w-0 flex-1">
                             <div
                               className="w-10 h-10 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0"
@@ -1606,7 +1728,13 @@ function AdminPostsContent() {
                             )}
                             {isRejected && (
                               <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
-                                已拒绝 (仅空间自治)
+                                已拒绝 (仅留原空间)
+                              </span>
+                            )}
+                            {isWithdrawn && (
+                              <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
+                                <Undo2 className="w-3 h-3" />
+                                <span>已撤回（用户撤回申请）</span>
                               </span>
                             )}
                           </div>
@@ -1689,6 +1817,24 @@ function AdminPostsContent() {
                             <span>详情</span>
                           </button>
 
+                          {/* 删除该提报记录（仅已完成审核：已接收 / 已拒绝 后可删除） */}
+                          {(isAccepted || isRejected) && (
+                          <button
+                            type="button"
+                            disabled={deletingSubId === sub.id}
+                            onClick={() => handleDeleteSubmissions([sub.id])}
+                            className="px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 text-rose-600 hover:bg-rose-50 border border-rose-200/70 cursor-pointer"
+                            title="删除该提报记录"
+                          >
+                            {deletingSubId === sub.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                            <span>删除</span>
+                          </button>
+                          )}
+
                           {/* 仅在待审阅（PENDING）状态下显示【接收】和【不接收】 */}
                           {sub.status === "PENDING" && (
                             <>
@@ -1719,7 +1865,7 @@ function AdminPostsContent() {
                                   setConfirmReview({ submission: sub, action: "REJECT" });
                                 }}
                                 className="px-2.5 py-1 text-xs font-bold rounded-lg transition-all flex items-center gap-1 text-red-600 hover:bg-red-50 border border-red-200/70 cursor-pointer"
-                                title="拒绝纳入全平台官方库并输入审核意见通知提报用户（保留空间内部自治使用）"
+                                title="拒绝纳入全平台官方库并输入审核意见通知提报用户（保留在原来的企业空间继续使用）"
                               >
                                 <X className="w-3.5 h-3.5" />
                                 <span>不接收</span>
@@ -1735,11 +1881,11 @@ function AdminPostsContent() {
                             </span>
                           )}
 
-                          {/* 已拒绝状态：仅展示空间自治标记，不展示接收操作 */}
+                          {/* 已拒绝状态：仅展示未纳入平台标记，不展示接收操作 */}
                           {isRejected && (
                             <span className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-lg">
                               <AlertCircle className="w-3.5 h-3.5 text-slate-400" />
-                              <span>已留存空间自治</span>
+                              <span>已拒绝（仅留原空间）</span>
                             </span>
                           )}
                         </div>
@@ -2384,7 +2530,12 @@ function AdminPostsContent() {
                   )}
                   {viewingSubmission.status === "REJECTED" && (
                     <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-300">
-                      已拒绝纳入系统标准集（仅在提报空间内部自治使用）
+                      已拒绝纳入系统标准集（仅保留在当前企业空间使用）
+                    </span>
+                  )}
+                  {viewingSubmission.status === "WITHDRAWN" && (
+                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-600 border border-slate-300">
+                      用户已撤回申请（仅保留在当前企业空间使用）
                     </span>
                   )}
                 </div>
@@ -2448,7 +2599,7 @@ function AdminPostsContent() {
                 ) : (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 rounded-xl">
                     <AlertCircle className="w-4 h-4 text-slate-400" />
-                    <span>已留存空间自治</span>
+                    <span>{viewingSubmission.status === "WITHDRAWN" ? "用户已撤回申请（仅留原空间）" : "已拒绝（仅留原空间）"}</span>
                   </span>
                 )}
               </div>
@@ -2506,7 +2657,7 @@ function AdminPostsContent() {
                 <div className="space-y-3">
                   <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 text-xs text-amber-800 leading-relaxed">
                     <p>
-                      不接收后，该岗位将<strong>仅保留在提报空间内部自治使用</strong>，不会向平台其他空间开放。请输入不接收原因，系统将以消息提醒形式通知提报人。
+                      不接收后，该岗位将<strong>仅保留在原来的企业空间继续使用</strong>，不会向平台其他空间开放。请输入不接收原因，系统将以消息提醒形式通知提报人。
                     </p>
                   </div>
 

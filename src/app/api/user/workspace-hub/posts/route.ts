@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser, isAdminRole } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { hasPermission, PermissionAction, ResourceType, EnterpriseRole } from "@/constants/roles";
+import { addNotification } from "@/lib/notifications-store";
 
 /**
  * 获取岗位列表
@@ -220,7 +222,16 @@ export async function POST(request: NextRequest) {
     const userId = authResult.user.id;
 
     const body = await request.json();
-    const { workspaceId, name, code, description, color, icon, templatePermissions, syncToSystem, items } = body;
+    const { workspaceId, name, code, description, color, icon, templatePermissions, syncToSystem, visibility, items } = body;
+
+    // 可见范围：明确传入 visibility 则采用；否则由 syncToSystem 兼容推导（共享给系统=SYSTEM，个人使用=PRIVATE）
+    const effectiveVisibility: "PRIVATE" | "SYSTEM" =
+      visibility === "SYSTEM" || visibility === "PRIVATE"
+        ? visibility
+        : syncToSystem
+          ? "SYSTEM"
+          : "PRIVATE";
+    const isSharedToSystem = effectiveVisibility === "SYSTEM";
 
     const isBatch = Array.isArray(items) && items.length > 0;
 
@@ -318,11 +329,18 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // 若用户勾选同意同步至系统岗位集合，则提报至超级管理员后台审核池
+    // 若选择"共享给系统"，先执行平台级重复检测，命中则禁止提交并明确提示
     let submissionResult = null;
-    if (syncToSystem) {
-      const { submitWorkspacePostToPlatform } = await import("@/lib/workspace-post-submissions");
-      submissionResult = await submitWorkspacePostToPlatform({
+    if (isSharedToSystem) {
+      const submissionsLib = await import("@/lib/workspace-post-submissions");
+      const dup = await submissionsLib.checkDuplicatePost(name);
+      if (dup.duplicate) {
+        return NextResponse.json(
+          { error: `系统已存在相同岗位：${dup.reason || name}` },
+          { status: 409 },
+        );
+      }
+      submissionResult = await submissionsLib.submitWorkspacePostToPlatform({
         workspacePostId: post.id,
         name: post.name,
         code: code || `POST_${Date.now()}`,
@@ -333,7 +351,21 @@ export async function POST(request: NextRequest) {
         workspaceName: workspace.name || "未命名空间",
         submittedByUserId: userId,
         submittedByUserName: authResult.user.name || authResult.user.email || "空间管理员",
+        visibility: "SYSTEM",
       });
+
+      // 提交成功消息提醒（提报进入审核池，通知提报人）
+      try {
+        await addNotification(
+          userId,
+          `📨 岗位提报已提交：【${post.name}】等待超级管理员审核`,
+          `您在企业空间【${workspace.name || "企业空间"}】提报的新岗位【${post.name}】（代号: ${code || `POST_${Date.now()}`}）已提交至平台官方标准库审核池。审核结果将以站内消息通知您；若审核通过且为共享岗位，系统将自动赠送您 ${10} 个算力点（有效期 1 个月）。`,
+          "system",
+          `/workspace/${workspace.id}?tab=permissions`
+        );
+      } catch (notifyErr) {
+        console.error("发送岗位提交通知异常:", notifyErr);
+      }
     }
 
     // 创建默认权限
@@ -365,11 +397,12 @@ export async function POST(request: NextRequest) {
         name: post.name,
         description: post.description,
         color: post.color,
-        syncToSystem: Boolean(syncToSystem),
+        visibility: effectiveVisibility,
+        syncToSystem: isSharedToSystem,
         submission: submissionResult,
       },
-      message: syncToSystem
-        ? "岗位创建成功，并已同步提报至系统官方岗位库等待审核"
+      message: isSharedToSystem
+        ? "岗位创建成功，并已提交至平台官方标准库审核池等待审核"
         : "岗位创建成功（仅在当前企业空间内部生效）",
     };
 
@@ -420,6 +453,9 @@ export async function PUT(request: NextRequest) {
     if (userRole !== "OWNER" && userRole !== "ADMIN") {
       return NextResponse.json({ error: "无权配置空间权限矩阵，需要管理员权限" }, { status: 403 });
     }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
 
     // 1. 如果传入了岗位排序列表 orderedPostIds，执行排序持久化
     if (Array.isArray(orderedPostIds) && orderedPostIds.length > 0) {

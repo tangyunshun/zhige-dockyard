@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { requirePlatformPermission } from "@/lib/security";
+import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 export async function GET(request: NextRequest) {
   try {
@@ -202,6 +202,8 @@ export async function POST(request: NextRequest) {
         dispatchedCount = result.count;
       }
 
+      await writeAuditLog(authCheck.user?.id || null, "notification:publish", { targetType, dispatchedCount, title }, null, null, request);
+
       return NextResponse.json({
         success: true,
         message: `系统通知已全员广播派发成功，已触达全站 ${dispatchedCount} 位活跃用户信箱`,
@@ -290,6 +292,8 @@ export async function POST(request: NextRequest) {
       });
       dispatchedCount = result.count;
 
+      await writeAuditLog(authCheck.user?.id || null, "notification:publish", { targetType, dispatchedCount, targetRole: targetRole ?? null, groupId: groupId ?? null, title }, null, null, request);
+
       return NextResponse.json({
         success: true,
         message: `系统通知已成功批量送达【${groupLabel}】群组，共计 ${dispatchedCount} 位用户`,
@@ -340,6 +344,8 @@ export async function POST(request: NextRequest) {
         data: notificationsData,
       });
       dispatchedCount = result.count;
+
+      await writeAuditLog(authCheck.user?.id || null, "notification:publish", { targetType, dispatchedCount, userCount: targetUsers.length, title }, null, null, request);
 
       return NextResponse.json({
         success: true,
@@ -417,6 +423,8 @@ export async function PATCH(request: NextRequest) {
         },
       },
     });
+
+    await writeAuditLog(auth.user?.id || null, "notification:update", { id, changed: { emailNotifications, systemMessages, projectUpdates, commentMentions, frequency } }, null, null, request);
 
     return NextResponse.json({
       success: true,

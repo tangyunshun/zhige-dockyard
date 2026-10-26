@@ -83,7 +83,9 @@ export default function UserComponentsPage() {
   };
 
   const filteredComponents = components.filter((component) => {
-    const matchesSearch = component.name.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch =
+      component.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      component.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = filterStatus === "ALL" || component.status === filterStatus;
     return matchesSearch && matchesStatus;
   });
@@ -271,7 +273,7 @@ export default function UserComponentsPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <input
             type="text"
-            placeholder="搜索组件资产名称..."
+            placeholder="搜索组件ID或资产名称..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-xs rounded-lg border border-slate-200 bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15 transition-all outline-none"
@@ -636,7 +638,7 @@ export default function UserComponentsPage() {
                 type="button"
                 onClick={() => {
                   setShowDetailModal(false);
-                  router.push("/studio");
+                  router.push(`/studio?componentId=${selectedComponent?.id ?? ''}`);
                 }}
                 className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors flex items-center gap-1.5"
               >

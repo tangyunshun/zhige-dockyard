@@ -96,6 +96,8 @@ model user {
   passwordExpireDate                                       DateTime?             @map("password_expire_date")
   ssoProvider                                              String?               @map("sso_provider")
   ssoOpenid                                                String?               @map("sso_openid")
+  /// 个人签名/团队寄语（个人资料名片展示）
+  bio                                                      String?               @db.Text
   apikey                                                   apikey[]
   componentrating                                          componentrating[]
   componentreview                                          componentreview[]
@@ -573,6 +575,8 @@ model userpreference {
   twoFactorEnabled Boolean  @default(false)
   /// 新设备登录与异地登录安全告警开关
   loginAlertEnabled Boolean  @default(true)
+  /// 个人中心 UI 偏好（语言/主题/密度/导出格式等，JSON 全量快照）
+  uiSettings       Json?
   createdAt        DateTime @default(now())
   updatedAt        DateTime
   user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
@@ -1178,8 +1182,10 @@ model billingrecord {
   // 交易金额，单位：分（与 membershiplevel 价格口径保持一致）
   amount      Int      @default(0)
   currency    String   @default("CNY")
-  // 交易状态：SUCCESS 成功 / PENDING 处理中 / FAILED 失败 / REFUNDED 已退款
+  // 交易状态：SUCCESS 成功 / PENDING 处理中 / FAILED 失败 / REFUNDED 已退款 / EXPIRED 超时未付
   status      String   @default("SUCCESS")
+  // 支付截止时间：PENDING 订单超时未付由清算任务置 EXPIRED，超时单不再允许入账（大厂订单生命周期标准做法）
+  expiresAt   DateTime?
   channel     String? // 支付渠道
   referenceId String? // 关联业务单号（如操作日志 ID）
   invoiceUrl  String?

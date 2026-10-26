@@ -44,7 +44,7 @@ export const COMPONENT_CATALOG_SEED = [
         { q: "生成的偏离表可以直接作为投标文件吗？", a: "可以的。偏离表完全依据标准的招标文件与本系统录入的产品方案库进行对比生成，但为了保障百分之百的中标合规，建议在导出后由专家进行人工终审。" }
       ],
     },
-    sortOrder: 100, usageCount: 3421,
+    sortOrder: 100, usageCount: 0,
   },
   {
     id: "C02", name: "方案安全合规体检",
@@ -53,7 +53,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#防坑排雷", "#拒绝背锅"],
     previewData: { inputMock: "上传技术方案说明文档", outputMock: "筛查出 3 处可能违规的安全漏洞，并给出具体的政策对照与修改方案", roiText: "资深专家审查需要 2 天，本工具扫描并输出建议仅需 2 分钟" },
     inputMode: "file", accept: ".pdf,.doc,.docx,.txt,.md", hint: "上传技术方案文档（PDF/Word/TXT/MD），系统自动扫描合规项",
-    sortOrder: 99, usageCount: 2156,
+    sortOrder: 99, usageCount: 0,
   },
   {
     id: "C03", name: "竞品优劣深度对比",
@@ -62,7 +62,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 120, businessTags: ["#提升中标率", "#降本增效"],
     previewData: { inputMock: "上传竞品手册以及我方功能清单", outputMock: "自动生成多维分析表，明确列出我方优势 8 项、劣势 3 项、持平 5 项", roiText: "人工查阅并对比整理需要 1 整天，自动生成对比报告仅需 1 分钟" },
     inputMode: "file", accept: ".pdf,.doc,.docx,.xlsx,.xls,.txt,.md", hint: "上传竞品手册与功能清单文档",
-    sortOrder: 98, usageCount: 1876,
+    sortOrder: 98, usageCount: 0,
   },
   {
     id: "C04", name: "工作汇报白话文翻译",
@@ -71,7 +71,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 60, businessTags: ["#沟通顺畅"],
     previewData: { inputMock: "选择您的汇报对象，并输入原始的架构技术方案", outputMock: "高管版着重突出商业价值与省钱亮点，技术版保留代码及架构逻辑", roiText: "无需手动编写多份汇报材料，一键生成适配各种场合的沟通文案" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 97, usageCount: 2543,
+    sortOrder: 97, usageCount: 0,
   },
   {
     id: "C05", name: "开发工时与成本估算",
@@ -80,7 +80,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#防亏损", "#科学排期"],
     previewData: { inputMock: "输入预估的功能模块列表以及预想的团队成员人数", outputMock: "提供资金测算：人力 45 万元、服务器 12 万元、预估整体毛利约 35%", roiText: "人工精细化测算需要半天，本组件利用算法推荐仅需 2 分钟" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 96, usageCount: 1234,
+    sortOrder: 96, usageCount: 0,
   },
   {
     id: "C06", name: "项目投资回报ROI分析",
@@ -89,7 +89,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#提升中标率", "#降本增效"],
     previewData: { inputMock: "输入估算的功能上线收益和开发所耗人工成本数据", outputMock: "自动生成评估表：投资回收周期约为 6 个月，净增利润 120 万元", roiText: "用数据量化研发收益，辅助产品投资与立项决策" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 95, usageCount: 987,
+    sortOrder: 95, usageCount: 0,
   },
   {
     id: "C07", name: "会议纪要自动转需求(PRD)",
@@ -98,7 +98,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#降本增效", "#规避纠纷"],
     previewData: { inputMock: "粘贴杂乱的聊天截图文字或语音转文字的会议记录", outputMock: "输出格式化 PRD 文档：包含核心流程、用户故事、功能点及测试指标", roiText: "传统手工撰写需半天时间，使用该工具仅需 1 分钟即可完成排版整理" },
     inputMode: "both", accept: ".md,.txt,.pdf,.doc,.docx", hint: "上传会议纪要/语音转写文档，或直接粘贴聊天记录文字",
-    sortOrder: 94, usageCount: 4521,
+    sortOrder: 94, usageCount: 0,
   },
   {
     id: "C08", name: "业务异常与极端场景补全",
@@ -107,7 +107,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#提升稳定性", "#防漏项"],
     previewData: { inputMock: "输入正常的主流程描述（如：用户在购物车选中商品，发起微信支付）", outputMock: "自动列出 12 种可能出错场景的应对提示：如库存不足、并发超卖、支付超时等", roiText: "预防 60% 以上由于测试和设计遗漏引发的线上系统故障" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 93, usageCount: 3245,
+    sortOrder: 93, usageCount: 0,
   },
   {
     id: "C09", name: "客户差评自动聚类与提单",
@@ -116,7 +116,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 180, businessTags: ["#提升满意度", "#快速修复"],
     previewData: { inputMock: "上传多渠道导出的用户差评或投诉记录", outputMock: "聚类分析三大核心痛点，并针对数据库超时漏洞自动向研发提缺陷单", roiText: "海量差评分类由原先 4 小时人工梳理，提炼为 30 秒自动定位和分配" },
     inputMode: "file", accept: ".csv,.xlsx,.xls,.txt", hint: "上传多渠道导出的差评/投诉记录文件（CSV/Excel/TXT）",
-    sortOrder: 92, usageCount: 2876,
+    sortOrder: 92, usageCount: 0,
   },
   {
     id: "C10", name: "虚拟模拟测试数据生成",
@@ -125,7 +125,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 250, businessTags: ["#安全合规", "#提速测试"],
     previewData: { inputMock: "选择所需的行业模板（如金融、电商）及所需的数据条数", outputMock: "生成 10,000 条包含随机姓名、打码手机号和逼真交易的测试数据表", roiText: "避免使用生产真实敏感数据测试的泄密风险，秒级批量生成" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 91, usageCount: 5432,
+    sortOrder: 91, usageCount: 0,
   },
   {
     id: "C11", name: "后端数据接口自动开发",
@@ -134,7 +134,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#降本增效"],
     previewData: { inputMock: "输入接口要求（如：设计一个用户注册、手机验证码登录的API）", outputMock: "生成 Node.js/Java 接口代码：包含字段格式检查、错误提示和说明书注解", roiText: "手写一个标准数据接口需 2 小时，本工具自动产出核心代码仅需 10 秒" },
     inputMode: "both", accept: ".md,.txt,.pdf,.doc,.docx", hint: "上传接口 PRD/需求文档，或直接粘贴接口要求文字",
-    sortOrder: 90, usageCount: 2134,
+    sortOrder: 90, usageCount: 0,
   },
   {
     id: "C12", name: "接口数据关联设计",
@@ -143,7 +143,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 120, businessTags: ["#理清逻辑"],
     previewData: { inputMock: "输入各种表关系的口语描述（例如：用户有多个订单，订单属于商家）", outputMock: "输出对应的 DDL 建表语句、Resolver 骨架代码以及直观的关联拓扑图", roiText: "复杂的表关系设计与梳理从 1 天缩短至 1 分钟，保证结构清晰" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 89, usageCount: 1765,
+    sortOrder: 89, usageCount: 0,
   },
   {
     id: "C13", name: "即时消息WebSocket开发",
@@ -152,7 +152,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#实时性"],
     previewData: { inputMock: "描述实时通信要求（如：多人在线白板、多终端协同写文档）", outputMock: "生成服务端和客户端通信连接代码：含心跳健康监测、断线自动重连", roiText: "即时通信网络底层核心模块开发工期缩短近 70%" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 88, usageCount: 2987,
+    sortOrder: 88, usageCount: 0,
   },
   {
     id: "C14", name: "高并发排队消息队列集成",
@@ -161,7 +161,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#服务器抗压"],
     previewData: { inputMock: "选择您使用的排队队列类型（如 RabbitMQ）以及业务场景", outputMock: "生成生产者发送代码、消费者接收逻辑以及投递失败后的重试与死信机制", roiText: "高并发限流排队模块的搭建与配置由原先 3 天缩短至 5 分钟" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 87, usageCount: 3654,
+    sortOrder: 87, usageCount: 0,
   },
   {
     id: "C15", name: "高速数据内存提速设计",
@@ -170,7 +170,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 100, businessTags: ["#数据库减压"],
     previewData: { inputMock: "输入当前的接口访问频次 QPS 和数据更新策略", outputMock: "设计最佳缓存配置方案：包含 Key 命名规范、过期失效时间及防穿透设计", roiText: "数据库直连查询次数减少 80%，极大改善高并发卡顿问题" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 86, usageCount: 4123,
+    sortOrder: 86, usageCount: 0,
   },
   {
     id: "C16", name: "登录权限与安全卡点",
@@ -179,7 +179,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#安全防黑"],
     previewData: { inputMock: "选择期望的安全校验方式和角色划分（如：超级管理员、普通成员）", outputMock: "生成权限校验中间件代码：支持令牌生成与过期检查、防止非法越权请求", roiText: "系统核心安全大门配置由原先 5 天搭建，缩短至 10 分钟自动生成" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 85, usageCount: 3567,
+    sortOrder: 85, usageCount: 0,
   },
   {
     id: "C17", name: "SQL数据库查询语句生成",
@@ -188,7 +188,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 60, businessTags: ["#提速开发"],
     previewData: { inputMock: "描述您的查询需求（如：帮我查一下近30天订单总额前10名的消费用户）", outputMock: "输出优化后的标准 SQL 语句，提示哪些字段应当加索引以防止慢查询", roiText: "复杂的多表联查 SQL 语句由原先手写半小时，缩短至 5 秒自动产出" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 84, usageCount: 2345,
+    sortOrder: 84, usageCount: 0,
   },
   {
     id: "C18", name: "数据表结构与关系图设计",
@@ -197,7 +197,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 120, businessTags: ["#科学建表"],
     previewData: { inputMock: "描述您所需的实体属性（如：商品表需要有主键、标题、分类、库存）", outputMock: "生成标准的 DDL 建表 SQL 语句，以及清晰展示外键关系的实体图", roiText: "数据库前期表结构与关系梳理从原先半天降至 2 分钟，确保无冗余字段" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 83, usageCount: 1876,
+    sortOrder: 83, usageCount: 0,
   },
   {
     id: "C19", name: "慢 SQL 查询自动诊断提速",
@@ -206,7 +206,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#流畅运行"],
     previewData: { inputMock: "粘贴数据库慢查询日志或 EXPLAIN 语句的执行结果", outputMock: "诊断出由于全表扫描引发卡顿，自动给出建索引建议或 SQL 重写语句", roiText: "使数据库慢查询查询时间平均降低 90% 以上，减少硬件服务器压力" },
     inputMode: "both", accept: ".log,.txt,.sql", hint: "上传慢查询日志或 EXPLAIN 结果文件，或直接粘贴日志内容",
-    sortOrder: 82, usageCount: 1234,
+    sortOrder: 82, usageCount: 0,
   },
   {
     id: "C20", name: "跨数据库无缝导入与平移",
@@ -215,7 +215,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#跨数据库"],
     previewData: { inputMock: "上传源数据库的 DDL 建表语句，并选定目标数据库类型", outputMock: "输出完全兼容目标库的新建表语句，自动转换特殊函数、时间类型等", roiText: "数据库迁移转换工期从原先 1 个月的手工改写，缩短至 1 天完成" },
     inputMode: "file", accept: ".sql,.txt,.md", hint: "上传源数据库 DDL 建表语句文件（SQL/TXT/MD）",
-    sortOrder: 81, usageCount: 2987,
+    sortOrder: 81, usageCount: 0,
   },
   {
     id: "C21", name: "网页界面积木生成(React)",
@@ -224,7 +224,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#快速见效"],
     previewData: { inputMock: "描述界面（如：设计一个支持关键词搜索、表格分页展示的数据列表页）", outputMock: "输出 React 源码：包含响应式网格布局、状态数据绑定以及单元测试用例", roiText: "基础交互界面代码手写需 2 小时，AI 辅助生成仅需 30 秒" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 80, usageCount: 3421,
+    sortOrder: 80, usageCount: 0,
   },
   {
     id: "C22", name: "网页界面积木生成(Vue)",
@@ -233,7 +233,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#快速见效"],
     previewData: { inputMock: "描述界面（如：设计一个支持多文件拖拽上传，并有蓝色条形进度显示的组件）", outputMock: "输出 Vue 3 单文件组件源码：包含 Script Setup 语法、Props/Emits 等数据流", roiText: "前端基础逻辑编写从 2 小时缩短至 30 秒，极大提升前端交付速度" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 79, usageCount: 2654,
+    sortOrder: 79, usageCount: 0,
   },
   {
     id: "C23", name: "多端屏幕自适应排版适配",
@@ -242,7 +242,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#自适应兼容"],
     previewData: { inputMock: "输入排版布局设计意图，或粘贴基础的网页布局样式", outputMock: "生成支持断点自动变换的响应式 CSS/Tailwind 样式代码", roiText: "不用手工一遍遍调试宽度，自适应排版效率提升 10 倍以上" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 78, usageCount: 4532,
+    sortOrder: 78, usageCount: 0,
   },
   {
     id: "C24", name: "炫酷数据图表一键生成",
@@ -251,7 +251,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#直观大方"],
     previewData: { inputMock: "粘贴您的数据结构文本（如销售排行），并指定折线图或饼图要求", outputMock: "输出 ECharts 配置源码：包含自动缩放、炫酷颜色渐变及数据提示框", roiText: "繁琐的图表库调试配置从半天缩短至 1 分钟，界面美观度显著提升" },
     inputMode: "both", accept: ".json,.csv,.xlsx,.xls,.txt", hint: "上传数据文件（JSON/CSV/Excel），或直接粘贴数据结构文本",
-    sortOrder: 77, usageCount: 1987,
+    sortOrder: 77, usageCount: 0,
   },
   {
     id: "C25", name: "大厂科技感数据监控大屏",
@@ -260,7 +260,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 300, businessTags: ["#震撼动效"],
     previewData: { inputMock: "输入大屏所需的展示网格排版设计和数据指标定义", outputMock: "生成大屏 HTML/React 完整工程：包含炫酷边框特效、自适应拉伸及轮询刷新", roiText: "原本需要半月搭建的监控大屏，使用本组件 5 分钟即可完成主体布局" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 76, usageCount: 1543,
+    sortOrder: 76, usageCount: 0,
   },
   {
     id: "C26", name: "逻辑单元测试用例生成",
@@ -269,7 +269,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#逻辑防错"],
     previewData: { inputMock: "粘贴您写好的后台业务逻辑函数或计算公式代码", outputMock: "输出涵盖边界测试、异常输入模拟等全面用例，测试覆盖率保证 > 80%", roiText: "逻辑漏洞防微杜渐，单元测试代码编写效率提升 20 倍以上" },
     inputMode: "both", accept: ".ts,.js,.tsx,.jsx,.py,.java,.go,.txt", hint: "上传源码文件，或直接粘贴待生成用例的函数代码",
-    sortOrder: 75, usageCount: 2876,
+    sortOrder: 75, usageCount: 0,
   },
   {
     id: "C27", name: "接口自动调试与并发测试",
@@ -278,7 +278,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#接口防垮"],
     previewData: { inputMock: "粘贴 API 接口的说明文档定义（如 Swagger/OpenAPI）", outputMock: "输出自动测试用例集合：包括异常参数调用、防越权检查、响应时间监测", roiText: "省去手工在接口工具中逐个配置测试参数的繁琐，实现 10 秒校验" },
     inputMode: "both", accept: ".json,.yaml,.yml,.txt,.md", hint: "上传 Swagger/OpenAPI 定义文件，或直接粘贴接口定义",
-    sortOrder: 74, usageCount: 3765,
+    sortOrder: 74, usageCount: 0,
   },
   {
     id: "C28", name: "服务器压力承受测试",
@@ -287,7 +287,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#防崩溃"],
     previewData: { inputMock: "输入需要测试的服务器 URL 以及设定的最大并发模拟人数", outputMock: "输出性能压测脚本：自动模拟阶梯人数递增、输出响应耗时分布图", roiText: "提早测出系统并发极限瓶颈，避免真实大促上线时服务器崩溃" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 73, usageCount: 2134,
+    sortOrder: 73, usageCount: 0,
   },
   {
     id: "C29", name: "代码质量与垃圾代码扫描",
@@ -296,7 +296,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 120, businessTags: ["#代码健康度"],
     previewData: { inputMock: "粘贴您需要体检的源代码或配置扫描阈值标准", outputMock: "生成扫描体检大盘：统计 Bug 个数、安全死角、重复代码占比并标出位置", roiText: "让隐藏的代码漏洞无处遁形，人工看代码审查效率提升 5 倍" },
     inputMode: "both", accept: ".ts,.js,.tsx,.jsx,.py,.java,.go,.c,.cpp,.txt", hint: "上传源代码文件，或直接粘贴待体检的代码",
-    sortOrder: 72, usageCount: 2987,
+    sortOrder: 72, usageCount: 0,
   },
   {
     id: "C30", name: "模拟真人点按界面测试",
@@ -305,7 +305,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 180, businessTags: ["#回归防漏"],
     previewData: { inputMock: "用白话文描述用户的一连串操作步骤与预期的文案显示", outputMock: "生成 Playwright/Cypress 自动化点按测试脚本：自动寻素、自动截图", roiText: "新版本上线前不需要人工挨个页面点按回归测试，2 分钟自动跑通全部路径" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 71, usageCount: 2345,
+    sortOrder: 71, usageCount: 0,
   },
   {
     id: "C31", name: "应用环境一键打包(Docker)",
@@ -314,7 +314,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 60, businessTags: ["#一键运行"],
     previewData: { inputMock: "选择您使用的语言（Node.js/Java 等）以及运行所需的系统依赖库", outputMock: "生成标准的 Dockerfile 配置文件和多阶段轻量化镜像构建命令", roiText: "彻底解决“在我的电脑上运行正常但服务器跑不起”的环境差异玄学痛点" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 70, usageCount: 4321,
+    sortOrder: 70, usageCount: 0,
   },
   {
     id: "C32", name: "服务器集群自动扩容与调度",
@@ -323,7 +323,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#流量无忧"],
     previewData: { inputMock: "输入服务所需的配置（期望的服务器数、最小/最大机器限制）", outputMock: "输出 Kubernetes 容器集群部署的 YAML 配置文件：含自动伸缩规则", roiText: "不再需要运维半夜手动给服务器加机器，智能扩容秒级应对大流量" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 69, usageCount: 1654,
+    sortOrder: 69, usageCount: 0,
   },
   {
     id: "C33", name: "一键打包发布流水线",
@@ -332,7 +332,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#极速部署"],
     previewData: { inputMock: "选择您所使用的代码托管仓库和期望发布的服务器环境类型", outputMock: "自动生成流水线配置脚本：包含代码拉取、安全扫描、编译和自动上线动作", roiText: "每次发布由原先 1 小时手工操作发布，演进为 2 分钟提交代码自动秒发" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 68, usageCount: 2123,
+    sortOrder: 68, usageCount: 0,
   },
   {
     id: "C34", name: "服务器健康监控与告警",
@@ -341,7 +341,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 250, businessTags: ["#快速止血"],
     previewData: { inputMock: "设定需要监控的系统指标（如 CPU > 90%）以及接收告警的人员联系方式", outputMock: "生成 Prometheus + Grafana 监控配置看板和相应的告警规则触发文件", roiText: "让运维提早 10 分钟发现系统崩溃预警，减少事故损失" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 67, usageCount: 2876,
+    sortOrder: 67, usageCount: 0,
   },
   {
     id: "C35", name: "多服务器运行日志大盘",
@@ -350,7 +350,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#排错专家"],
     previewData: { inputMock: "选择日志收集方式以及需要分析的日志路径格式", outputMock: "输出日志数据采集配置脚本和集中化的搜索检索控制台看板图表", roiText: "系统出错时不再需要挨个机器去捞文本日志，1 秒即可检索出错误异常栈" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 66, usageCount: 1987,
+    sortOrder: 66, usageCount: 0,
   },
   {
     id: "C36", name: "数据库防黑客窃取扫描",
@@ -359,7 +359,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#数据安全"],
     previewData: { inputMock: "粘贴后台接口中涉及数据库查询的代码", outputMock: "精确定位不安全的 SQL 拼接位置，标注漏洞风险等级并给出参数化查询修改方案", roiText: "确保数据库敏感资产防黑防窃，安全漏洞修复时间缩短 5 倍" },
     inputMode: "both", accept: ".ts,.js,.py,.java,.go,.txt", hint: "上传接口/查询代码文件，或直接粘贴数据库查询代码",
-    sortOrder: 65, usageCount: 3245,
+    sortOrder: 65, usageCount: 0,
   },
   {
     id: "C37", name: "网页防非法木马与广告植入",
@@ -368,7 +368,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#保障声誉"],
     previewData: { inputMock: "上传网页前端静态模版 HTML 文件或主要的引入脚本", outputMock: "筛查未被转义的风险输入框，并生成内容安全策略（CSP）防御规则", roiText: "保障用户数据不被劫持，杜绝网站被运营商插非法广告的难堪局面" },
     inputMode: "file", accept: ".html,.htm,.js,.css,.ts,.tsx", hint: "上传前端静态模板文件（HTML/JS/CSS/TS）",
-    sortOrder: 64, usageCount: 2654,
+    sortOrder: 64, usageCount: 0,
   },
   {
     id: "C38", name: "三方开源插件漏洞检测",
@@ -377,7 +377,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#防供应链漏洞"],
     previewData: { inputMock: "上传项目的依赖声明清单文件（如 package.json 或 pom.xml）", outputMock: "输出漏洞清单报告：指出存在风险的三方包、对应 CVE 编号及推荐的安全版本", roiText: "依赖安全审计由手工费时查对，缩短至 30 秒自动化诊断完毕" },
     inputMode: "file", accept: ".json,.xml,.toml,.txt,.md", hint: "上传依赖声明清单（package.json / pom.xml / requirements.txt）",
-    sortOrder: 63, usageCount: 1876,
+    sortOrder: 63, usageCount: 0,
   },
   {
     id: "C39", name: "国家等保2.0合规自查",
@@ -386,7 +386,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 300, businessTags: ["#等保合规"],
     previewData: { inputMock: "选择您的系统期望达到的安全等保级别（如等保三级）及架构部署说明", outputMock: "生成 73 项硬性指标逐条自查表，标出不符合项并提供明确的安全加固手段", roiText: "高昂的等保自查人力和时间从 3 天降至 10 分钟，确保迎检一把过" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 62, usageCount: 1234,
+    sortOrder: 62, usageCount: 0,
   },
   {
     id: "C40", name: "手机号身份证智能打码",
@@ -395,7 +395,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 120, businessTags: ["#防泄密"],
     previewData: { inputMock: "选择打码打星号的脱敏规则（例如：手机号显示前三后四，中间四位打星）", outputMock: "生成后端及前端对应的脱敏打码数据转换逻辑代码和防泄漏密钥策略", roiText: "保证泄露出来的虚拟测试数据或分析材料不含真实用户身份，保护客户隐私" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 61, usageCount: 3421,
+    sortOrder: 61, usageCount: 0,
   },
   {
     id: "C41", name: "项目任务按工期逐步分解(WBS)",
@@ -404,7 +404,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#科学排期"],
     previewData: { inputMock: "输入项目愿景与各阶段的核心交付成果列表", outputMock: "自动生成逐级细化的树形任务分解表：明确包含阶段、天数预估和里程碑", roiText: "项目计划排班分解由原先手工折腾半天，缩短至 1 分钟自动编排完毕" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 60, usageCount: 2654,
+    sortOrder: 60, usageCount: 0,
   },
   {
     id: "C42", name: "项目进度时间表甘特图",
@@ -413,7 +413,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#甘特图进度"],
     previewData: { inputMock: "输入已经拆解好的任务清单列表以及任务间的前后依赖关系说明", outputMock: "生成漂亮的横向排期甘特图：自动标记关键路径、里程碑卡点与资源饱和度", roiText: "甘特图编制由繁杂工具手动调节缩短至 2 分钟自动绘制" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 59, usageCount: 1876,
+    sortOrder: 59, usageCount: 0,
   },
   {
     id: "C43", name: "项目潜在风险防范预案",
@@ -422,7 +422,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 120, businessTags: ["#防踏空"],
     previewData: { inputMock: "输入当前的开发团队人员配置规模、项目性质以及期望交付天数限制", outputMock: "评估潜在 12 项高发风险（如人员流动、系统延期），明确应急防范和备岗建议", roiText: "让项目管理由发生故障后的“被动扑火”，升级为立项初期的“防患未然”" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 58, usageCount: 1234,
+    sortOrder: 58, usageCount: 0,
   },
   {
     id: "C44", name: "团队排班与闲置优化",
@@ -431,7 +431,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#团队资源饱和"],
     previewData: { inputMock: "输入团队各角色的总可用工时以及项目周期内的各个紧要任务", outputMock: "输出人员饱和度评估曲线及优化的派单排班表：提升闲置效率 20% 以上", roiText: "科学评估团队生产饱和度，避免盲目加班与项目窝工" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 57, usageCount: 2134,
+    sortOrder: 57, usageCount: 0,
   },
   {
     id: "C45", name: "一键项目结项报告",
@@ -440,7 +440,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 120, businessTags: ["#轻松交付"],
     previewData: { inputMock: "输入项目周期内交付的产品版本、测试大纲以及缺陷处理统计", outputMock: "生成格式精美的交付结项总结 PDF 报告：含工作量统计及验收签字栏", roiText: "手工搜集结项材料需要整整半天，使用本工具 2 分钟自动汇总并排版" },
     inputMode: "both", accept: ".md,.txt,.doc,.docx,.pdf,.xlsx", hint: "上传结项材料文档，或直接粘贴交付/测试/缺陷数据",
-    sortOrder: 56, usageCount: 1543,
+    sortOrder: 56, usageCount: 0,
   },
   {
     id: "C46", name: "开发对接说明书自动生成",
@@ -449,7 +449,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#提速联调"],
     previewData: { inputMock: "粘贴您的后端路由跳转代码、Prisma 映射定义或 Swagger 接口批注", outputMock: "生成网页版在线接口文档：支持在线调试点击、含必填项红星提示及样本", roiText: "再也不需要研发人工写说明书文档，接口定义变更一键重新生成" },
     inputMode: "both", accept: ".sql,.prisma,.ts,.js,.json,.yaml,.txt", hint: "上传接口定义或代码文件，或直接粘贴路由/代码",
-    sortOrder: 55, usageCount: 2987,
+    sortOrder: 55, usageCount: 0,
   },
   {
     id: "C47", name: "代码白话文翻译批注",
@@ -458,7 +458,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 60, businessTags: ["#易于接手"],
     previewData: { inputMock: "粘贴您觉得晦涩且没有注释的复杂源代码段落（例如多重嵌套算法）", outputMock: "在每行复杂逻辑处自动补充详细的中文白话文注释：包含“这里是防止重复提交”", roiText: "让后人接手项目时读懂前人逻辑，代码阅读理解和交接效率提升 20 倍" },
     inputMode: "both", accept: ".ts,.js,.tsx,.jsx,.py,.java,.go,.c,.cpp,.txt", hint: "上传代码文件，或直接粘贴晦涩源码段落",
-    sortOrder: 54, usageCount: 4321,
+    sortOrder: 54, usageCount: 0,
   },
   {
     id: "C48", name: "空间内部资料全文搜索",
@@ -467,7 +467,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 50, businessTags: ["#知识检索"],
     previewData: { inputMock: "上传本地的项目需求说明书、开发规约规范 PDF 或 Markdown 文档", outputMock: "自动建立文档深度索引库：支持通过关键词模糊匹配直接查到具体的段落行号", roiText: "摆脱在文件夹中逐个打开文档翻找的笨办法，知识检索效率提升 10 倍以上" },
     inputMode: "file", accept: ".pdf,.md,.doc,.docx,.txt", hint: "上传需求说明书、开发规约等知识文档（PDF/MD/Word/TXT）",
-    sortOrder: 53, usageCount: 3654,
+    sortOrder: 53, usageCount: 0,
   },
   {
     id: "C49", name: "研发专属智能问答客服",
@@ -476,7 +476,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 50, businessTags: ["#快速答疑"],
     previewData: { inputMock: "提出具体的技术或业务疑问（例如：我们项目的服务器部署命令是什么？）", outputMock: "基于空间本地的部署文档库精准给出答案：附带具体的命令行和注意事项", roiText: "不漏秘密、不需要外网去搜技术问题，智能客服 5 秒内精准提供解决方案" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 52, usageCount: 2876,
+    sortOrder: 52, usageCount: 0,
   },
   {
     id: "C50", name: "资深老手代码审查报告",
@@ -485,7 +485,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 200, businessTags: ["#逻辑体检"],
     previewData: { inputMock: "粘贴代码变更差异 Diffs 或者是需要审核的 Pull Request 修改日志", outputMock: "自动生成审查单：包含评分、漏洞隐患 2 处、性能可改进点 3 处及参考写法", roiText: "代替资深架构师进行初步的代码把关，代码审查速度提升 3 倍" },
     inputMode: "both", accept: ".diff,.patch,.md,.txt,.ts,.js,.py,.java,.go", hint: "上传 Diff/PR 日志文件，或直接粘贴代码变更内容",
-    sortOrder: 51, usageCount: 2134,
+    sortOrder: 51, usageCount: 0,
   },
   {
     id: "C51", name: "经典设计模式与架构规约推荐",
@@ -494,7 +494,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#系统健壮"],
     previewData: { inputMock: "描述当前的系统架构选型、数据吞吐量以及遇到的高并发卡死瓶颈", outputMock: "推荐架构演进设计方案：包括使用“发布订阅”降低系统耦合等建议", roiText: "让系统演进方向清晰、可落地，大幅缩短架构选型调研成本" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 50, usageCount: 1765,
+    sortOrder: 50, usageCount: 0,
   },
   {
     id: "C52", name: "软件系统底层技术选型建议",
@@ -503,7 +503,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#技术起跑线"],
     previewData: { inputMock: "描述新项目的定位、预想的最高并发请求人数以及团队技术储备现状", outputMock: "输出一套最优技术选型方案：分析前后端框架优劣并附带原因说明", roiText: "避免因前期基础技术架构选型选错导致后续推倒重来的惨痛代价" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    sortOrder: 49, usageCount: 2345,
+    sortOrder: 49, usageCount: 0,
   },
   {
     id: "C53", name: "历史教训与团队避坑指南SOP",
@@ -512,7 +512,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 150, businessTags: ["#不犯重复错"],
     previewData: { inputMock: "输入空间下历次的缺陷处理单列表或团队成员记录的历史故障文档", outputMock: "输出结构化避坑条目：包含哪些地方不该拼接SQL、哪些地方该开启事务保护", roiText: "将零散的经验教训自动归纳为系统化规约，避免新入职成员重复踩历史的坑" },
     inputMode: "both", accept: ".md,.txt,.pdf,.doc,.docx,.csv,.xlsx", hint: "上传缺陷记录/故障文档，或直接粘贴缺陷清单文字",
-    sortOrder: 48, usageCount: 3987,
+    sortOrder: 48, usageCount: 0,
   },
   // ===== 全量发布扩展组件 (C54 - C60，完全上架并在全量组件大厅展示) =====
   {
@@ -522,7 +522,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 80, businessTags: ["#效能评估", "#架构审查"],
     previewData: { inputMock: "粘贴源代码段落或架构设计文档", outputMock: "输出结构化分析报告：指出代码与契约偏离度及 3 处质量风险点", roiText: "自动静态评审代码与架构偏离，节约人工评审 90% 时间" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 47, usageCount: 1540,
+    isPublished: true, sortOrder: 47, usageCount: 0,
   },
   {
     id: "C55", name: "自动部署与构建组件",
@@ -531,7 +531,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#自动部署", "#稳定上线"],
     previewData: { inputMock: "选择部署目标与环境变量参数配置", outputMock: "自动执行流水线构建并输出巡检日志看板", roiText: "一键自动化环境巡检与发布，提升部署稳定性" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 46, usageCount: 1980,
+    isPublished: true, sortOrder: 46, usageCount: 0,
   },
   {
     id: "C56", name: "架构代码生成器",
@@ -540,7 +540,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 120, businessTags: ["#标准代码", "#骨架生成"],
     previewData: { inputMock: "输入 OpenAPI 接口契约定义文件", outputMock: "一键转写标准 Controller、Service 与 Model 骨架代码", roiText: "从契约直接生成代码，杜绝手动拷贝出错" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 45, usageCount: 2310,
+    isPublished: true, sortOrder: 45, usageCount: 0,
   },
   {
     id: "C57", name: "代码安全审计工具",
@@ -549,7 +549,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 150, businessTags: ["#安全审计", "#漏洞防护"],
     previewData: { inputMock: "上传源码项目文件或依赖声明", outputMock: "诊断敏感明文密码与 2 项三方包漏洞，提供修复处方", roiText: "秒级排查代码泄密与安全漏洞" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 44, usageCount: 1870,
+    isPublished: true, sortOrder: 44, usageCount: 0,
   },
   {
     id: "C58", name: "需求文档解析组件",
@@ -558,7 +558,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 90, businessTags: ["#需求分析", "#用例生成"],
     previewData: { inputMock: "粘贴原始 PRD 需求文档文本", outputMock: "提取核心功能点并输出标准的测试用例矩阵", roiText: "大幅降低需求梳理与测试用例撰写成本" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 43, usageCount: 2150,
+    isPublished: true, sortOrder: 43, usageCount: 0,
   },
   {
     id: "C59", name: "自动化测试套件",
@@ -567,7 +567,7 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: true, estimatedModelTokens: 140, businessTags: ["#质量回归", "#高覆盖率"],
     previewData: { inputMock: "选择待运行测试套件的代码模块", outputMock: "输出全量回归结果及覆盖率百分比数据", roiText: "自动联调断言，保障系统迭代无回退" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 42, usageCount: 2640,
+    isPublished: true, sortOrder: 42, usageCount: 0,
   },
   {
     id: "C60", name: "后端核心接口组件",
@@ -576,6 +576,6 @@ export const COMPONENT_CATALOG_SEED = [
     isPremium: false, estimatedModelTokens: 100, businessTags: ["#RESTful", "#接口集成"],
     previewData: { inputMock: "输入需要开放的业务功能定义", outputMock: "产出符合大厂规范的 RESTful API 端点代码与响应封装", roiText: "标准化后端 API 输出，极大简化联调" },
     inputMode: DEFAULT_INPUT.mode, accept: DEFAULT_INPUT.accept, hint: DEFAULT_INPUT.hint,
-    isPublished: true, sortOrder: 41, usageCount: 3120,
+    isPublished: true, sortOrder: 41, usageCount: 0,
   },
 ];
