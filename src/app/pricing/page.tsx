@@ -280,7 +280,7 @@ export default function PricingPage() {
             boxClass: "bg-[#f0f8ff] border-blue-100/50",
             accent: "text-[#2b6cb0]",
             desc: `可同时创建并管理最多 ${formatQuota(targetLevel.maxEnterpriseWorkspaces)} 个企业工作空间。免费体验版仅限 ${formatQuota(baseLevel.maxEnterpriseWorkspaces)} 个个人开发沙盒空间。`,
-            from: `${formatQuota(baseLevel.maxEnterpriseWorkspaces)} 个个人空间`,
+            from: `${formatQuota(baseLevel.maxEnterpriseWorkspaces)} 个工作空间`,
             to: `${formatQuota(targetLevel.maxEnterpriseWorkspaces)} 个企业空间`,
           },
           {

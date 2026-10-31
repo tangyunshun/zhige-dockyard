@@ -926,7 +926,7 @@ export default function ComponentBrowser({
                       ⚠️ 算力不足，执行前请先充值
                     </span>
                     <button
-                      onClick={() => router.push("/user/billing-center?section=points")}
+                      onClick={() => router.push("/user/pay?tab=detail")}
                       className="h-8 px-3 rounded-lg bg-[#3182ce] text-white border border-[#3182ce] text-xs font-black hover:brightness-105 transition-all cursor-pointer shadow-sm shrink-0"
                     >
                       去充值

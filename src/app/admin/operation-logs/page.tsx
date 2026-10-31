@@ -1571,12 +1571,14 @@ export default function OperationLogsPage() {
                 <input
                   type="date"
                   value={startDate}
+                  max={endDate || undefined}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                 />
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || undefined}
                   onChange={(e) => setEndDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                 />
@@ -1698,12 +1700,14 @@ export default function OperationLogsPage() {
                   <input
                     type="date"
                     value={loginStartDate}
+                    max={loginEndDate || undefined}
                     onChange={(e) => setLoginStartDate(e.target.value)}
                     className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                   />
                   <input
                     type="date"
                     value={loginEndDate}
+                    min={loginStartDate || undefined}
                     onChange={(e) => setLoginEndDate(e.target.value)}
                     className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                   />

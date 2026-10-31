@@ -13,6 +13,7 @@ import {
   Shield,
   Coins,
   Code2,
+  KeyRound,
   CheckCircle2,
   ChevronRight,
   Layers,
@@ -22,7 +23,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
-import { getActionLabel, getActionColor } from "@/lib/activity";
 
 interface UserDashboardData {
   userInfo: any;
@@ -34,6 +34,7 @@ interface UserDashboardData {
     apiCallsLimit: number;
     storageUsed: number;
     storageLimit: number;
+    pendingRefundCount?: number;
   };
   recentActivities: any[];
   workspaces?: any[];
@@ -74,7 +75,12 @@ export default function UserDashboardPage() {
       label: "可用算力点",
       value: `${tokenBalanceValue.toLocaleString()}`,
       unit: "点",
-      subLabel: tokenBalanceValue > 50 ? "算力充足" : "算力偏低",
+      subLabel:
+        (dashboardData?.stats?.pendingRefundCount || 0) > 0
+          ? `${dashboardData?.stats?.pendingRefundCount} 笔退点审批中`
+          : tokenBalanceValue > 50
+          ? "算力充足"
+          : "算力偏低",
       badgeText: "算力中心",
       path: "/user/points",
       color: "text-[#dd6b20]",
@@ -337,6 +343,25 @@ export default function UserDashboardPage() {
         </div>
       </div>
 
+      {/* 算力点退还申请中友好提示条与快速跳转 */}
+      {(dashboardData?.stats?.pendingRefundCount || 0) > 0 && (
+        <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-amber-50/80 border border-amber-200/80 text-xs text-amber-900 shadow-2xs animate-in fade-in duration-200">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Coins className="w-4 h-4 text-[#dd6b20] shrink-0 animate-pulse" />
+            <span className="truncate">
+              您有 <strong className="font-mono font-bold text-[#dd6b20]">{dashboardData?.stats?.pendingRefundCount}</strong> 笔算力点退还申请正在等待管理员审核，核实后将原路退回至个人钱包。
+            </span>
+          </div>
+          <Link
+            href="/user/points"
+            className="inline-flex items-center gap-1 font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors whitespace-nowrap cursor-pointer shrink-0"
+          >
+            <span>查看进度</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
+
       {/* 核心指标统计卡片 - 尺寸与管理员后台一致，放小且信息密度适中 */}
       <div>
         <div className="flex items-center justify-between mb-2.5">
@@ -440,17 +465,17 @@ export default function UserDashboardPage() {
           </Link>
 
           <Link
-            href="/user/developer"
+            href="/user/byo-model"
             className="group flex items-center gap-3 p-3 rounded-xl bg-slate-50/70 hover:bg-purple-50/50 border border-slate-200/80 hover:border-[#8b5cf6]/40 transition-all duration-200 text-left"
           >
             <div className="w-9 h-9 rounded-xl bg-[#8b5cf6]/10 flex items-center justify-center group-hover:scale-105 transition-transform shrink-0">
-              <Code2 className="w-4.5 h-4.5 text-[#8b5cf6]" />
+              <KeyRound className="w-4.5 h-4.5 text-[#8b5cf6]" />
             </div>
             <div className="min-w-0">
               <div className="text-xs font-bold text-slate-800 group-hover:text-[#8b5cf6] transition-colors truncate">
-                开发者中心
+                我的模型
               </div>
-              <div className="text-[11px] text-slate-400 truncate">API 密钥与调用指南</div>
+              <div className="text-[11px] text-slate-400 truncate">系统分配与自建模型</div>
             </div>
           </Link>
 
@@ -517,11 +542,9 @@ export default function UserDashboardPage() {
                           </div>
                           <div className="flex items-center gap-2 mt-1">
                             <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${getActionColor(
-                                activity.action,
-                              )}`}
+                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${activity.actionBadgeColor || "bg-slate-100 text-slate-600 border-slate-200"}`}
                             >
-                              {getActionLabel(activity.action)}
+                              {activity.actionLabel || "系统操作"}
                             </span>
                           </div>
                         </div>

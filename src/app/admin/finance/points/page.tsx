@@ -370,7 +370,7 @@ export default function AdminPointsLedgerPage() {
                               isIn ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-amber-50 text-amber-600 border-amber-200"
                             }`}
                           >
-                            {r.typeLabel}
+                            {lookupBillingValueLabel(r.type) || r.typeLabel || r.type}
                           </span>
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-[11px] font-bold text-slate-500">

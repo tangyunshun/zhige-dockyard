@@ -1399,8 +1399,11 @@ export default function AdminDocumentsPage() {
                 <input
                   type="date"
                   value={startDate}
+                  max={endDate || undefined}
                   onChange={(e) => {
-                    setStartDate(e.target.value);
+                    const v = e.target.value;
+                    setStartDate(v);
+                    if (v && endDate && v > endDate) setEndDate("");
                     setCurrentPage(1);
                   }}
                   className="w-32 px-2 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-medium text-slate-700 bg-slate-50/50 focus:bg-white cursor-pointer"
@@ -1410,8 +1413,11 @@ export default function AdminDocumentsPage() {
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || undefined}
                   onChange={(e) => {
-                    setEndDate(e.target.value);
+                    const v = e.target.value;
+                    if (v && startDate && v < startDate) return;
+                    setEndDate(v);
                     setCurrentPage(1);
                   }}
                   className="w-32 px-2 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] outline-none text-xs font-medium text-slate-700 bg-slate-50/50 focus:bg-white cursor-pointer"

@@ -897,7 +897,7 @@ export default function UserProfilePage() {
                   )}
                 </div>
 
-                {/* 登录邮箱输入项（含智能后缀补全与实时格式验证） */}
+                {/* 登录邮箱输入项（含域名后缀自动补全与实时格式验证） */}
                 <div className="relative">
                   <div className="flex items-center justify-between mb-1.5">
                     <label className="block text-xs font-bold text-slate-700">登录邮箱</label>

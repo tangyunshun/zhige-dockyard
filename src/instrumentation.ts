@@ -94,4 +94,22 @@ export async function register() {
     await sweepExpiredOrders();
     setInterval(sweepExpiredOrders, 5 * 60 * 1000);
   }, 3 * 60 * 1000);
+
+  // 对公充值工单超期清理：每日删除创建时间超过 3 年的工单（数据保留策略）。
+  // 首跑延后 120s（避开启动高峰），之后每 24h 一次；与 /api/cron/recharge-order-cleanup 互为冗余。
+  const cleanupRechargeOrders = async () => {
+    try {
+      const { cleanupExpiredRechargeOrders } = await import("@/lib/recharge-order-cleanup");
+      const res = await cleanupExpiredRechargeOrders();
+      if (res.deletedCount > 0) {
+        console.log(`[recharge-order-cleanup] 超期工单清理：已删除 ${res.deletedCount} 笔超过 3 年的对公充值工单`);
+      }
+    } catch (e) {
+      console.error("[recharge-order-cleanup] 超期工单清理失败:", e);
+    }
+  };
+  setTimeout(async () => {
+    await cleanupRechargeOrders();
+    setInterval(cleanupRechargeOrders, DAY_MS);
+  }, 120 * 1000);
 }

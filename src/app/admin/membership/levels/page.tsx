@@ -1080,39 +1080,7 @@ export default function AdminMembershipLevelsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* 个人空间 */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-bold text-slate-700">个人空间数量</label>
-                      <label className="flex items-center gap-1.5 cursor-pointer text-xs text-slate-500 font-bold">
-                        <input
-                          type="checkbox"
-                          checked={formData.maxPersonalWorkspaces === -1}
-                          onChange={(e) =>
-                            setFormData({
-                              ...formData,
-                              maxPersonalWorkspaces: e.target.checked ? -1 : 1,
-                            })
-                          }
-                          className="w-3.5 h-3.5 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce]"
-                        />
-                        <span>无限制</span>
-                      </label>
-                    </div>
-                    <input
-                      type="number"
-                      value={formData.maxPersonalWorkspaces === -1 ? "" : formData.maxPersonalWorkspaces}
-                      onChange={(e) =>
-                        setFormData({
-                          ...formData,
-                          maxPersonalWorkspaces: parseInt(e.target.value) || 0,
-                        })
-                      }
-                      disabled={formData.maxPersonalWorkspaces === -1}
-                      placeholder={formData.maxPersonalWorkspaces === -1 ? "无限制 (-1)" : "数量"}
-                      className="w-full px-3.5 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 disabled:bg-slate-100 disabled:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
-                    />
-                  </div>
+                  {/* 个人空间数量恒为 1（每个用户仅允许 1 个个人空间，系统自愈强制），不对外配置，仅保留提交值 */}
 
                   {/* 企业空间 */}
                   <div className="space-y-1.5">

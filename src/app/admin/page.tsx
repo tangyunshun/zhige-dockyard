@@ -35,6 +35,7 @@ import {
   Check,
   BookOpen,
   CreditCard,
+  Coins,
 } from "lucide-react";
 
 interface DashboardData {
@@ -51,6 +52,7 @@ interface DashboardData {
   activeTenants: number; // 活跃租户数
   pendingReviews: number; // 待审核申请数
   pendingPostSubmissions?: number; // 待审核的企业空间新增岗位提报数
+  pendingRefundRequests?: number; // 待审批算力退款工单数
 
   // 财务与订单聚合统计
   financialSummary?: {
@@ -621,6 +623,35 @@ export default function AdminDashboard() {
             className="inline-flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white text-xs font-bold shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer shrink-0"
           >
             <span>立即前往风控核验</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* 待审批算力点退款工单提醒横幅 */}
+      {(data.pendingRefundRequests || 0) > 0 && (
+        <div className="relative overflow-hidden bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-blue-500/5 border border-blue-500/30 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs animate-in fade-in duration-300">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-[#2b6cb0] text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+              <Coins className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <span>算力退还工单审批待办</span>
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-black bg-[#2b6cb0] text-white shadow-2xs">
+                  {data.pendingRefundRequests} 笔申请待处理
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 font-medium mt-0.5">
+                有用户提交了算力点退回申请待人工审批，核实后可原路退回算力点至用户个人钱包。
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => router.push("/admin/finance/refund-requests")}
+            className="inline-flex items-center justify-center gap-1.5 px-4 h-9 rounded-xl bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:brightness-105 text-white text-xs font-bold shadow-xs hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer shrink-0"
+          >
+            <span>立即前往审批退款</span>
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
         </div>

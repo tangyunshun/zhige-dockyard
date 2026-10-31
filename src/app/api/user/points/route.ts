@@ -22,6 +22,8 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const typeFilter = (searchParams.get("type") || "all").toLowerCase();
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
     const page = Math.max(parseInt(searchParams.get("page") || "1", 10) || 1, 1);
     const pageSize = Math.min(Math.max(parseInt(searchParams.get("pageSize") || "20", 10) || 20, 1), 5000);
 
@@ -97,9 +99,26 @@ export async function GET(request: NextRequest) {
         ? { type: "GIFT_EXPIRE" }
         : {};
 
-    const listWhere = Object.keys(typeCondition).length
-      ? { AND: [ledgerWhere, typeCondition] }
-      : ledgerWhere;
+    const dateCondition: any = {};
+    if (startDate) {
+      dateCondition.gte = new Date(startDate);
+    }
+    if (endDate) {
+      const endD = new Date(endDate);
+      endD.setHours(23, 59, 59, 999);
+      dateCondition.lte = endD;
+    }
+    const hasDate = Object.keys(dateCondition).length > 0;
+
+    const andConditions: any[] = [ledgerWhere];
+    if (Object.keys(typeCondition).length) {
+      andConditions.push(typeCondition);
+    }
+    if (hasDate) {
+      andConditions.push({ createdAt: dateCondition });
+    }
+
+    const listWhere = andConditions.length > 1 ? { AND: andConditions } : ledgerWhere;
 
     const [total, grouped, rows] = await Promise.all([
       prisma.pointledger.count({ where: listWhere }).catch(() => 0),
@@ -107,7 +126,12 @@ export async function GET(request: NextRequest) {
         .groupBy({ by: ["direction", "type"], where: ledgerWhere, _sum: { points: true } })
         .catch(() => []),
       prisma.pointledger
-        .findMany({ where: listWhere, take: pageSize * page, orderBy: { createdAt: "desc" } })
+        .findMany({
+          where: listWhere,
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+          orderBy: { createdAt: "desc" },
+        })
         .catch(() => []),
     ]);
 
@@ -143,24 +167,22 @@ export async function GET(request: NextRequest) {
       userNameMap.set(u.id, normalizeOperatorName(u.name || u.email || "系统管理员"))
     );
 
-    const records = rows
-      .map((r) => ({
-        id: r.id,
-        direction: r.direction,
-        type: r.type,
-        scope: r.scope,
-        title: r.title,
-        points: r.direction === "IN" ? Number(r.points) : -Number(r.points),
-        amountCents: Number(r.amountCents || 0),
-        operator: normalizeOperatorName(userNameMap.get(r.operatorId || "")),
-        componentName: r.componentName || null,
-        workspaceId: r.workspaceId,
-        balanceAfter: Number(r.balanceAfter || 0),
-        orderNo: r.orderNo,
-        paymentMethod: r.paymentMethod,
-        createdAt: r.createdAt.toISOString(),
-      }))
-      .slice((page - 1) * pageSize, page * pageSize);
+    const records = rows.map((r) => ({
+      id: r.id,
+      direction: r.direction,
+      type: r.type,
+      scope: r.scope,
+      title: r.title,
+      points: r.direction === "IN" ? Number(r.points) : -Number(r.points),
+      amountCents: Number(r.amountCents || 0),
+      operator: normalizeOperatorName(userNameMap.get(r.operatorId || "")),
+      componentName: r.componentName || null,
+      workspaceId: r.workspaceId,
+      balanceAfter: Number(r.balanceAfter || 0),
+      orderNo: r.orderNo,
+      paymentMethod: r.paymentMethod,
+      createdAt: r.createdAt.toISOString(),
+    }));
 
     return NextResponse.json({
       success: true,

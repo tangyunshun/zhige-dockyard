@@ -577,6 +577,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [showRechargeModal, setShowRechargeModal] = useState<boolean>(false);
   // 充值成功信号：递增后通知「算力点」页签自动刷新流水
   const [rechargeSignal, setRechargeSignal] = useState<number>(0);
+  // 平台官方对公收款账户（供工作台充值弹窗对公转账页展示，由管理员后台配置）
+  const [officialAccount, setOfficialAccount] = useState<any>(null);
   // 充值弹窗：在线充值 / 对公转账工单 双 Tab
   const [rechargeTab, setRechargeTab] = useState<"online" | "offline" | "recycle">("online");
   const [offlineForm, setOfflineForm] = useState({
@@ -1376,6 +1378,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (showRechargeModal) {
       loadDynamicTokenPacks();
       fetchRealWorkspaceQuota();
+      // 拉取平台官方对公收款账户，供对公转账页展示
+      (async () => {
+        try {
+          const token = getAuthToken();
+          const res = await fetch("/api/system/recharge-account", {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+          });
+          const data = await res.json().catch(() => null);
+          setOfficialAccount(data?.account || null);
+        } catch {
+          setOfficialAccount(null);
+        }
+      })();
     }
   }, [showRechargeModal]);
 
@@ -8274,6 +8289,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           handleExecuteRecharge={handleExecuteRecharge}
           offlineForm={offlineForm}
           setOfflineForm={setOfflineForm}
+          officialAccount={officialAccount}
           offlineResultOrderNo={offlineResultOrderNo}
           submitOfflineOrder={submitOfflineOrder}
           submittingOffline={submittingOffline}

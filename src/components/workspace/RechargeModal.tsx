@@ -12,7 +12,8 @@
  * 本组件不持有任何 state、不发请求。关闭动作统一走 onClose。
  */
 
-import { Zap, X } from "lucide-react";
+import { Zap, X, Copy } from "lucide-react";
+import { useToast } from "@/components/Toast";
 import {
   pointsToYuan,
   formatYuanFromPoints,
@@ -87,6 +88,13 @@ export interface RechargeModalProps {
   recyclePoints: string;
   setRecyclePoints: (v: string) => void;
   handleExecuteRecycle: () => void;
+  /** 平台官方对公收款账户（由管理员后台配置，供用户汇款参考） */
+  officialAccount: {
+    companyName?: string;
+    bankName?: string;
+    accountNumber?: string;
+    remark?: string;
+  } | null;
 }
 
 export default function RechargeModal(props: RechargeModalProps) {
@@ -120,7 +128,17 @@ export default function RechargeModal(props: RechargeModalProps) {
     recyclePoints,
     setRecyclePoints,
     handleExecuteRecycle,
+    officialAccount,
   } = props;
+
+  const { toast } = useToast();
+  const copyText = (text: string, label: string) => {
+    if (!text) return;
+    navigator.clipboard?.writeText(text).then(
+      () => toast.success(`已复制${label}`),
+      () => toast.error("复制失败"),
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">
@@ -338,6 +356,46 @@ export default function RechargeModal(props: RechargeModalProps) {
         <div className="shrink-0 space-y-3 border-t border-slate-100 pt-3">
           <div className="bg-blue-50/80 border border-blue-200 rounded-xl px-3 py-2 text-[11px] font-bold text-blue-800 leading-relaxed">
             对公转账 / 合同结算：提交后将生成充值工单，由平台管理员审批并通过后自动入账至本空间对应算力账户。请按提示完成对公打款并准确回填凭证信息，便于财务对账。
+          </div>
+          {/* 平台官方对公收款账户（管理员后台动态配置，用户照此打款） */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black text-slate-700">平台官方对公转账收款账户</span>
+              <span className="text-[10px] font-bold text-slate-400 shrink-0">请按此账户打款，附言填工单号</span>
+            </div>
+            {officialAccount ? (
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-400 shrink-0">户名</span>
+                  <span className="text-xs font-bold text-slate-800 break-all text-right flex-1">{officialAccount.companyName || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-400 shrink-0">开户行</span>
+                  <span className="text-xs font-bold text-slate-800 break-all text-right flex-1">{officialAccount.bankName || "—"}</span>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-slate-400 shrink-0">对公银行结算账号</span>
+                  <div className="flex items-center gap-1.5 flex-1 justify-end min-w-0">
+                    <span className="text-sm font-mono font-black text-[#3182ce] break-all">{officialAccount.accountNumber || "—"}</span>
+                    <button
+                      type="button"
+                      onClick={() => copyText((officialAccount.accountNumber || "").replace(/\s+/g, ""), "银行账号")}
+                      className="shrink-0 w-6 h-6 rounded-md border border-slate-200 bg-white text-slate-500 hover:text-[#3182ce] hover:border-[#3182ce] flex items-center justify-center cursor-pointer"
+                      title="复制账号"
+                    >
+                      <Copy className="w-3 h-3" />
+                    </button>
+                  </div>
+                </div>
+                {officialAccount.remark && (
+                  <p className="text-[10px] text-slate-400 leading-relaxed">附言：{officialAccount.remark}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] font-bold text-slate-400">
+                平台暂未配置对公收款账户，请联系平台管理员获取收款信息。
+              </p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-black text-slate-700 mb-1">

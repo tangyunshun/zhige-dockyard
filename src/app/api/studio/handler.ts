@@ -402,8 +402,8 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           where: { isPublished: false },
           orderBy: { sortOrder: "asc" },
         }),
-        // 预置岗位定义（从数据库 position 表读取，不再硬编码岗位数据）
-        prisma.position.findMany({
+        // 预置岗位定义（从数据库 platformstandardpost 表读取，不再硬编码岗位数据）
+        prisma.platformstandardpost.findMany({
           where: { isPreset: true, status: "ACTIVE" },
           orderBy: { sortOrder: "asc" },
         }),

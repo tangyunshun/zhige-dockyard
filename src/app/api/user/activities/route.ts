@@ -144,6 +144,45 @@ const CATEGORY_LABELS: Record<string, string> = {
   other: "系统常规操作",
 };
 
+// 资源类型中文映射：把 operationlog.resource 里的英文代码（如 APIKey、workspace、
+// user_byo_model_assignment 等）翻译为通俗中文，避免明细里直接裸露英文标识
+const RESOURCE_META: Record<string, string> = {
+  APIKey: "API 访问密钥",
+  workspace: "工作空间",
+  component: "研发组件",
+  user: "用户账户",
+  security: "账号安全设置",
+  auth: "身份认证",
+  session: "会话凭据",
+  billing: "账单与计费",
+  order: "充值订单",
+  membership: "会员权益",
+  knowledge: "知识库文档",
+  task: "协同任务",
+  asset: "资料资产",
+  quota: "算力配额",
+  system: "系统设置",
+  PING: "网关连通性测试",
+  user_byo_model_assignment: "自有模型绑定",
+  user_byo_model_def: "自带模型库定义",
+  workspace_byo_model: "工作空间自带模型",
+  modelapplication: "模型使用申请",
+  workspace_member_model_preference: "空间模型偏好",
+  componentcontract: "组件服务合同",
+  modeldeployment: "模型部署配置",
+  componentfavorite: "组件收藏",
+  workspacemember: "空间成员关系",
+  workspacequota: "空间算力配额",
+  pointgrant: "算力点发放",
+  pointledger: "算力点流水",
+  refundrequest: "算力点退款申请",
+  testimonial: "用户使用评价",
+  operationlog: "操作日志",
+  usernotification: "通知偏好",
+  userpreference: "用户偏好",
+  systemsetting: "系统配置项",
+};
+
 // GET - 获取当前用户操作审计流水与统计看板
 export async function GET(request: NextRequest) {
   try {
@@ -421,12 +460,25 @@ export async function GET(request: NextRequest) {
       const resourceType = meta.category;
       const resourceCategoryLabel = CATEGORY_LABELS[resourceType] || "常规模块";
 
-      // 友好中文描述
+      // 资源中文名：优先精确映射，否则回落到所属分类的中文名
+      const resourceLabel = RESOURCE_META[log.resource || ""] || CATEGORY_LABELS[resourceType] || "平台";
+
+      // 友好中文描述（全部基于数据库字段推导，无任何英文标识）
+      // 1) 优先采用业务写入时存进 details 的中文说明
       let description = parsedDetails?.message || parsedDetails?.description;
       if (!description) {
-        description = `用户执行了「${actionLabel}」操作`;
-        if (log.resource) {
-          description += `，目标标识: ${log.resource}`;
+        // 2) 回落：用「中文资源名 + 中文动作 + 可识别业务对象」拼出清晰、可读的说明
+        description = `在「${resourceLabel}」模块执行了「${actionLabel}」操作`;
+        const named =
+          parsedDetails?.name ??
+          parsedDetails?.workspaceName ??
+          parsedDetails?.componentName ??
+          parsedDetails?.targetUserName ??
+          parsedDetails?.org ??
+          parsedDetails?.plan ??
+          parsedDetails?.orderId;
+        if (named) {
+          description += `，关联对象：${named}`;
         }
       }
 
@@ -438,6 +490,7 @@ export async function GET(request: NextRequest) {
         description,
         resourceType,
         resourceCategoryLabel,
+        resourceLabel,
         resourceId: log.resource,
         workspaceId: log.workspaceId,
         ipAddress: cleanIp,

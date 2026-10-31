@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 
@@ -115,6 +115,11 @@ export async function GET(request: NextRequest) {
     const apiCallsUsed = realApiCallsUsed;
     const storageUsed = realStorageUsed;
 
+    // 当前用户进行中的算力点退还申请统计
+    const pendingRefundCount = await prisma.refundrequest.count({
+      where: { userId, status: "PENDING" },
+    }).catch(() => 0);
+
     return NextResponse.json({
       success: true,
       data: {
@@ -125,6 +130,7 @@ export async function GET(request: NextRequest) {
         apiCallsLimit,
         storageUsed,
         storageLimit,
+        pendingRefundCount,
       },
     });
   } catch (error) {

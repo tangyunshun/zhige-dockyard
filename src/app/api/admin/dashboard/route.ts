@@ -400,6 +400,9 @@ export async function GET(request: NextRequest) {
         activeTenants: enterpriseWorkspaces,
         pendingReviews: upgradeApplications,
         pendingPostSubmissions,
+        pendingRefundRequests: await prisma.refundrequest.count({
+          where: { status: "PENDING" },
+        }),
         systemHealth,
         systemServices,
 

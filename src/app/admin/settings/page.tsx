@@ -1543,7 +1543,7 @@ export default function AdminSettingsPage() {
     { id: "email", label: "SMTP 邮件", icon: Mail },
     { id: "sms", label: "短信网关", icon: MessageSquare },
     { id: "oauth", label: "第三方登录", icon: Globe },
-    { id: "footer", label: "页脚与前台导航", icon: Layers },
+    { id: "footer", label: "页脚与前台展示", icon: Layers },
     { id: "security", label: "安全与风控", icon: Shield },
     { id: "database", label: "数据库与灾备", icon: Database },
   ];
@@ -1643,50 +1643,6 @@ export default function AdminSettingsPage() {
                     <p className="text-xs text-slate-400 font-medium mt-0.5">
                       管理全站对外展示的站点名称、域名、SEO 描述与备案版权信息。
                     </p>
-                  </div>
-
-                  {/* 数据导出设置：导出条数上限（systemconfig.export.maxRows） */}
-                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-                    <div>
-                      <h4 className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-                        <Download className="w-4 h-4 text-emerald-600" />
-                        数据导出设置
-                      </h4>
-                      <p className="text-[11px] text-slate-400 font-medium mt-1">
-                        全站 Excel 导出的单文件最大行数。达到上限时文件末尾会追加提示行，建议保持 5000 以内以保证导出性能。
-                      </p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                        <span>导出条数上限（行 / 文件）</span>
-                      </label>
-                      <div className="flex items-center gap-3">
-                        <input
-                          type="number"
-                          min={1}
-                          max={50000}
-                          value={configs["export.maxRows"] || "5000"}
-                          onChange={(e) => handleConfigChange("export.maxRows", e.target.value)}
-                          className="w-36 px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all"
-                        />
-                        <span className="text-xs text-slate-500 font-bold">行</span>
-                      </div>
-                    </div>
-                    <button
-                      onClick={async () => {
-                        const n = Number(configs["export.maxRows"]);
-                        if (!Number.isInteger(n) || n < 1 || n > 50000) {
-                          toast.warning("导出上限需为 1 ~ 50000 之间的整数");
-                          return;
-                        }
-                        await handleSaveSettings(["export.maxRows"], "导出上限配置已保存");
-                      }}
-                      disabled={saving}
-                      className="h-9 px-5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                      保存导出设置
-                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1841,164 +1797,6 @@ export default function AdminSettingsPage() {
                           placeholder="© 2026 知阁科技 ZhiGe Tech."
                         />
                       </div>
-                    </div>
-                  </div>
-
-                  {/* 商务联系方式 / 客户经理（1~2 位）：前端定价页、定制版卡片统一引用，管理员可随时修改 */}
-                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black text-slate-800">商务联系方式 / 客户经理</span>
-                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-bold">全站引用</span>
-                      <span className="text-[10px] text-slate-500 font-bold ml-auto">
-                        {contactManagers.length} / {MAX_CONTACT_MANAGERS} 位
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-slate-500 leading-relaxed">
-                      此处配置将展示在定价页「定制版」卡片与客户经理联系区，用户可点击直接拨号或发邮件。
-                      至少配置 1 位、最多 2 位；更换联系人 / 电话 / 邮箱只需在此修改并保存，全站即时生效，无需改动代码。
-                    </p>
-                    <div className="space-y-3">
-                      {contactManagers.map((manager, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3 bg-white/80 border border-amber-200/70 rounded-xl space-y-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-[11px] font-black text-slate-700">
-                              客户经理 {idx + 1}
-                            </span>
-                            {contactManagers.length > MIN_CONTACT_MANAGERS && (
-                              <button
-                                type="button"
-                                onClick={() => removeContactManager(idx)}
-                                className="ml-auto text-[11px] font-bold text-red-500 hover:text-red-600 cursor-pointer"
-                              >
-                                删除该客户经理
-                              </button>
-                            )}
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">姓名（选填）</label>
-                              <input
-                                type="text"
-                                value={manager.name || ""}
-                                onChange={(e) => updateContactManager(idx, "name", e.target.value)}
-                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                                placeholder="如：张经理"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">咨询热线</label>
-                              <input
-                                type="text"
-                                value={manager.hotline || ""}
-                                onChange={(e) => updateContactManager(idx, "hotline", e.target.value)}
-                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                                placeholder="400-900-6688 / 138xxxx8888"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">商务邮箱</label>
-                              <input
-                                type="text"
-                                value={manager.email || ""}
-                                onChange={(e) => updateContactManager(idx, "email", e.target.value)}
-                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                                placeholder="business@zhige.com"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">服务时间</label>
-                              <input
-                                type="text"
-                                value={manager.serviceHours || ""}
-                                onChange={(e) => updateContactManager(idx, "serviceHours", e.target.value)}
-                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
-                                placeholder="工作日 9:00 - 18:00"
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">QQ 号（选填）</label>
-                              <input
-                                type="text"
-                                value={manager.qq || ""}
-                                onChange={(e) => updateContactManager(idx, "qq", e.target.value)}
-                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
-                                  validateQq(manager.qq || "") ? "border-red-400" : "border-slate-200"
-                                }`}
-                                placeholder="如：3001234567，前端展示「加QQ」入口"
-                              />
-                              {validateQq(manager.qq || "") && (
-                                <p className="text-[10px] font-bold text-red-500">{validateQq(manager.qq || "")}</p>
-                              )}
-                            </div>
-                            <div className="space-y-1">
-                              <label className="block text-[11px] font-bold text-slate-600">微信号（选填）</label>
-                              <input
-                                type="text"
-                                value={manager.wechat || ""}
-                                onChange={(e) => updateContactManager(idx, "wechat", e.target.value)}
-                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
-                                  validateWechat(manager.wechat || "") ? "border-red-400" : "border-slate-200"
-                                }`}
-                                placeholder="如：zhige_biz 或 11 位手机号，前端展示「复制微信号」入口"
-                              />
-                              {validateWechat(manager.wechat || "") && (
-                                <p className="text-[10px] font-bold text-red-500">{validateWechat(manager.wechat || "")}</p>
-                              )}
-                            </div>
-                            <ContactQrField
-                              label="QQ 二维码（选填，扫码添加为主）"
-                              value={manager.qqQr || ""}
-                              onChange={(url) => updateContactManager(idx, "qqQr", url)}
-                            />
-                            <ContactQrField
-                              label="微信二维码（选填，扫码添加为主）"
-                              value={manager.wechatQr || ""}
-                              onChange={(url) => updateContactManager(idx, "wechatQr", url)}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    {/* 内联校验错误：直接显示在操作区上方，不使用 toast */}
-                    {contactFormError && (
-                      <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-bold text-red-600">
-                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                        <span>{contactFormError}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 flex-wrap pt-1">
-                      <button
-                        type="button"
-                        onClick={addContactManager}
-                        disabled={contactManagers.length >= MAX_CONTACT_MANAGERS}
-                        className="h-9 px-4 border border-amber-300 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                      >
-                        + 添加客户经理
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          // 先内联校验：不合规直接在表单内红字提示，不弹 toast
-                          const err = validateContactManagersList(contactManagers);
-                          if (err) {
-                            setContactFormError(err);
-                            return;
-                          }
-                          setContactFormError(null);
-                          handleSaveSettings(
-                            ["contact.managers"],
-                            "商务联系方式 / 客户经理信息已成功保存！"
-                          );
-                        }}
-                        disabled={saving}
-                        className="h-9 px-5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-[4px] shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                      >
-                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                        保存联系方式
-                      </button>
                     </div>
                   </div>
 
@@ -2742,10 +2540,10 @@ export default function AdminSettingsPage() {
                   <div className="border-b border-slate-100 pb-3">
                     <div className="flex items-center gap-2">
                       <Layers className="w-4 h-4 text-[#3182ce]" />
-                      <h3 className="text-sm font-black text-slate-800">前台全站页脚与导航中枢</h3>
+                      <h3 className="text-sm font-black text-slate-800">前台展示与页脚导航中枢</h3>
                     </div>
                     <p className="text-xs text-slate-400 font-medium mt-0.5">
-                      管理全站底部定位标语、社交媒体二维码、公安网安备案以及 4 大分类导航链接。所有配置修改并保存后即时在全站生效。
+                      管理全站底部定位标语、社交媒体二维码、公安网安备案、4 大分类导航链接与商务客户经理联系区。所有配置修改并保存后即时在全站生效。
                     </p>
                   </div>
 
@@ -3540,6 +3338,164 @@ export default function AdminSettingsPage() {
                       保存页脚与导航设置
                     </button>
                   </div>
+
+                  {/* 商务联系方式 / 客户经理（1~2 位）：前台展示内容，与页脚二维码/导航同属前台板块 */}
+                  <div className="p-4 bg-amber-50/60 border border-amber-200 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-slate-800">商务联系方式 / 客户经理</span>
+                      <span className="text-[10px] px-1.5 py-0.5 bg-amber-500 text-white rounded font-bold">全站引用</span>
+                      <span className="text-[10px] text-slate-500 font-bold ml-auto">
+                        {contactManagers.length} / {MAX_CONTACT_MANAGERS} 位
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 leading-relaxed">
+                      此处配置将展示在定价页「定制版」卡片与客户经理联系区，用户可点击直接拨号或发邮件。
+                      至少配置 1 位、最多 2 位；更换联系人 / 电话 / 邮箱只需在此修改并保存，全站即时生效，无需改动代码。
+                    </p>
+                    <div className="space-y-3">
+                      {contactManagers.map((manager, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 bg-white/80 border border-amber-200/70 rounded-xl space-y-2"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-black text-slate-700">
+                              客户经理 {idx + 1}
+                            </span>
+                            {contactManagers.length > MIN_CONTACT_MANAGERS && (
+                              <button
+                                type="button"
+                                onClick={() => removeContactManager(idx)}
+                                className="ml-auto text-[11px] font-bold text-red-500 hover:text-red-600 cursor-pointer"
+                              >
+                                删除该客户经理
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">姓名（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.name || ""}
+                                onChange={(e) => updateContactManager(idx, "name", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="如：张经理"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">咨询热线</label>
+                              <input
+                                type="text"
+                                value={manager.hotline || ""}
+                                onChange={(e) => updateContactManager(idx, "hotline", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="400-900-6688 / 138xxxx8888"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">商务邮箱</label>
+                              <input
+                                type="text"
+                                value={manager.email || ""}
+                                onChange={(e) => updateContactManager(idx, "email", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="business@zhige.com"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">服务时间</label>
+                              <input
+                                type="text"
+                                value={manager.serviceHours || ""}
+                                onChange={(e) => updateContactManager(idx, "serviceHours", e.target.value)}
+                                className="w-full px-3.5 h-10 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
+                                placeholder="工作日 9:00 - 18:00"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">QQ 号（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.qq || ""}
+                                onChange={(e) => updateContactManager(idx, "qq", e.target.value)}
+                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
+                                  validateQq(manager.qq || "") ? "border-red-400" : "border-slate-200"
+                                }`}
+                                placeholder="如：3001234567，前端展示「加QQ」入口"
+                              />
+                              {validateQq(manager.qq || "") && (
+                                <p className="text-[10px] font-bold text-red-500">{validateQq(manager.qq || "")}</p>
+                              )}
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-[11px] font-bold text-slate-600">微信号（选填）</label>
+                              <input
+                                type="text"
+                                value={manager.wechat || ""}
+                                onChange={(e) => updateContactManager(idx, "wechat", e.target.value)}
+                                className={`w-full px-3.5 h-10 border bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all ${
+                                  validateWechat(manager.wechat || "") ? "border-red-400" : "border-slate-200"
+                                }`}
+                                placeholder="如：zhige_biz 或 11 位手机号，前端展示「复制微信号」入口"
+                              />
+                              {validateWechat(manager.wechat || "") && (
+                                <p className="text-[10px] font-bold text-red-500">{validateWechat(manager.wechat || "")}</p>
+                              )}
+                            </div>
+                            <ContactQrField
+                              label="QQ 二维码（选填，扫码添加为主）"
+                              value={manager.qqQr || ""}
+                              onChange={(url) => updateContactManager(idx, "qqQr", url)}
+                            />
+                            <ContactQrField
+                              label="微信二维码（选填，扫码添加为主）"
+                              value={manager.wechatQr || ""}
+                              onChange={(url) => updateContactManager(idx, "wechatQr", url)}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    {/* 内联校验错误：直接显示在操作区上方，不使用 toast */}
+                    {contactFormError && (
+                      <div className="flex items-start gap-2 p-2.5 bg-red-50 border border-red-200 rounded-xl text-[11px] font-bold text-red-600">
+                        <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                        <span>{contactFormError}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-3 flex-wrap pt-1">
+                      <button
+                        type="button"
+                        onClick={addContactManager}
+                        disabled={contactManagers.length >= MAX_CONTACT_MANAGERS}
+                        className="h-9 px-4 border border-amber-300 hover:bg-amber-100 text-amber-700 text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        + 添加客户经理
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          // 先内联校验：不合规直接在表单内红字提示，不弹 toast
+                          const err = validateContactManagersList(contactManagers);
+                          if (err) {
+                            setContactFormError(err);
+                            return;
+                          }
+                          setContactFormError(null);
+                          handleSaveSettings(
+                            ["contact.managers"],
+                            "商务联系方式 / 客户经理信息已成功保存！"
+                          );
+                        }}
+                        disabled={saving}
+                        className="h-9 px-5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-[4px] shadow-xs hover:shadow transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        保存联系方式
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -3847,6 +3803,50 @@ export default function AdminSettingsPage() {
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  {/* 数据导出设置：导出条数上限（systemconfig.export.maxRows），与数据体量统计、灾备快照同属数据管理 */}
+                  <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
+                    <div>
+                      <h4 className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+                        <Download className="w-4 h-4 text-emerald-600" />
+                        数据导出设置
+                      </h4>
+                      <p className="text-[11px] text-slate-400 font-medium mt-1">
+                        全站 Excel 导出的单文件最大行数。达到上限时文件末尾会追加提示行，建议保持 5000 以内以保证导出性能。
+                      </p>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                        <span>导出条数上限（行 / 文件）</span>
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          min={1}
+                          max={50000}
+                          value={configs["export.maxRows"] || "5000"}
+                          onChange={(e) => handleConfigChange("export.maxRows", e.target.value)}
+                          className="w-36 px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all"
+                        />
+                        <span className="text-xs text-slate-500 font-bold">行</span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const n = Number(configs["export.maxRows"]);
+                        if (!Number.isInteger(n) || n < 1 || n > 50000) {
+                          toast.warning("导出上限需为 1 ~ 50000 之间的整数");
+                          return;
+                        }
+                        await handleSaveSettings(["export.maxRows"], "导出上限配置已保存");
+                      }}
+                      disabled={saving}
+                      className="h-9 px-5 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold rounded-[4px] transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                      保存导出设置
+                    </button>
                   </div>
                 </div>
               )}
@@ -4200,7 +4200,7 @@ export default function AdminSettingsPage() {
                     type="text"
                     value={newSmsProvider.label}
                     onChange={(e) => setNewSmsProvider((prev) => ({ ...prev, label: e.target.value }))}
-                    placeholder="如: 百度智能云短信 (Baidu SMS)"
+                    placeholder="如: 腾讯云短信 (Tencent SMS)"
                     className="w-full px-3.5 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all"
                   />
                 </div>

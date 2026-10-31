@@ -403,8 +403,8 @@ export default function WorkspacePlansAdminPage() {
     setForm({ ...form, features: next });
   };
 
-  const fmtPrice = (cents: number) =>
-    cents > 0 ? `¥${(cents / 100).toFixed(2)}` : "免费";
+  const fmtPrice = (cents: number, purchasable: boolean) =>
+    cents > 0 ? `¥${(cents / 100).toFixed(2)}` : purchasable ? "免费" : "按需报价";
   const fmtLimit = (n: number) => (n === -1 ? "无限制" : n.toLocaleString());
 
   return (
@@ -489,7 +489,7 @@ export default function WorkspacePlansAdminPage() {
           <div>
             <div className="text-xs text-slate-500 font-bold mb-1">免费 / 付费</div>
             <div className="text-2xl font-black font-mono text-purple-600">
-              {plans.filter((p) => p.priceMonthly === 0).length}{" "}
+              {plans.filter((p) => p.priceMonthly === 0 && p.purchasable).length}{" "}
               <span className="text-slate-400">/</span>{" "}
               {plans.filter((p) => p.priceMonthly > 0).length}
             </div>
@@ -690,7 +690,7 @@ export default function WorkspacePlansAdminPage() {
                     <td className="px-6 py-4 font-mono whitespace-nowrap">
                       <div className="space-y-0.5">
                         <div className="font-black text-slate-900 text-xs">
-                          月付: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly)}</span>
+                          月付: <span className="text-[#3182ce]">{fmtPrice(plan.priceMonthly, plan.purchasable)}</span>
                         </div>
                         <div className="text-[10px] font-bold text-slate-400">
                           {plan.priceYearly > 0 ? "月付 / 年付订阅" : "月付订阅"}

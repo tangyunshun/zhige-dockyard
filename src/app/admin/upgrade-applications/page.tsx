@@ -1,13 +1,16 @@
 "use client";
 
 /**
- * 定制咨询处理
+ * 定制咨询 / 升级申请处理
  *
  * 用户在定价页（空间套餐区 / 会员定制引导）提交的「定制版方案咨询」会写入
- * upgradeapplication 表。此前该表的管理页面被整体下线（自动开通链路取代了
- * 升级审核），导致用户提交的咨询没有任何管理端可见的出口。本页恢复这一出口，
- * 仅做咨询跟进（处理中 / 已完成 / 已驳回），不再附带任何自动化副作用
- * （例如历史上「通过即把空间升级为企业空间」的逻辑已从 API 移除）。
+ * upgradeapplication 表，由管理员在此跟进处理。
+ *
+ * 处理动作（均真实落库 + 审计 + 站内通知用户）：
+ *  - 开始处理：PENDING → PROCESSING
+ *  - 标记完成：PROCESSING → COMPLETED；可选「签约开通企业套餐」（指定 PRO / 旗舰版 / 定制版
+ *    及月付/年付），后端会真实把该用户关联的个人空间升级为对应企业套餐。
+ *  - 驳回：→ REJECTED，必须填写处理说明（用户可见）。
  */
 
 import { useCallback, useEffect, useState } from "react";
@@ -96,6 +99,9 @@ export default function UpgradeApplicationsPage() {
   const [remark, setRemark] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
+  // 签约开通企业套餐（仅在「标记完成」时可选）
+  const [openPlan, setOpenPlan] = useState("");
+  const [billingCycle, setBillingCycle] = useState<"MONTH" | "YEAR">("YEAR");
 
   const authFetch = useCallback(
     (input: string, init?: RequestInit) => {
@@ -134,6 +140,8 @@ export default function UpgradeApplicationsPage() {
   const openDialog = (row: ConsultRow, next: ConsultStatus) => {
     setDialogTarget({ row, next });
     setRemark("");
+    setOpenPlan("");
+    setBillingCycle("YEAR");
     setDialogError(null);
     setDialogOpen(true);
   };
@@ -148,12 +156,14 @@ export default function UpgradeApplicationsPage() {
     try {
       setSubmitting(true);
       setDialogError(null);
+      setUpdatingId(row.id);
       const res = await authFetch("/api/admin/upgrade-applications", {
         method: "PATCH",
         body: JSON.stringify({
           applicationId: row.id,
           status: next,
           adminRemark: remark.trim() || undefined,
+          ...(next === "COMPLETED" && openPlan ? { openPlan, billingCycle } : {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -171,6 +181,7 @@ export default function UpgradeApplicationsPage() {
     } catch {
       setDialogError("网络异常，更新处理状态失败");
     } finally {
+      setUpdatingId(null);
       setSubmitting(false);
     }
   };
@@ -372,6 +383,37 @@ export default function UpgradeApplicationsPage() {
                 联系人：{dialogTarget.row.contactName} · {dialogTarget.row.contactPhone}
               </p>
             </div>
+
+            {dialogTarget.next === "COMPLETED" && (
+              <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2.5">
+                <p className="text-[11px] font-black text-indigo-700">签约开通企业套餐（可选）</p>
+                <p className="text-[10px] text-slate-500 font-bold leading-snug">
+                  选择套餐并确认后，系统将把该用户关联的个人空间升级为对应企业套餐（真实开通）。留空则仅标记完成、不开通。
+                </p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <select
+                    value={openPlan}
+                    onChange={(e) => setOpenPlan(e.target.value)}
+                    className="h-9 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                  >
+                    <option value="">不开通（仅完成）</option>
+                    <option value="PRO">专业版</option>
+                    <option value="ENTERPRISE">旗舰版</option>
+                    <option value="CUSTOM">定制版</option>
+                  </select>
+                  {openPlan && (
+                    <select
+                      value={billingCycle}
+                      onChange={(e) => setBillingCycle(e.target.value as "MONTH" | "YEAR")}
+                      className="h-9 px-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 outline-none cursor-pointer"
+                    >
+                      <option value="YEAR">年付</option>
+                      <option value="MONTH">月付</option>
+                    </select>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-black text-slate-500 mb-1.5">

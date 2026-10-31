@@ -538,9 +538,9 @@ export default function AdminTokenSettlementsPage() {
         <div className="flex items-start gap-2 min-w-0">
           <Scale className="w-5 h-5 text-[#3182ce] mt-0.5 shrink-0" />
           <div className="min-w-0">
-            <h2 className="text-xl font-black text-slate-800">Token 真实结算人工复核</h2>
+            <h2 className="text-xl font-black text-slate-800">算力点结算人工复核</h2>
             <p className="text-xs text-slate-500 mt-1">
-              针对高风险挂起、模型失败释放异常或差额补扣待裁决单据，由管理员在事务隔离下执行复核与资金对账。
+              针对高风险挂起、调用失败释放异常或差额补扣待裁决单据，由管理员在事务隔离下执行复核与资金对账。
             </p>
           </div>
         </div>
@@ -668,7 +668,7 @@ export default function AdminTokenSettlementsPage() {
           <div className="text-2xl font-black text-blue-900 tracking-tight font-mono">
             {statsLoading ? "..." : stats?.heldCount ?? 0}
           </div>
-          <p className="text-[11px] text-blue-700/70 mt-1 font-medium whitespace-nowrap">流式生成执行中尚未对账</p>
+          <p className="text-[11px] text-blue-700/70 mt-1 font-medium whitespace-nowrap">任务执行中尚未对账</p>
         </div>
       </div>
 
@@ -830,7 +830,7 @@ export default function AdminTokenSettlementsPage() {
                   <th className="py-3.5 px-4 whitespace-nowrap">任务标识 / 状态</th>
                   <th className="py-3.5 px-4 whitespace-nowrap">归属主体 (用户 · 空间)</th>
                   <th className="py-3.5 px-4 whitespace-nowrap">财务点数 (预扣 · 实扣 · 差额)</th>
-                  <th className="py-3.5 px-4 whitespace-nowrap">Token 消耗吞吐</th>
+                  <th className="py-3.5 px-4 whitespace-nowrap">Token 用量（核算算力点）</th>
                   <th className="py-3.5 px-4 whitespace-nowrap">审计与异常备注</th>
                   <th className="py-3.5 px-4 whitespace-nowrap">更新时间</th>
                   {/* Sticky 吸附在最右侧的操作列头 */}
@@ -939,7 +939,7 @@ export default function AdminTokenSettlementsPage() {
                         </div>
                       </td>
 
-                      {/* Token 消耗量 */}
+                      {/* Token 用量（核算算力点） */}
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex items-center gap-2 font-mono text-xs text-slate-700">
                           <span>入: <b className="text-slate-900">{r.inputTokens.toLocaleString()}</b></span>
@@ -1240,10 +1240,10 @@ export default function AdminTokenSettlementsPage() {
               {/* Token 消耗明细 */}
               <div className="bg-slate-50/70 rounded-xl p-3 border border-slate-100 space-y-1.5">
                 <div className="font-black text-slate-700 text-xs mb-1 flex items-center gap-1.5">
-                  <Activity className="w-3.5 h-3.5 text-[#3182ce]" /> Token 消耗指标
+                  <Activity className="w-3.5 h-3.5 text-[#3182ce]" /> Token 用量明细（核算算力点）
                 </div>
-                <Row label="输入 Tokens (提示词)" value={detailRecord.inputTokens.toLocaleString()} mono />
-                <Row label="输出 Tokens (模型补全)" value={detailRecord.outputTokens.toLocaleString()} mono />
+                <Row label="输入 Tokens (请求输入)" value={detailRecord.inputTokens.toLocaleString()} mono />
+                <Row label="输出 Tokens (生成结果)" value={detailRecord.outputTokens.toLocaleString()} mono />
                 <Row
                   label="缓存读取 Tokens"
                   value={(detailRecord.cacheReadTokens || 0).toLocaleString()}

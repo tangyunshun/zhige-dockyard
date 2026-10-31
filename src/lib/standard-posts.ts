@@ -128,7 +128,7 @@ export async function computeStandardPostUsageStats(posts: StandardPostItem[]): 
       getPostCodeAliasMap(),
       prisma.workspace.findMany({ select: { id: true, name: true, type: true } }),
       prisma.workspacemember.findMany({ select: { workspaceId: true, userId: true, role: true } }),
-      prisma.position.findMany({ select: { id: true, code: true, name: true } }),
+      prisma.platformstandardpost.findMany({ select: { id: true, code: true, name: true } }),
       prisma.workspacepost.findMany({
         include: {
           workspace: { select: { id: true, name: true, type: true } },

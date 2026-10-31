@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       },
     });
 
-    const allPositions = await prisma.position.findMany({
+    const allPositions = await prisma.platformstandardpost.findMany({
       select: { id: true, name: true, code: true },
     });
 

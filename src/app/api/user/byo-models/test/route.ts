@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { validateUser } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { decryptSecret } from "@/lib/crypto-secrets";
 import { testByoModelConnection } from "@/lib/workspace-byo-model";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +20,25 @@ export async function POST(request: NextRequest) {
     const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
     const baseUrl = typeof body.baseUrl === "string" ? body.baseUrl.trim() : "";
     const protocol = typeof body.protocol === "string" ? body.protocol : "OPENAI_COMPATIBLE";
-    const apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
+    let apiKey = typeof body.apiKey === "string" ? body.apiKey : "";
+    const defId = typeof body.defId === "string" ? body.defId : "";
+    if (!apiKey && defId) {
+      const def = await prisma.user_byo_model_def.findUnique({
+        where: { id: defId },
+        select: { ownerUserId: true, apiKeyCipher: true },
+      });
+      if (
+        def &&
+        (def.ownerUserId === auth.user.id || auth.user.role === "SUPER_ADMIN" || auth.user.role === "ADMIN") &&
+        def.apiKeyCipher
+      ) {
+        try {
+          apiKey = decryptSecret(def.apiKeyCipher);
+        } catch {
+          // 忽略
+        }
+      }
+    }
     const label = typeof body.label === "string" ? body.label : "byo-test";
     if (!baseUrl) {
       return NextResponse.json({ success: false, error: "请先填写 Base URL 端点地址" }, { status: 400 });

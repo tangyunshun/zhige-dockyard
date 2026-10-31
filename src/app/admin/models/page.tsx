@@ -4766,11 +4766,11 @@ export default function AdminModelsPage() {
                         </label>
                         <label className="text-xs text-slate-700 space-y-1 block">
                           <span className="font-bold">起始日期</span>
-                          <input type="date" className={inputCls} value={periodForm.startDate} onChange={(e) => setPeriodForm({ ...periodForm, startDate: e.target.value })} />
+                          <input type="date" className={inputCls} value={periodForm.startDate} max={periodForm.endDate || undefined} onChange={(e) => setPeriodForm({ ...periodForm, startDate: e.target.value })} />
                         </label>
                         <label className="text-xs text-slate-700 space-y-1 block">
                           <span className="font-bold">结束日期</span>
-                          <input type="date" className={inputCls} value={periodForm.endDate} onChange={(e) => setPeriodForm({ ...periodForm, endDate: e.target.value })} />
+                          <input type="date" className={inputCls} value={periodForm.endDate} min={periodForm.startDate || undefined} onChange={(e) => setPeriodForm({ ...periodForm, endDate: e.target.value })} />
                         </label>
                         <label className="text-xs text-slate-700 space-y-1 block">
                           <span className="font-bold">价格来源状态</span>

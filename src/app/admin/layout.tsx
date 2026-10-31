@@ -221,6 +221,14 @@ const adminMenuItems: AdminMenuItem[] = [
     requiredPermission: "order:read",
   },
   {
+    icon: Building2,
+    label: "对公收款账户",
+    href: "/admin/finance/recharge-account",
+    description: "配置平台官方对公转账收款账户（户名 / 开户行 / 账号 / 附言）",
+    group: "财务与订单",
+    requiredPermission: "order:read",
+  },
+  {
     icon: ReceiptText,
     label: "算力总账",
     href: "/admin/finance/points",

@@ -1808,7 +1808,7 @@ export default function MaintenancePage() {
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
                       <span>影响范围</span>
-                      <span className="text-[10px] text-[#3182ce] font-normal">已智能联动</span>
+                      <span className="text-[10px] text-[#3182ce] font-normal">已自动联动</span>
                     </label>
                     <input
                       type="text"

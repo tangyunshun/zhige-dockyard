@@ -804,6 +804,16 @@ model platformstandardpost {
   isWorkspaceDefault Boolean  @default(false)
   /// 是否为系统保留岗位（空间所有者等，不允许手动引入/移除）
   isSystemReserved   Boolean  @default(false)
+  /// 预置岗位标识（由 seed 写入，区别于管理员后台自建岗位）；合并自原 position 表
+  isPreset           Boolean  @default(false)
+  /// 是否允许空间所有者编辑（预置岗位可能锁定）；合并自原 position 表
+  editable           Boolean  @default(true)
+  /// 预置岗位徽标文案（如「最高管控」）；合并自原 position 表
+  badge              String?
+  /// 预置岗位 Tailwind 徽章样式类；合并自原 position 表
+  colorCls           String?
+  /// 默认允许组件 ID 列表（null 表示不限制）；合并自原 position 表
+  defaultAllowedComponentIds Json?
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -1130,28 +1140,6 @@ model componentcategory {
 }
 
 // 岗位表：预置岗位 + 空间所有者自定义岗位统一定义（名称/徽标/默认组件授权矩阵）。
-// 预置岗位由 seed 一次性写入（isPreset=true），运行期由 /api/studio?action=positions 与配置中心读写。
-model position {
-  id                         String   @id // 如 pos_owner / pos_custom_xxx
-  code                       String   @unique // 如 OWNER / PROJECT_MANAGER / 自定义唯一码
-  name                       String
-  badge                      String?
-  icon                       String?
-  colorCls                   String? // Tailwind 徽章样式类
-  description                String?
-  isPreset                   Boolean  @default(true) // 预置岗位不可删除，仅可覆盖授权
-  editable                   Boolean  @default(true) // 是否允许空间所有者编辑
-  status                     String   @default("ACTIVE") // ACTIVE | DISABLED
-  defaultAllowedComponentIds Json? // string[] 默认允许组件 ID，null 表示不限制
-  sortOrder                  Int      @default(0)
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
-
-  @@index([status], map: "Position_status_idx")
-  @@index([sortOrder], map: "Position_sortOrder_idx")
-  @@map("position")
-}
-
 // Webhook 事件订阅实体表：支持 Webhooks 真实订阅与事件推发日志
 model webhooksubscription {
   id             String    @id @default(uuid())

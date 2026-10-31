@@ -567,7 +567,7 @@ export default function AdminNotificationsPage() {
         setUserSearching(true);
         const authToken = getAuthToken();
         const res = await fetch(`/api/admin/users?search=${encodeURIComponent(userSearchTerm.trim())}&limit=12`, {
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+        headers: { Authorization: `Bearer ${authToken}` },
         });
         if (res.ok) {
           const result = await res.json();
@@ -1026,7 +1026,8 @@ export default function AdminNotificationsPage() {
         if (res.ok) {
           const data = await res.json();
           matchedUsers = data.matched || [];
-          unmatchedTokens = data.unmatched || [];
+          // 注意：后端返回字段为 unmatchedSamples（为避免大批量响应体过大，最多 20 条样本）
+          unmatchedTokens = data.unmatchedSamples || data.unmatched || [];
         }
       } catch (err) {
         console.warn("请求服务端匹配用户标识失败，启用客户端本地解析模式", err);

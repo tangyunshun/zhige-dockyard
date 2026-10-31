@@ -34,12 +34,12 @@ export async function PUT(request: NextRequest) {
     );
   }
   const body = await request.json().catch(() => ({}));
-  const allowMultiDevice = body.allowMultiDevice === true || body.allowMultiDevice === "true";
+  const allowMultiDevice = body.allowMultiDevice === true || body.allowMultiDevice === "true"; const rawLimit = Number(body.deviceLimit); const deviceLimit = [1, 2, 3, 5, 10].includes(rawLimit) ? rawLimit : 3;
 
   await prisma.user.update({
     where: { id: auth.user.id },
-    data: { allowMultiDevice },
+    data: { allowMultiDevice, deviceLimit },
   });
 
-  return NextResponse.json({ success: true, data: { allowMultiDevice } });
+  return NextResponse.json({ success: true, data: { allowMultiDevice, deviceLimit } });
 }

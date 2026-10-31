@@ -32,6 +32,13 @@ export async function POST(request: NextRequest) {
     const content = String(body?.content ?? "").trim();
     const ratingRaw = Number(body?.rating ?? 5);
     const rating = Number.isFinite(ratingRaw) ? Math.min(5, Math.max(1, Math.trunc(ratingRaw))) : 5;
+    const highlightLabel = String(body?.highlightLabel ?? "").trim();
+    const highlightValue = String(body?.highlightValue ?? "").trim();
+    const rawTags = Array.isArray(body?.tags) ? body.tags : [];
+    const tags = rawTags
+      .map((t: unknown) => String(t ?? "").trim())
+      .filter((t: string) => t.length > 0 && t.length <= 20)
+      .slice(0, 6);
 
     if (!name) {
       return NextResponse.json({ error: "请填写您的姓名或称呼" }, { status: 400 });
@@ -44,6 +51,18 @@ export async function POST(request: NextRequest) {
     }
     if (org.length > 50) {
       return NextResponse.json({ error: "单位名称不能超过 50 个字符" }, { status: 400 });
+    }
+    if (highlightLabel.length > 24) {
+      return NextResponse.json({ error: "量化成效指标名称不能超过 24 个字符" }, { status: 400 });
+    }
+    if (highlightValue.length > 20) {
+      return NextResponse.json({ error: "量化成效指标数值不能超过 20 个字符" }, { status: 400 });
+    }
+    if ((highlightLabel && !highlightValue) || (!highlightLabel && highlightValue)) {
+      return NextResponse.json(
+        { error: "量化成效指标的「指标名称」与「指标数值」需同时填写或同时留空" },
+        { status: 400 }
+      );
     }
     if (content.length < MIN_CONTENT_LENGTH) {
       return NextResponse.json({ error: `评价内容至少需要 ${MIN_CONTENT_LENGTH} 个字符` }, { status: 400 });
@@ -59,21 +78,24 @@ export async function POST(request: NextRequest) {
     });
     if (pendingExists) {
       return NextResponse.json(
-        { error: "您已有一条评价正在等待审核，审核通过后再提交新的评价吧" },
+        { error: "您已有一条评价正在等待审核，可先在下方历史记录中修改或撤回该待审评价" },
         { status: 429 }
       );
     }
 
-    await prisma.testimonial.create({
+    const created = await prisma.testimonial.create({
       data: {
         groupNo: 1, // 占位分组，审核通过时由管理员指定
         category,
         name,
         role: role || null,
         org: org || null,
-        avatar: null, // 头像由管理员审核时上传
+        avatar: auth.user.avatar || null, // 优先关联当前登录用户的真实头像
         rating,
         content,
+        tags: tags.length > 0 ? tags : undefined,
+        highlightLabel: highlightLabel || null,
+        highlightValue: highlightValue || null,
         sortOrder: 999,
         status: "pending",
         submitterId: userId,
@@ -81,8 +103,28 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    await prisma.operationlog
+      .create({
+        data: {
+          id: `log-rev-sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          userId,
+          action: "testimonial:user_submit",
+          resource: `testimonial:${created.id}`,
+          details: {
+            id: created.id,
+            category,
+            rating,
+            name,
+            tags,
+          },
+          ipAddress: "127.0.0.1 (本地局域网)",
+        },
+      })
+      .catch(() => {});
+
     return NextResponse.json({
       success: true,
+      testimonial: created,
       message: "评价已提交，管理员审核通过后将在首页展示，感谢您的反馈！",
     });
   } catch (error) {

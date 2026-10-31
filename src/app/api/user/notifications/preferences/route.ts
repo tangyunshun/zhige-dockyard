@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
         emailNotifications: pref.emailNotifications,
         systemMessages: pref.systemMessages,
         projectUpdates: pref.projectUpdates,
+        commentMentions: pref.commentMentions,
         frequency: pref.frequency,
         updatedAt: pref.updatedAt,
         user: {
@@ -84,7 +85,7 @@ export async function PUT(request: NextRequest) {
 
     const userId = auth.user.id;
     const body = await request.json();
-    const { emailNotifications, systemMessages, projectUpdates, frequency } = body;
+    const { emailNotifications, systemMessages, projectUpdates, commentMentions, frequency } = body;
 
     // 允许的有效推送频率
     const validFrequencies = ["REALTIME", "HOURLY", "DAILY", "WEEKLY", "CRITICAL_ONLY", "QUIET_HOURS"];
@@ -97,6 +98,7 @@ export async function PUT(request: NextRequest) {
         ...(typeof emailNotifications === "boolean" && { emailNotifications }),
         ...(typeof systemMessages === "boolean" && { systemMessages }),
         ...(typeof projectUpdates === "boolean" && { projectUpdates }),
+        ...(typeof commentMentions === "boolean" && { commentMentions }),
         frequency: targetFrequency,
         updatedAt: new Date(),
       },
@@ -106,7 +108,7 @@ export async function PUT(request: NextRequest) {
         emailNotifications: typeof emailNotifications === "boolean" ? emailNotifications : true,
         systemMessages: typeof systemMessages === "boolean" ? systemMessages : true,
         projectUpdates: typeof projectUpdates === "boolean" ? projectUpdates : true,
-        commentMentions: false,
+        commentMentions: typeof commentMentions === "boolean" ? commentMentions : true,
         frequency: targetFrequency,
         updatedAt: new Date(),
       },

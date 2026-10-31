@@ -16,6 +16,7 @@ const TYPE_META: Record<string, { label: string }> = {
   RECHARGE: { label: "在线充值" },
   OFFLINE_RECHARGE: { label: "线下入账" },
   MEMBERSHIP_GRANT: { label: "会员额度" },
+  GIFT_BONUS: { label: "活动赠送" },
   CONSUME: { label: "组件消耗" },
   REFUND: { label: "退回" },
   MANUAL_ADJUST: { label: "人工调整" },
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
       const map: Record<string, string[]> = {
         recharge: ["RECHARGE", "OFFLINE_RECHARGE"],
         consume: ["CONSUME"],
-        gift: ["GIFT_REGISTER", "MEMBERSHIP_GRANT"],
+        gift: ["GIFT_REGISTER", "MEMBERSHIP_GRANT", "GIFT_BONUS"],
         expire: ["GIFT_EXPIRE"],
         refund: ["REFUND"],
         adjust: ["MANUAL_ADJUST"],

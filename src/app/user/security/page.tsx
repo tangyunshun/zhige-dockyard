@@ -29,6 +29,9 @@ import {
   Info,
   Layers,
   ArrowRight,
+  ArrowUpRight,
+  Download,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
@@ -119,12 +122,90 @@ export default function UserSecurityPage() {
     confirmPassword: "",
   });
 
+  // 全局刷新安全档案与导出审计记录状态
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [exportingHistory, setExportingHistory] = useState(false);
+
   useEffect(() => {
     loadUserProfile();
     loadLoginHistory(1);
     loadDevices(1);
     loadSecuritySettings();
   }, []);
+
+  // 一键全面刷新安全体检档案与审计会话
+  const handleRefreshAll = async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        loadUserProfile(),
+        loadLoginHistory(historyPage),
+        loadDevices(devicePage),
+        loadSecuritySettings(),
+      ]);
+      toast.success("账号安全体检档案与审计数据已刷新");
+    } catch {
+      toast.error("刷新失败，请检查网络后重试");
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
+  // 真实导出近期登录审计记录（CSV UTF-8 BOM 格式，防乱码，并写入操作审计留痕）
+  const handleExportLoginHistory = async () => {
+    if (loginHistory.length === 0) {
+      toast.info("当前暂无登录审计记录可供导出");
+      return;
+    }
+    setExportingHistory(true);
+    try {
+      const headers = ["记录唯一编号", "登录终端/设备", "客户端系统/浏览器", "IP地址", "接入网络类型", "登录地域", "登录时间"];
+      const rows = loginHistory.map((item) => {
+        const friendly = formatFriendlyIp(item.ipAddress);
+        return [
+          `"${item.id}"`,
+          `"${item.device || "未知终端"}"`,
+          `"${(item.userAgent || "").replace(/"/g, '""')}"`,
+          `"${friendly.ip}"`,
+          `"${friendly.note}"`,
+          `"${item.location || "中国"}"`,
+          `"${new Date(item.loginAt).toLocaleString("zh-CN")}"`,
+        ].join(",");
+      });
+      const csvContent = "\uFEFF" + [headers.join(","), ...rows].join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `知阁舟坊_登录安全审计记录_${new Date().toISOString().slice(0, 10)}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      // 写入系统导出留痕
+      const authToken = getAuthToken();
+      await fetch("/api/user/export-log", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify({
+          exportType: "LOGIN_HISTORY",
+          rowCount: loginHistory.length,
+          fileName: `知阁舟坊_登录安全审计记录_${new Date().toISOString().slice(0, 10)}.csv`,
+        }),
+      }).catch(() => {});
+
+      toast.success(`已成功导出 ${loginHistory.length} 条登录审计记录 (CSV)`);
+    } catch (e) {
+      console.error("Export login history error:", e);
+      toast.error("导出审计记录失败，请稍后重试");
+    } finally {
+      setExportingHistory(false);
+    }
+  };
 
   // 读取当前用户基础安全档案
   const loadUserProfile = async () => {
@@ -503,15 +584,12 @@ export default function UserSecurityPage() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            loadUserProfile();
-            loadLoginHistory(historyPage);
-            loadDevices(devicePage);
-          }}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-[#3182ce] hover:text-[#3182ce] transition-all shadow-xs cursor-pointer"
+          onClick={handleRefreshAll}
+          disabled={isRefreshing}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-600 bg-white border border-slate-200 rounded-lg hover:border-[#3182ce] hover:text-[#3182ce] transition-all shadow-xs cursor-pointer disabled:opacity-50"
         >
-          <RefreshCw className="w-3.5 h-3.5" />
-          刷新安全审计
+          <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin text-[#3182ce]" : ""}`} />
+          <span>{isRefreshing ? "正在刷新…" : "刷新安全审计"}</span>
         </button>
       </div>
 
@@ -544,33 +622,81 @@ export default function UserSecurityPage() {
             </div>
           </div>
 
-          {/* 快捷体检指示器（系统浅色大厂微卡片风格） */}
+          {/* 快捷体检指示器（系统浅色大厂微卡片风格，支持快速定位与跳转闭环） */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 shrink-0">
-            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[95px] shadow-2xs hover:border-[#3182ce]/30 transition-all">
+            {/* 登录密码卡片 */}
+            <div
+              onClick={() => {
+                const el = document.getElementById("password-change-card");
+                if (el) {
+                  el.scrollIntoView({ behavior: "smooth" });
+                  const input = el.querySelector("input");
+                  if (input) input.focus();
+                }
+              }}
+              className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[98px] shadow-2xs hover:border-[#3182ce]/50 transition-all cursor-pointer group"
+              title="点击快速定位到密码修改表单"
+            >
               <div className="text-[10px] text-slate-500 font-medium mb-1">登录密码</div>
               <div className="text-xs font-bold text-emerald-600 flex items-center justify-center gap-1">
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> 已保护
               </div>
+              <div className="text-[9px] text-[#3182ce] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5">
+                前往修改
+              </div>
             </div>
-            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[95px] shadow-2xs hover:border-[#3182ce]/30 transition-all">
+
+            {/* 密保手机卡片 */}
+            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[98px] shadow-2xs hover:border-[#3182ce]/50 transition-all">
               <div className="text-[10px] text-slate-500 font-medium mb-1">密保手机</div>
               <div className={`text-xs font-bold flex items-center justify-center gap-1 ${userProfile?.phone ? "text-emerald-600" : "text-[#dd6b20]"}`}>
                 {userProfile?.phone ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-[#dd6b20]" />}
                 {userProfile?.phone ? "已绑定" : "待绑定"}
               </div>
+              <Link
+                href="/user/profile"
+                className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-0.5 hover:underline ${
+                  userProfile?.phone ? "text-slate-400 hover:text-[#3182ce]" : "text-[#dd6b20]"
+                }`}
+              >
+                <span>{userProfile?.phone ? "更换手机" : "去绑定"}</span>
+                <ArrowUpRight className="w-2.5 h-2.5" />
+              </Link>
             </div>
-            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[95px] shadow-2xs hover:border-[#3182ce]/30 transition-all">
+
+            {/* 安全邮箱卡片 */}
+            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[98px] shadow-2xs hover:border-[#3182ce]/50 transition-all">
               <div className="text-[10px] text-slate-500 font-medium mb-1">安全邮箱</div>
               <div className={`text-xs font-bold flex items-center justify-center gap-1 ${userProfile?.email ? "text-emerald-600" : "text-[#dd6b20]"}`}>
                 {userProfile?.email ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <AlertCircle className="w-3.5 h-3.5 text-[#dd6b20]" />}
                 {userProfile?.email ? "已认证" : "未认证"}
               </div>
+              <Link
+                href="/user/profile"
+                className={`text-[9px] font-bold flex items-center justify-center gap-0.5 mt-0.5 hover:underline ${
+                  userProfile?.email ? "text-slate-400 hover:text-[#3182ce]" : "text-[#dd6b20]"
+                }`}
+              >
+                <span>{userProfile?.email ? "更换邮箱" : "去认证"}</span>
+                <ArrowUpRight className="w-2.5 h-2.5" />
+              </Link>
             </div>
-            <div className="bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border border-slate-200/80 text-center min-w-[95px] shadow-2xs hover:border-[#3182ce]/30 transition-all">
+
+            {/* 高危二次保护卡片 */}
+            <div
+              onClick={handleToggle2FA}
+              className={`bg-white/90 backdrop-blur-xs rounded-xl p-2.5 border text-center min-w-[98px] shadow-2xs hover:border-[#3182ce]/50 transition-all cursor-pointer group ${
+                twoFactorEnabled ? "border-[#3182ce]/40" : "border-slate-200/80"
+              }`}
+              title="点击一键切换高危二次保护状态"
+            >
               <div className="text-[10px] text-slate-500 font-medium mb-1">高危二次保护</div>
               <div className={`text-xs font-bold flex items-center justify-center gap-1 ${twoFactorEnabled ? "text-[#3182ce]" : "text-slate-400"}`}>
                 {twoFactorEnabled ? <ShieldCheck className="w-3.5 h-3.5 text-[#3182ce]" /> : <Shield className="w-3.5 h-3.5 text-slate-400" />}
                 {twoFactorEnabled ? "已开启" : "未开启"}
+              </div>
+              <div className="text-[9px] text-[#3182ce] opacity-0 group-hover:opacity-100 transition-opacity mt-0.5 font-bold">
+                {twoFactorEnabled ? "点击关闭" : "点击开启"}
               </div>
             </div>
           </div>
@@ -580,11 +706,28 @@ export default function UserSecurityPage() {
       {/* 修改密码表单与多因素防护设置 */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* 修改密码表单（占 7 列） */}
-        <div className="lg:col-span-7 bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-xs">
-          <h2 className="text-base font-bold text-slate-800 mb-5 flex items-center gap-2">
-            <div className="w-1 h-4 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
-            修改登录密码
-          </h2>
+        <div id="password-change-card" className="lg:col-span-7 bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-xs">
+          <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <div className="w-1 h-4 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+              修改登录密码
+            </h2>
+            <div className="text-[11px] text-slate-400 flex items-center gap-1 font-mono bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">
+              <Clock className="w-3 h-3 text-slate-400" />
+              <span>
+                上次修改：
+                {userProfile?.passwordChangedAt
+                  ? new Date(userProfile.passwordChangedAt).toLocaleString("zh-CN", {
+                      year: "numeric",
+                      month: "2-digit",
+                      day: "2-digit",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })
+                  : "近期未修改"}
+              </span>
+            </div>
+          </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 当前密码 */}
@@ -724,8 +867,8 @@ export default function UserSecurityPage() {
                 disabled={loading}
                 className="inline-flex items-center gap-1.5 px-5 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white rounded-lg text-xs font-semibold hover:brightness-105 transition-all shadow-xs disabled:opacity-50 cursor-pointer"
               >
-                <Shield className="w-3.5 h-3.5" />
-                {loading ? "正在保存..." : "更新密码"}
+                {loading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Shield className="w-3.5 h-3.5" />}
+                <span>{loading ? "正在保存..." : "更新密码"}</span>
               </button>
             </div>
           </form>
@@ -927,7 +1070,7 @@ export default function UserSecurityPage() {
         {/* 近期登录历史记录 */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
               <div className="flex items-center gap-2">
                 <div className="w-1 h-4 bg-gradient-to-b from-[#10b981] to-[#059669] rounded-full"></div>
                 <h2 className="text-base font-bold text-slate-800">近期登录历史</h2>
@@ -935,15 +1078,29 @@ export default function UserSecurityPage() {
                   共 {historyTotal} 条记录
                 </span>
               </div>
-              {loginHistory.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setClearAllHistoryModal(true)}
-                  className="text-xs text-slate-500 hover:text-rose-600 font-semibold hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors border border-slate-200 hover:border-rose-200 cursor-pointer"
-                >
-                  清空历史
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {loginHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleExportLoginHistory}
+                    disabled={exportingHistory}
+                    className="inline-flex items-center gap-1 text-xs text-slate-600 hover:text-[#3182ce] font-semibold bg-white hover:bg-blue-50/50 px-2.5 py-1 rounded-lg transition-colors border border-slate-200 hover:border-[#3182ce]/50 shadow-2xs cursor-pointer disabled:opacity-50"
+                    title="导出当前登录审计记录为 CSV 文件"
+                  >
+                    {exportingHistory ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Download className="w-3.5 h-3.5" />}
+                    <span>{exportingHistory ? "正在导出…" : "导出记录"}</span>
+                  </button>
+                )}
+                {loginHistory.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setClearAllHistoryModal(true)}
+                    className="text-xs text-slate-500 hover:text-rose-600 font-semibold hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors border border-slate-200 hover:border-rose-200 cursor-pointer"
+                  >
+                    清空历史
+                  </button>
+                )}
+              </div>
             </div>
             <p className="text-[11px] text-slate-400 mb-3 flex items-center gap-1">
               <Info className="w-3 h-3 text-slate-400 shrink-0" />
@@ -1200,6 +1357,92 @@ export default function UserSecurityPage() {
           </div>
         </div>
       )}
+
+      {/* 底部：账号高危操作与安全合规指引（全栈闭环：打通注销冷静期与空间转让走向） */}
+      <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-white/90 shadow-xs">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full"></div>
+          <h2 className="text-base font-bold text-slate-800">安全合规与高危操作指引</h2>
+          <span className="text-[11px] text-[#3182ce] font-semibold bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+            风控防御规范
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:bg-white hover:border-[#3182ce]/40 transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center font-bold text-xs">
+                  <AlertTriangle className="w-4 h-4 text-rose-500" />
+                </div>
+                <h3 className="text-xs font-bold text-slate-800">账号注销与冷静期</h3>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                知阁提供 7 天账号注销冷静期保护。注销申请提交后，期间账号功能暂停；冷静期内若改变意图，登录后可一键撤销注销申请并全量恢复资产。
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">位于个人资料危险区域</span>
+              <Link
+                href="/user/profile"
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 inline-flex items-center gap-1"
+              >
+                <span>前往注销申请</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:bg-white hover:border-[#3182ce]/40 transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                </div>
+                <h3 className="text-xs font-bold text-slate-800">工作空间与资产转让</h3>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                空间所有权及企业算力池转让为永久不可逆高危动作。开启上方「高危二次保护」后，在执行转让时将强制核验当前密码或一次性鉴权凭证。
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">工作空间管理中枢</span>
+              <Link
+                href="/user/workspaces"
+                className="text-xs font-bold text-[#3182ce] hover:text-[#2b6cb0] inline-flex items-center gap-1"
+              >
+                <span>管理工作空间</span>
+                <ArrowRight className="w-3 h-3" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/80 hover:bg-white hover:border-[#3182ce]/40 transition-all flex flex-col justify-between">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-7 h-7 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center font-bold text-xs">
+                  <BellRing className="w-4 h-4 text-amber-600" />
+                </div>
+                <h3 className="text-xs font-bold text-slate-800">异常登录应急响应</h3>
+              </div>
+              <p className="text-[11px] text-slate-500 leading-relaxed">
+                若在登录审计中发现陌生地点的 IP 或可疑设备，建议立即执行「下线其他全部设备」阻断入侵，并及时更新密码，保障研发资产安全。
+              </p>
+            </div>
+            <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-[10px] text-slate-400">紧急断开所有远程会话</span>
+              <button
+                type="button"
+                onClick={() => setKickAllModal(true)}
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 inline-flex items-center gap-1 cursor-pointer"
+              >
+                <span>一键紧急下线</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

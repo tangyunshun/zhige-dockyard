@@ -2,24 +2,14 @@
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Wallet,
-  CreditCard,
-  Zap,
+import {
   ChevronRight,
-  RefreshCw,
-  Download,
-  CheckCircle2,
   Layers,
-  Receipt,
   Box,
   TrendingUp,
   Building2,
   ArrowRight,
-  Crown,
   HardDrive,
-  BadgePercent,
-  AlertCircle,
-  X,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
@@ -28,20 +18,6 @@ import { formatTokenBalance } from "@/utils/quota";
 import { formatDiscountLabel } from "@/lib/point-rate";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
 import WorkspacePlanSection from "@/components/pricing/WorkspacePlanSection";
-import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
-import { useExportMaxRows } from "@/lib/use-export-max-rows";
-// 账单/算力点流水枚举中文一律来自数据库字典（system_config.billing_display_dict），前端不内置
-import { setBillingDicts, lookupBillingValueLabel } from "@/lib/billing-display-dict";
-
-interface BillingRecord {
-  id: string;
-  /** 消费类型：TOKEN_RECHARGE / PLAN_UPGRADE / MEMBERSHIP / REFUND */
-  type: string;
-  title: string;
-  amount: string;
-  status: "SUCCESS" | "PENDING" | "FAILED" | "REFUNDED";
-  date: string;
-}
 
 /** 会员等级数据（与数据库 membershiplevel 表一致，价格单位为分） */
 interface MembershipLevelRow {
@@ -61,59 +37,6 @@ interface MembershipLevelRow {
   sortOrder: number;
 }
 
-/** 格式化账单时间：YYYY-MM-DD HH:mm */
-function formatBillingDate(value: string | Date): string {
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "-";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
-}
-
-/** 消费类型展示元信息（与 billing_record.type 枚举保持一致；中文标签来自数据库字典，仅配色留前端） */
-const CONSUMPTION_TYPE_BADGE: Record<string, string> = {
-  TOKEN_RECHARGE: "bg-amber-50 text-amber-600 border-amber-200",
-  PLAN_UPGRADE: "bg-blue-50 text-[#2b6cb0] border-blue-200",
-  MEMBERSHIP: "bg-purple-50 text-purple-600 border-purple-200",
-  REFUND: "bg-rose-50 text-rose-600 border-rose-200",
-};
-
-function getConsumptionTypeMeta(type: string): { label: string; badge: string } {
-  return {
-    label: lookupBillingValueLabel(type) || type || "其他",
-    badge: CONSUMPTION_TYPE_BADGE[type] || "bg-slate-50 text-slate-500 border-slate-200",
-  };
-}
-
-/** 消费类型对应图标（参考管理员后台样式：徽章统一带左侧 icon） */
-const CONSUMPTION_TYPE_ICONS: Record<string, React.ComponentType<any>> = {
-  TOKEN_RECHARGE: Zap,
-  PLAN_UPGRADE: Layers,
-  MEMBERSHIP: Crown,
-  REFUND: RefreshCw,
-};
-
-function getConsumptionTypeIcon(type: string): React.ComponentType<any> {
-  return CONSUMPTION_TYPE_ICONS[type] || Layers;
-}
-
-/** 账单状态展示元信息（与 billing_record.status 枚举保持一致；中文标签来自数据库字典，仅配色留前端） */
-const BILLING_STATUS_BADGE: Record<string, string> = {
-  SUCCESS: "bg-emerald-50 text-emerald-600 border-emerald-200",
-  PENDING: "bg-amber-50 text-amber-600 border-amber-200",
-  FAILED: "bg-rose-50 text-rose-600 border-rose-200",
-  REFUNDED: "bg-slate-100 text-slate-500 border-slate-200",
-  EXPIRED: "bg-slate-100 text-slate-400 border-slate-200",
-};
-
-function getBillingStatusMeta(status: string): { label: string; badge: string } {
-  return {
-    label: lookupBillingValueLabel(status) || status || "未知",
-    badge: BILLING_STATUS_BADGE[status] || "bg-slate-50 text-slate-500 border-slate-200",
-  };
-}
-
 /** 字节格式化：自动转换为 GB（保留 1 位小数） */
 function formatBytes(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 GB";
@@ -130,7 +53,6 @@ export default function BillingCenterPage() {
   const router = useRouter();
   const toast = useToast();
   const { userState } = useAppContext();
-  const maxRows = useExportMaxRows();
 
   const [loading, setLoading] = useState(true);
   const [userInfo, setUserInfo] = useState<any>(null);
@@ -147,16 +69,6 @@ export default function BillingCenterPage() {
     tokenBalance: 0,
     totalUsedTokens: 0,
   });
-  const [billingHistory, setBillingHistory] = useState<BillingRecord[]>([]);
-  // 账单分页加载状态
-  const [billingHasMore, setBillingHasMore] = useState(false);
-  const [loadingMoreBills, setLoadingMoreBills] = useState(false);
-  /** 算力点流水（pointledger，经 /api/user/points）：组件执行的押金/实扣/退款等真实流水 */
-  const [pointsLedger, setPointsLedger] = useState<Array<{ id: string; type: string; direction: string; points: number; title: string; createdAt: string; balanceAfter: number }>>([]);
-  /** 账单 API 错误信息（用于表格顶部显式提示用户） */
-  const [billingError, setBillingError] = useState<string | null>(null);
-  const [exportingLedger, setExportingLedger] = useState(false);
-
   // 空间级扩容：支持 ?workspaceId 直达 + 多空间切换
   const [mounted, setMounted] = useState(false);
   const initializedWsRef = useRef(false);
@@ -166,28 +78,6 @@ export default function BillingCenterPage() {
   useEffect(() => {
     setMounted(true);
   }, []);
-
-  // 加载账单显示字典（来源：数据库 system_config.billing_display_dict，经 /api/user/billing-dict 下发）。
-  // 本页全部枚举中文（消费类型 / 账单状态 / 算力点类型 / 导出筛选条件）均由此数据库字典驱动，前端不内置任何业务字典。
-  useEffect(() => {
-    if (!mounted || !userState.isLoggedIn) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = getAuthToken();
-        const res = await fetch("/api/user/billing-dict", {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
-        const d = await res.json().catch(() => ({}));
-        if (!cancelled && res.ok && d.success && d.data) setBillingDicts(d.data);
-      } catch {
-        // 字典缺失时回退原始枚举值展示，绝不阻塞主流程
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [mounted, userState.isLoggedIn]);
 
   // 初始化选中空间：URL ?workspaceId 优先，否则用户空间列表首个
   useEffect(() => {
@@ -208,70 +98,7 @@ export default function BillingCenterPage() {
 
   const spaces: any[] = userState?.workspaces || [];
 
-  // 深链定位：?section=points → 滚动到「算力点流水」区块
-  // 关键：上方会员卡 / 账单表是异步加载的，加载完成前页面高度会变化，目标位置随之漂移。
-  // 因此等数据就绪（loading 稳定）后定位，并多轮延迟重试，确保最终精准滚动到位，不抢跑。
-  const [navTick, setNavTick] = useState(0);
-  useEffect(() => {
-    const onPop = () => setNavTick((t) => t + 1);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
-  useEffect(() => {
-    if (!mounted) return;
-    const section = new URLSearchParams(window.location.search).get("section");
-    if (section !== "points") return;
-    const scrollToLedger = () => {
-      document.getElementById("points-ledger")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    };
-    // 立即 + 多轮延迟重试：覆盖异步数据加载引起的布局位移，保证一定滚到位
-    const timers = [0, 300, 700, 1200].map((d) => setTimeout(scrollToLedger, d));
-    return () => timers.forEach(clearTimeout);
-  }, [mounted, loading, navTick]);
-
-  /** 拉取账单流水（数据库 billing_record 表）：分页加载，"加载更多"追加下一页，杜绝静默截断 */
-  const loadBillingRecords = useCallback(async (mode?: "more") => {
-    try {
-      if (mode === "more") {
-        setLoadingMoreBills(true);
-      } else {
-        setBillingError(null);
-      }
-      const authToken = getAuthToken();
-      const skip = mode === "more" ? billingHistory.length : 0;
-      const billRes = await fetch(`/api/billing/records?limit=50&skip=${skip}`, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      });
-      if (billRes.ok) {
-        const bData = await billRes.json();
-        if (bData.success && Array.isArray(bData.data)) {
-          const mapped = bData.data
-            .filter((r: any) => r.type !== "INVOICE_APPLY")
-            .map((r: any) => ({
-              id: r.id,
-              type: r.type,
-              title: r.title,
-              amount: `¥ ${((r.amount ?? 0) / 100).toFixed(2)}`,
-              status: r.status,
-              date: formatBillingDate(r.date ?? r.createdAt),
-            }));
-          setBillingHistory((prev) => (mode === "more" ? [...prev, ...mapped] : mapped));
-          setBillingHasMore(bData.data.length >= 50);
-          return;
-        }
-        setBillingError(bData.error || "账单服务返回异常");
-      } else {
-        setBillingError(`账单接口返回 HTTP ${billRes.status}`);
-      }
-    } catch (err) {
-      console.error("加载账单流水失败:", err);
-      setBillingError("网络异常，无法连接到账单服务");
-    } finally {
-      setLoadingMoreBills(false);
-    }
-  }, [billingHistory.length]);
-
-  /** 全量加载：用户/会员等级/使用统计/账号配额/账单流水（并行非阻塞） */
+  /** 全量加载：用户/会员等级/使用统计/账号配额（并行非阻塞） */
   const loadBillingData = useCallback(async () => {
     try {
       setLoading(true);
@@ -325,45 +152,13 @@ export default function BillingCenterPage() {
         }
       }
 
-      // 算力点流水（押金/实扣/退款/赠送）：与账单记录并列展示，补齐对账链路
-      try {
-        const pointsRes = await fetch("/api/user/points?type=all&pageSize=20", {
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-        });
-        if (pointsRes.ok) {
-          const pData = await pointsRes.json();
-          // /api/user/points 返回 { data: { records } }；兼容旧 list 字段
-          const list = Array.isArray(pData?.data?.records)
-            ? pData.data.records
-            : Array.isArray(pData?.list)
-              ? pData.list
-              : Array.isArray(pData?.data?.list)
-                ? pData.data.list
-                : [];
-          setPointsLedger(
-            list.slice(0, 20).map((r: any) => ({
-              id: String(r.id ?? ""),
-              type: String(r.type ?? ""),
-              direction: String(r.direction ?? ""),
-              points: Number(r.points ?? 0),
-              title: String(r.title ?? r.sourceType ?? "算力点流水"),
-              createdAt: String(r.createdAt ?? ""),
-              balanceAfter: Number(r.balanceAfter ?? 0),
-            })),
-          );
-        }
-      } catch (pointsErr) {
-        console.error("加载算力点流水失败:", pointsErr);
-      }
-
-      await loadBillingRecords();
     } catch (err) {
       console.error("加载套餐与计费数据失败:", err);
       toast.error("加载套餐与计费数据失败，请检查网络连接");
     } finally {
       setLoading(false);
     }
-  }, [loadBillingRecords, toast]);
+  }, [toast]);
 
   useEffect(() => {
     if (mounted) {
@@ -433,131 +228,6 @@ export default function BillingCenterPage() {
         },
       ]
     : [];
-
-  // 电子凭证下载（纯前端对账摘要导出，不依赖后端）
-  // 诚实口径：这是本机生成的对账摘要，不是平台签发的防伪票据；不可查验的说法一律不写
-  const handleDownloadInvoice = (invId: string) => {
-    const inv = billingHistory.find((b) => b.id === invId);
-    if (!inv) {
-      toast.error("未找到该笔交易记录，无法生成对账摘要");
-      return;
-    }
-    const content = `# 知阁·舟坊 交易对账摘要（本机导出）\n\n**记录编号**: ${inv.id}\n**消费类型**: ${getConsumptionTypeMeta(inv.type).label}\n**交易描述**: ${inv.title}\n**交易金额**: ${inv.amount}\n**交易时间**: ${inv.date}\n\n---\n*本文件为用户在本机导出的对账摘要，仅供参考与个人记账使用，不具备票据/防伪效力；如需正式凭证请联系平台客服申请。*`;
-    const blob = new Blob([content], { type: "text/markdown;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `Statement_${inv.id}.md`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`对账摘要 [${invId}] 已导出`);
-  };
-
-  // 导出「我的算力点流水」：仅本人数据（接口按登录态过滤），留痕落入用户端审计
-  const handleExportPointsLedger = useCallback(async () => {
-    try {
-      setExportingLedger(true);
-      const authToken = getAuthToken();
-      const res = await fetch(`/api/user/points?type=all&pageSize=${maxRows}`, {
-        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
-      });
-      const pData = await res.json().catch(() => ({}));
-      const list: any[] = Array.isArray(pData?.data?.records)
-        ? pData.data.records
-        : Array.isArray(pData?.list)
-          ? pData.list
-          : Array.isArray(pData?.data?.list)
-            ? pData.data.list
-            : [];
-      if (list.length === 0) {
-        toast.warning("当前暂无算力点流水可导出");
-        return;
-      }
-      exportToExcel({
-        filename: "我的算力点流水",
-        sheetName: "我的算力点流水",
-        maxRows: maxRows,
-        // 筛选条件文案由 Excel 工具按数据库字典自动生成（type → 类型 / all → 全部），前端不内置映射
-        trace: { exportType: "我的算力点流水", filters: { type: "all" }, rowCount: list.length, page: "/user/billing-center" },
-        columns: [
-          { header: "时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
-          // 算力点类型中文来自数据库字典（billing_display_dict.values），无字典时回退原始枚举值
-          { header: "类型", key: "type", width: 16, formatter: (v: string, row: any) => lookupBillingValueLabel(v) || row.typeLabel || v },
-          { header: "说明", key: "title", width: 30 },
-          { header: "点数变动", key: "points", width: 14, formatter: (v: number) => (Number(v) > 0 ? `+${v}` : String(v)) },
-          { header: "变动后余额", key: "balanceAfter", width: 14 },
-        ],
-        data: list,
-      });
-      toast.success(`已导出 ${list.length} 笔算力点流水`);
-    } catch (e: any) {
-      toast.error(e?.message || "导出失败");
-    } finally {
-      setExportingLedger(false);
-    }
-  }, [toast]);
-
-  // 电子发票申请
-  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
-  const [invoiceTitle, setInvoiceTitle] = useState("");
-  const [taxId, setTaxId] = useState("");
-  const [invoiceEmail, setInvoiceEmail] = useState("");
-  const [titleError, setTitleError] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
-  const [submittingInvoice, setSubmittingInvoice] = useState(false);
-
-  const handleSubmitInvoice = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setTitleError(null);
-    setEmailError(null);
-
-    let hasErr = false;
-    if (!invoiceTitle.trim()) {
-      setTitleError("请输入发票开具抬头");
-      hasErr = true;
-    }
-    if (!invoiceEmail.trim()) {
-      setEmailError("请输入接收电子发票的邮箱");
-      hasErr = true;
-    }
-    if (hasErr) return;
-
-    try {
-      setSubmittingInvoice(true);
-      // 统一走正式开票接口（复用 billingrecord，开票记录可在账单列表追踪），
-      // 废弃旧的 /api/feedback 工单通道（数据不进 billingrecord，状态无法追踪）
-      const authToken = getAuthToken();
-      const res = await fetch("/api/user/invoice/apply", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body: JSON.stringify({
-          title: invoiceTitle.trim(),
-          taxNo: taxId.trim() || undefined,
-          email: invoiceEmail || userInfo?.email || undefined,
-          type: taxId.trim() ? "VAT" : "PLAIN",
-          remark: `来源：账务中心开票弹窗；接收邮箱: ${invoiceEmail || userInfo?.email || "无"}`,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.ok && data.success) {
-        toast.success(data.message || "电子发票开具申请已提交，财务核对后将开具电子发票！");
-        setIsInvoiceModalOpen(false);
-        setInvoiceTitle("");
-        setTaxId("");
-      } else {
-        toast.error(data.error || "提交发票申请失败，请稍后重试");
-      }
-    } catch (err) {
-      console.error("提交发票申请失败:", err);
-      toast.error("网络提交失败");
-    } finally {
-      setSubmittingInvoice(false);
-    }
-  };
 
   return (
     <div className="space-y-6 text-left">
@@ -768,458 +438,14 @@ export default function BillingCenterPage() {
             <WorkspacePlanSection
               key={activeWorkspaceId || "auto"}
               workspaceId={activeWorkspaceId}
-              onUpgraded={() => loadBillingRecords()}
+              onUpgraded={() => {}}
             />
           </section>
 
-          {/* ============ 区块三：算力与账单 ============ */}
-          <section className="shrink-0">
-            <h2 className="text-base font-extrabold text-slate-800 flex items-center gap-2 mb-3">
-              <div className="w-1 h-5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full" />
-              算力与账单
-            </h2>
 
-            {/* 卡片矩阵：算力余额 / 会员权益 / 发票 */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-              {/* 卡 1：可用算力点余额 */}
-              <div className="bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col justify-between">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-amber-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      可用算力余额
-                    </span>
-                    <span className="text-[11px] font-extrabold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-100">
-                      实时扣减中
-                    </span>
-                  </div>
-                  <h3 className="text-2xl font-black text-[#2b6cb0] tracking-tight mb-2 font-mono flex items-baseline gap-1">
-                    {formatTokenBalance(workspaceQuota.tokenBalance)}
-                    <span className="text-xs font-bold text-slate-400 font-sans">算力点</span>
-                  </h3>
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    累计已消耗{" "}
-                    <strong className="text-slate-600">
-                      {formatTokenBalance(workspaceQuota.totalUsedTokens)}
-                    </strong>{" "}
-                    算力点
-                  </p>
-                </div>
-                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-                  <button
-                    onClick={() => router.push("/pricing")}
-                    className="h-8 px-3.5 rounded-md bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:shadow text-white text-xs font-bold shadow-xs transition-all cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <Zap className="w-3.5 h-3.5 fill-[#3182ce]" />
-                    查看充值方案
-                  </button>
-                </div>
-              </div>
-
-              {/* 卡 2：会员权益速览 */}
-              <div className="bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col justify-between">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      会员权益速览
-                    </span>
-                    <span className="text-[11px] font-extrabold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md border border-purple-100">
-                      {memberConfig?.nameZh || "免费版"}
-                    </span>
-                  </div>
-                  <div className="text-xs text-slate-500 font-medium leading-relaxed space-y-1.5">
-                    {memberConfig?.features?.length ? (
-                      memberConfig.features.slice(0, 3).map((f, i) => (
-                        <div key={i} className="flex items-start gap-1.5">
-                          <CheckCircle2 className="w-3 h-3 text-[#3182ce] shrink-0 mt-0.5" />
-                          <span>{f}</span>
-                        </div>
-                      ))
-                    ) : (
-                      <div className="text-slate-400">前往价格页查看完整会员权益</div>
-                    )}
-                    {memberConfig && memberConfig.tokenPackDiscount > 0 && (
-                      <div className="flex items-start gap-1.5">
-                        <BadgePercent className="w-3 h-3 text-amber-500 shrink-0 mt-0.5" />
-                        <span>
-                          算力包会员折扣：
-                          <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 border border-amber-100 font-black ml-1">
-                            {formatDiscountLabel(memberConfig.tokenPackDiscount)}
-                          </span>
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-[10px] text-slate-400 font-medium">
-                    企业空间
-                    {memberConfig?.maxEnterpriseWorkspaces === -1
-                      ? " 无限"
-                      : ` ${memberConfig?.maxEnterpriseWorkspaces ?? 1} 个`}
-                  </span>
-                  <button
-                    onClick={() => router.push("/pricing")}
-                    className="text-xs font-bold text-[#3182ce] hover:underline cursor-pointer inline-flex items-center gap-0.5"
-                  >
-                    升级解锁更多 <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* 卡 3：企业发票 */}
-              <div className="bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/80 p-5 shadow-xs relative overflow-hidden flex flex-col justify-between">
-                <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full blur-2xl -mr-6 -mt-6 pointer-events-none" />
-                <div>
-                  <div className="flex justify-between items-start mb-3">
-                    <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">
-                      发票与企业对公
-                    </span>
-                    <Receipt className="w-4 h-4 text-slate-400" />
-                  </div>
-                  <h3 className="text-base font-extrabold text-slate-800 mb-1">
-                    增值税电子普通 / 专用发票
-                  </h3>
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                    支持按个人或企业抬头一键开具，开票历史随时可查与对账摘要导出。
-                  </p>
-                </div>
-                <div className="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between">
-                  <button
-                    onClick={() => setIsInvoiceModalOpen(true)}
-                    className="h-8 px-3 rounded-md bg-[#2b6cb0] hover:bg-[#3182ce] text-xs font-bold text-white shadow-xs transition-all cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <Receipt className="w-3.5 h-3.5" />
-                    在线申请开票
-                  </button>
-                  <button
-                    onClick={() => router.push("/docs")}
-                    className="text-xs font-bold text-slate-500 hover:text-[#3182ce] transition-colors cursor-pointer inline-flex items-center gap-0.5"
-                  >
-                    计费规则 <ArrowRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* 账单流水 */}
-            <div className="bg-white/80 backdrop-blur-md rounded-xl border border-slate-200/80 p-6 shadow-xs space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div>
-                  <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                    <Receipt className="w-4 h-4 text-[#3182ce]" />
-                    账单与交易历史 (Billing History)
-                  </h3>
-                  <p className="text-xs text-slate-400 font-semibold mt-0.5">
-                    展示平台产生的所有算力购买、空间扩容与会员订阅交易明细
-                  </p>
-                </div>
-                <button
-                  onClick={loadBillingData}
-                  className="h-8 px-3 rounded-md border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all cursor-pointer inline-flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  刷新
-                </button>
-              </div>
-
-              {/* 账单接口错误提示：给出明确文案并提供重试入口 */}
-              {billingError && (
-                <div className="mb-3 p-3 bg-red-50/80 border border-red-200 rounded-lg flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                  <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-                    <div className="text-red-700 font-bold">
-                      账单接口加载失败：{billingError}
-                    </div>
-                  </div>
-                  <button
-                    onClick={loadBillingData}
-                    className="h-7 px-3 rounded-md bg-white border border-red-200 text-red-600 hover:bg-red-100 font-bold transition-all cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    重试
-                  </button>
-                </div>
-              )}
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs table-auto">
-                  <thead>
-                    <tr className="border-b border-slate-200/60 bg-slate-50/50 text-slate-500 font-bold">
-                      <th className="py-3 px-4 rounded-l-lg whitespace-nowrap">账单流水单号</th>
-                      <th className="py-3 px-4 whitespace-nowrap">消费类型</th>
-                      <th className="py-3 px-4 whitespace-nowrap">描述说明</th>
-                      <th className="py-3 px-4 whitespace-nowrap">交易金额</th>
-                      <th className="py-3 px-4 whitespace-nowrap">交易时间</th>
-                      <th className="py-3 px-4 whitespace-nowrap">状态</th>
-                      <th className="py-3 px-4 text-right rounded-r-lg whitespace-nowrap">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {billingHistory.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="py-10 text-center text-slate-400 text-xs font-semibold whitespace-nowrap">
-                          <div className="flex flex-col items-center gap-2 py-2">
-                            <Receipt className="w-6 h-6 text-slate-300" />
-                            <p>暂无交易记录，完成会员订阅或空间扩容后将在此展示明细</p>
-                            <p className="text-[10px] text-slate-400 font-medium">
-                              若您近期已完成升级但未显示，请检查登录账号是否与购买账号一致，并点击刷新
-                            </p>
-                            <button
-                              onClick={loadBillingData}
-                              className="mt-1 h-7 px-3 rounded-md bg-[#3182ce]/10 hover:bg-[#3182ce]/15 text-[#2b6cb0] text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1"
-                            >
-                              <RefreshCw className="w-3 h-3" />
-                              立即刷新
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : (
-                      billingHistory.map((rec) => {
-                        const TypeIcon = getConsumptionTypeIcon(rec.type);
-                        return (
-                          <tr key={rec.id} className="hover:bg-blue-50/20 transition-colors">
-                            <td className="py-3.5 px-4 font-mono text-slate-900 font-bold whitespace-nowrap">
-                              {rec.id}
-                            </td>
-                            <td className="py-3.5 px-4 whitespace-nowrap">
-                              <span
-                                className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black border whitespace-nowrap ${getConsumptionTypeMeta(rec.type).badge}`}
-                              >
-                                <TypeIcon className="w-3 h-3 shrink-0" />
-                                {getConsumptionTypeMeta(rec.type).label}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 font-semibold max-w-[260px] truncate" title={rec.title}>
-                              {rec.title}
-                            </td>
-                            <td className="py-3.5 px-4 font-bold text-emerald-600 whitespace-nowrap tabular-nums">
-                              {rec.amount}
-                            </td>
-                            <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap tabular-nums">
-                              {rec.date}
-                            </td>
-                            <td className="py-3.5 px-4 whitespace-nowrap">
-                              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black border whitespace-nowrap ${getBillingStatusMeta(rec.status).badge}`}>
-                                <CheckCircle2 className="w-3 h-3 shrink-0" />
-                                {getBillingStatusMeta(rec.status).label}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 text-right whitespace-nowrap">
-                              <button
-                                onClick={() => handleDownloadInvoice(rec.id)}
-                                className="text-[#3182ce] hover:underline font-bold text-xs cursor-pointer inline-flex items-center gap-1 whitespace-nowrap"
-                              >
-                                <Download className="w-3 h-3 shrink-0" />
-                                对账摘要
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              {billingHasMore && (
-                <div className="pt-3 text-center">
-                  <button
-                    onClick={() => loadBillingRecords("more")}
-                    disabled={loadingMoreBills}
-                    className="px-4 py-2 text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-                  >
-                    {loadingMoreBills ? "加载中…" : "加载更多账单"}
-                  </button>
-                </div>
-              )}
-            </div>
-          </section>
-
-          {/* 算力点流水（组件执行押金/实扣/退款等真实流水，来自 pointledger） */}
-          <section id="points-ledger" className="mt-6 scroll-mt-24">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-[#3182ce]" />
-                算力点流水
-              </h3>
-              <div className="flex items-center gap-3">
-                <span className="text-[10px] text-slate-400 font-bold">
-                  组件执行的押金、实扣、退款等每笔流水（最近 20 笔）
-                </span>
-                <button
-                  onClick={handleExportPointsLedger}
-                  disabled={exportingLedger}
-                  className="px-2.5 py-1.5 rounded-lg text-xs font-black border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 flex items-center gap-1 disabled:opacity-50"
-                >
-                  <Download className="w-3.5 h-3.5" /> {exportingLedger ? "导出中…" : "导出我的流水"}
-                </button>
-              </div>
-            </div>
-            <div className="bg-white/90 rounded-2xl border border-slate-200/80 overflow-x-auto">
-              <table className="w-full text-left text-xs table-auto">
-                <thead>
-                  <tr className="border-b border-slate-200/60 bg-slate-50/50 text-slate-500 font-bold">
-                    <th className="py-3 px-4 rounded-l-lg whitespace-nowrap">发生时间</th>
-                    <th className="py-3 px-4 whitespace-nowrap">类型</th>
-                    <th className="py-3 px-4 whitespace-nowrap">说明</th>
-                    <th className="py-3 px-4 whitespace-nowrap">点数变动</th>
-                    <th className="py-3 px-4 rounded-r-lg whitespace-nowrap">变动后余额</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                  {pointsLedger.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="py-10 text-center text-slate-400 text-xs font-semibold">
-                        暂无算力点流水，执行组件或充值后将在此展示每笔明细
-                      </td>
-                    </tr>
-                  ) : (
-                    pointsLedger.map((p) => {
-                      const isIn = p.direction === "IN" || p.points >= 0;
-                      const typeLabel: Record<string, string> = {
-                        CONSUME: "组件执行扣点",
-                        REFUND: "退款",
-                        RECHARGE: "充值",
-                        OFFLINE_RECHARGE: "线下充值",
-                        GIFT_REGISTER: "注册赠送",
-                        GIFT_EXPIRE: "赠送过期",
-                        MEMBERSHIP_GRANT: "会员发放",
-                        MANUAL_ADJUST: "手动调整",
-                        PILOT_FUND: "试点发放",
-                      };
-                      return (
-                        <tr key={p.id} className="hover:bg-blue-50/20 transition-colors">
-                          <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-600">
-                            {p.createdAt ? new Date(p.createdAt).toLocaleString("zh-CN", { hour12: false }) : "—"}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap font-bold">
-                            <span className={`px-1.5 py-0.5 rounded text-[10px] ${isIn ? "bg-emerald-50 text-emerald-600" : "bg-slate-100 text-slate-600"}`}>
-                              {typeLabel[p.type] || p.type}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-slate-600 max-w-[280px] truncate" title={p.title}>
-                            {p.title}
-                          </td>
-                          <td className={`py-3 px-4 whitespace-nowrap font-mono font-black ${isIn ? "text-emerald-600" : "text-rose-600"}`}>
-                            {isIn ? "+" : "-"}
-                            {Math.abs(p.points).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 whitespace-nowrap font-mono text-slate-700">
-                            {p.balanceAfter.toLocaleString()}
-                          </td>
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </>
       )}
 
-      {/* 电子发票开具真实弹窗 Modal */}
-      {isInvoiceModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h3 className="text-base font-extrabold text-slate-800 flex items-center gap-2">
-                <Receipt className="w-5 h-5 text-[#3182ce]" />
-                增值税电子发票申请
-              </h3>
-              <button
-                onClick={() => setIsInvoiceModalOpen(false)}
-                className="text-slate-400 hover:text-slate-600 font-bold text-base cursor-pointer p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmitInvoice} className="space-y-4 text-xs font-medium">
-              <div>
-                <label className="block text-slate-700 font-extrabold mb-1">
-                  <span className="zg-required">发票开具抬头 (企业 / 个人名称)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="请输入公司全称或个人抬头"
-                  value={invoiceTitle}
-                  onChange={(e) => {
-                    setInvoiceTitle(e.target.value);
-                    if (titleError) setTitleError(null);
-                  }}
-                  className={`w-full h-9 px-3 rounded-md border text-slate-800 transition-all outline-none ${
-                    titleError
-                      ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
-                      : "border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50"
-                  }`}
-                />
-                {titleError && (
-                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                    <span>{titleError}</span>
-                  </p>
-                )}
-              </div>
-              <div>
-                <label className="block text-slate-700 font-extrabold mb-1">
-                  纳税人识别号 / 统一社会信用代码 (企业必填)
-                </label>
-                <input
-                  type="text"
-                  placeholder="个人抬头无需填写，企业请输入 18 位税号"
-                  value={taxId}
-                  onChange={(e) => setTaxId(e.target.value)}
-                  className="w-full h-9 px-3 rounded-md border border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50 text-slate-800 font-mono"
-                />
-              </div>
-              <div>
-                <label className="block text-slate-700 font-extrabold mb-1">
-                  <span className="zg-required">接收电子发票邮箱</span>
-                </label>
-                <input
-                  type="email"
-                  placeholder="开具成功后将发送至该邮箱"
-                  value={invoiceEmail}
-                  onChange={(e) => {
-                    setInvoiceEmail(e.target.value);
-                    if (emailError) setEmailError(null);
-                  }}
-                  className={`w-full h-9 px-3 rounded-md border text-slate-800 transition-all outline-none ${
-                    emailError
-                      ? "border-red-500 bg-red-50/15 text-red-900 focus:border-red-500 focus:ring-2 focus:ring-red-500/15"
-                      : "border-slate-300 focus:border-[#3182ce] focus:outline-none bg-slate-50/50"
-                  }`}
-                />
-                {emailError && (
-                  <p className="text-xs text-red-600 flex items-center gap-1 mt-1 font-medium animate-in fade-in">
-                    <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                    <span>{emailError}</span>
-                  </p>
-                )}
-              </div>
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsInvoiceModalOpen(false)}
-                  className="h-8 px-4 rounded-md border border-slate-200 text-slate-600 hover:bg-slate-50 font-bold transition-all cursor-pointer"
-                >
-                  取消
-                </button>
-                <button
-                  type="submit"
-                  disabled={submittingInvoice}
-                  className="h-8 px-4 rounded-md bg-[#2b6cb0] hover:bg-[#3182ce] text-white font-bold transition-all cursor-pointer disabled:opacity-50"
-                >
-                  {submittingInvoice ? "提交开票中..." : "确认提交开票申请"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

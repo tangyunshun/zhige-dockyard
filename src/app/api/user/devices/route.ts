@@ -1,25 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { jwtVerify } from "jose";
-import { getJwtSecretKey } from "@/lib/jwt-config";
+import { validateUser } from "@/lib/auth";
 
 /**
  * 获取用户设备列表（支持每页10条分页）
  */
 export async function GET(request: NextRequest) {
   try {
-    const token = request.cookies.get("auth_token")?.value;
-    if (!token) {
-      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: "未授权或登录已过期" }, { status: 401 });
     }
-
-    const { payload } = await jwtVerify(token, getJwtSecretKey());
-    const userId = payload.userId as string;
+    const userId = auth.user.id;
 
     const page = Math.max(1, parseInt(request.nextUrl.searchParams.get("page") || "1"));
     const limit = Math.max(1, parseInt(request.nextUrl.searchParams.get("limit") || "10"));
 
-    const [total, devices] = await Promise.all([
+    let [total, devices] = await Promise.all([
       prisma.userdevice.count({ where: { userId } }),
       prisma.userdevice.findMany({
         where: { userId },
@@ -31,6 +28,37 @@ export async function GET(request: NextRequest) {
         take: limit,
       }),
     ]);
+
+    // 体验增强：若无任何设备记录（如老账号或直接写库用户），自动登记当前访问终端为当前活跃设备
+    if (total === 0) {
+      try {
+        const userAgent = request.headers.get("user-agent") || "";
+        const isMobile = /mobile|iphone|android/i.test(userAgent);
+        const isTablet = /ipad|tablet/i.test(userAgent);
+        const deviceType = isMobile ? "mobile" : isTablet ? "tablet" : "desktop";
+        const browser = /chrome/i.test(userAgent) ? "Chrome" : /firefox/i.test(userAgent) ? "Firefox" : /safari/i.test(userAgent) ? "Safari" : "Browser";
+        const os = /windows/i.test(userAgent) ? "Windows" : /mac/i.test(userAgent) ? "macOS" : /linux/i.test(userAgent) ? "Linux" : "Client";
+        const clientIp = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "127.0.0.1";
+
+        const newDevice = await prisma.userdevice.create({
+          data: {
+            id: "dev_" + Date.now() + "_" + Math.random().toString(36).substring(2, 9),
+            userId,
+            deviceName: `${browser} on ${os}`,
+            deviceType,
+            browser,
+            os,
+            ipAddress: clientIp,
+            isCurrent: true,
+            lastActiveAt: new Date(),
+          },
+        });
+        devices = [newDevice];
+        total = 1;
+      } catch (e) {
+        console.warn("Auto create initial device record warning:", e);
+      }
+    }
 
     return NextResponse.json({
       success: true,
@@ -54,13 +82,11 @@ export async function GET(request: NextRequest) {
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const token = request.cookies.get("auth_token")?.value;
-    if (!token) {
-      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: "未授权或登录已过期" }, { status: 401 });
     }
-
-    const { payload } = await jwtVerify(token, getJwtSecretKey());
-    const userId = payload.userId as string;
+    const userId = auth.user.id;
 
     const body = await request.json().catch(() => ({}));
     const { deviceId, action, kickAllOthers } = body;
@@ -137,13 +163,11 @@ export async function DELETE(request: NextRequest) {
  */
 export async function PUT(request: NextRequest) {
   try {
-    const token = request.cookies.get("auth_token")?.value;
-    if (!token) {
-      return NextResponse.json({ error: "请先登录" }, { status: 401 });
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ error: "未授权或登录已过期" }, { status: 401 });
     }
-
-    const { payload } = await jwtVerify(token, getJwtSecretKey());
-    const userId = payload.userId as string;
+    const userId = auth.user.id;
 
     const { deviceId, isCurrent } = await request.json();
 

@@ -18,14 +18,14 @@ const DEFAULT_SETTINGS = {
   sidebarDefaultExpanded: true,
   componentSort: "popularity", // popularity | updatedAt | name
   // 代码与开发偏好
-  codeTheme: "dark", // dark | light
+  codeTheme: "light", // light | soft | dark
   codeFontSize: "13px", // 12px | 13px | 14px
   tabSize: 2, // 2 | 4
   showLineNumbers: true,
   // 日期时间与数据导出偏好
   dateFormat: "YYYY-MM-DD", // YYYY-MM-DD | YYYY/MM/DD | YYYY年MM月DD日
   timeFormat: "24h", // 24h | 12h
-  exportFormat: "xlsx", // xlsx | json
+  exportFormat: "xlsx", // xlsx | json | csv
   // 声音与交互
   soundEffects: true,
   // 隐私安全
@@ -35,19 +35,18 @@ const DEFAULT_SETTINGS = {
 // PUT 允许写入的字段白名单（枚举值/类型在后端钳制，防止任意 JSON 注入）
 const ALLOWED_KEYS = new Set(Object.keys(DEFAULT_SETTINGS));
 
-// 枚举字段合法值（越界一律回落默认，防脏数据）
+// 枚举字段合法值（越界一律回落默认，防脏数据；defaultWorkspaceId 支持 auto 或真实空间 ID）
 const ENUMS: Record<string, string[]> = {
-  language: ["zh-CN", "en-US"],
-  theme: ["light", "dark", "system"],
-  displayDensity: ["comfortable", "compact"],
-  defaultWorkspaceId: ["auto"], // 其他合法值为动态工作空间 ID（字符串透传），此处仅约束已知枚举
+  language: ["zh-CN", "en", "en-US"],
+  theme: ["light", "dark", "auto", "system"],
+  displayDensity: ["compact", "comfortable", "spacious"],
   workspaceView: ["grid", "list"],
   componentSort: ["popularity", "updatedAt", "name"],
-  codeTheme: ["dark", "light"],
+  codeTheme: ["light", "soft", "dark"],
   codeFontSize: ["12px", "13px", "14px"],
   dateFormat: ["YYYY-MM-DD", "YYYY/MM/DD", "YYYY年MM月DD日"],
   timeFormat: ["24h", "12h"],
-  exportFormat: ["xlsx", "json"],
+  exportFormat: ["xlsx", "json", "csv"],
 };
 
 async function ensurePref(userId: string) {
@@ -66,8 +65,8 @@ export async function GET(req: NextRequest) {
     }
     const userId = auth.user.id;
 
-    const rows = await prisma.$queryRawUnsafe<Array<{ uiSettings: string | null }>>(
-      `SELECT uiSettings FROM userpreference WHERE userId = ?`,
+    const rows = await prisma.$queryRawUnsafe<Array<{ uiSettings: string | null; updatedAt: Date | null }>>(
+      `SELECT uiSettings, updatedAt FROM userpreference WHERE userId = ?`,
       userId,
     );
     let stored: Record<string, unknown> = {};
@@ -83,6 +82,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       success: true,
       data: { ...DEFAULT_SETTINGS, ...stored },
+      updatedAt: rows[0]?.updatedAt || null,
     });
   } catch (error) {
     console.error("Get user settings error:", error);

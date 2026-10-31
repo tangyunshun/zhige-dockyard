@@ -108,7 +108,8 @@ export async function DELETE(request: NextRequest) {
         continue; // 永久锁定
       }
 
-      // 3.1 查找并删除该 workspace 下同名的 workspacepost
+      // 3.1 查找该 workspace 下同名/含名的 workspacepost，收集可删除的岗位 id
+      const deletablePostIds: string[] = [];
       if (targetPostName) {
         const matchingWorkspacePosts = await prisma.workspacepost.findMany({
           where: {
@@ -123,32 +124,45 @@ export async function DELETE(request: NextRequest) {
 
         for (const wp of matchingWorkspacePosts) {
           if (wp.isSystem || wp.name === "空间所有者") continue;
-
-          await prisma.$transaction([
-            prisma.postmember.deleteMany({ where: { postId: wp.id } }),
-            prisma.componentpermission.deleteMany({ where: { postId: wp.id } }),
-            prisma.workspacepost.delete({ where: { id: wp.id } }),
-          ]);
-          deletedWorkspacePostsCount++;
+          deletablePostIds.push(wp.id);
         }
       }
 
-      // 3.2 查找并将绑定了该岗位代码作为角色的空间成员安全重置
-      if (targetPostCode) {
-        const codeUpper = targetPostCode.toUpperCase();
-        if (codeUpper !== "OWNER" && codeUpper !== "CREATOR") {
-          const updateResult = await prisma.workspacemember.updateMany({
-            where: {
-              workspaceId,
-              // 历史兼容：岗位代号曾被直接当作空间成员角色使用，此处仅做类型收窄，保持原查询语义不变
-              role: codeUpper as unknown as workspacemember_role,
-            },
-            data: {
-              role: "MEMBER",
-            },
-          });
-          resetMembersCount += updateResult.count;
-        }
+      // 3.2 单事务原子执行：岗位记录 + 成员关联 + 组件授权一并删除，成员角色安全重置同事务提交。
+      // 避免此前「岗位已删、成员重置报错」导致的半完成状态（表现为提示删除失败，但数据实际已删）。
+      const codeUpper = targetPostCode ? targetPostCode.toUpperCase() : "";
+      // workspacemember.role 是受限枚举（OWNER/ADMIN/MEMBER）；岗位代号（如 FRONTEND_ENGINEER）
+      // 不是合法角色值，直接传入会触发 Prisma 枚举校验报错并导致整个删除失败。
+      // 历史上仅 ADMIN/MEMBER 曾被当作角色值使用，因此仅对合法角色值做安全重置，其余代号跳过。
+      const LEGACY_MEMBER_ROLES = new Set(["ADMIN", "MEMBER"]);
+      const shouldResetMembers =
+        Boolean(codeUpper) &&
+        codeUpper !== "OWNER" &&
+        codeUpper !== "CREATOR" &&
+        LEGACY_MEMBER_ROLES.has(codeUpper);
+
+      if (deletablePostIds.length > 0 || shouldResetMembers) {
+        await prisma.$transaction(async (tx) => {
+          if (deletablePostIds.length > 0) {
+            await tx.postmember.deleteMany({ where: { postId: { in: deletablePostIds } } });
+            await tx.componentpermission.deleteMany({ where: { postId: { in: deletablePostIds } } });
+            await tx.workspacepost.deleteMany({ where: { id: { in: deletablePostIds } } });
+            deletedWorkspacePostsCount += deletablePostIds.length;
+          }
+          if (shouldResetMembers) {
+            const updateResult = await tx.workspacemember.updateMany({
+              where: {
+                workspaceId,
+                // 历史兼容：岗位代号曾被直接当作空间成员角色使用，此处仅做类型收窄，保持原查询语义不变
+                role: codeUpper as unknown as workspacemember_role,
+              },
+              data: {
+                role: "MEMBER",
+              },
+            });
+            resetMembersCount += updateResult.count;
+          }
+        });
       }
 
       processedWorkspaces.add(workspaceId);

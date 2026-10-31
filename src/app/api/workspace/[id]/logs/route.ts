@@ -109,8 +109,8 @@ export async function GET(
     const startIndex = (page - 1) * limit;
     const pagedLogs = filteredLogs.slice(startIndex, startIndex + limit);
 
-    // 数据库动态联表查询 1: 从 prisma.position 表拉取真实 code -> name 映射
-    const dbPositions = await prisma.position.findMany({ select: { code: true, name: true } }).catch(() => []);
+    // 数据库动态联表查询 1: 从 platformstandardpost 表拉取真实 code -> name 映射（合并后岗位主数据统一于此）
+    const dbPositions = await prisma.platformstandardpost.findMany({ select: { code: true, name: true } }).catch(() => []);
     const positionMap = new Map(dbPositions.map((p) => [p.code.toUpperCase(), p.name]));
 
     // 数据库动态查询 2: 从数据库 system_config 获取权威审计动作与显示字典

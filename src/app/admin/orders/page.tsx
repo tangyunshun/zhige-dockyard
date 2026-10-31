@@ -695,8 +695,7 @@ export default function OrdersPage() {
         </div>
       )}
 
-      {/* 订单明细详情 Modal：大厂级全景充值与履约看板 */}
-      {/* 订单明细详情 Modal：大厂级全景充值与履约看板（分层自适应，绝对不截断） */}
+      {/* 订单明细详情 Modal：交易订单详情（分层自适应，不截断） */}
       {detailRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[88vh] flex flex-col shadow-2xl border border-white/80 text-left overflow-hidden">
@@ -707,8 +706,8 @@ export default function OrdersPage() {
                   <Receipt className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="font-black text-slate-900 text-base">交易订单与充值履约详情</h3>
-                  <p className="text-[11px] text-slate-400 font-medium">全景审计用户充值流水与算力到账凭证</p>
+                  <h3 className="font-black text-slate-900 text-base">交易订单详情</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">查看该笔交易的完整信息与履约凭证</p>
                 </div>
               </div>
               <button
@@ -725,11 +724,16 @@ export default function OrdersPage() {
               {/* 核心金额与入账横幅 */}
               <div className="p-4 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-slate-50 rounded-2xl border border-blue-100/70 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">实付交易总额</div>
+                  <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">交易金额</div>
                   <div className="text-2xl font-black text-[#3182ce] font-mono mt-0.5 flex items-baseline gap-1">
                     ¥ {(detailRecord.amount / 100).toFixed(2)}
                     <span className="text-xs text-slate-400 font-normal">CNY</span>
                   </div>
+                  {Number(detailRecord.amount) === 0 && (
+                    <div className="text-[11px] text-amber-600 font-medium mt-1">
+                      金额为 0：该记录由系统/管理员调账入账，不涉及现金支付
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
                   <div>{renderChannelBadge(detailRecord.channel)}</div>
@@ -759,7 +763,7 @@ export default function OrdersPage() {
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-[#3182ce]" />
-                      充值人画像
+                      交易用户
                     </span>
                     {renderMembershipBadge(detailRecord.user?.membershipLevel)}
                   </div>
@@ -857,7 +861,7 @@ export default function OrdersPage() {
               <div className="p-4 bg-slate-50/80 rounded-xl border border-slate-200/80 space-y-3 text-xs">
                 <div className="text-xs font-black text-slate-700 flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
                   <Layers className="w-3.5 h-3.5 text-[#3182ce]" />
-                  充值商品与履约明细
+                  交易商品与明细
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-0.5">
@@ -907,6 +911,26 @@ export default function OrdersPage() {
                   )}
                 </div>
               </div>
+
+              {/* 扩展信息（metadata）：升级前后对比、调账原因等 */}
+              {detailRecord.metadata && typeof detailRecord.metadata === "object" && Object.keys(detailRecord.metadata).length > 0 && (
+                <div className="p-4 bg-white rounded-xl border border-slate-200/90 shadow-2xs space-y-2.5">
+                  <div className="text-xs font-black text-slate-700 flex items-center gap-1.5 border-b border-slate-200/60 pb-2">
+                    <Layers className="w-3.5 h-3.5 text-[#3182ce]" />
+                    扩展信息
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {Object.entries(detailRecord.metadata).map(([k, v]) => (
+                      <div key={k} className="text-xs">
+                        <span className="text-slate-400 font-medium block">{k}</span>
+                        <span className="font-bold text-slate-800 block mt-0.5 break-words">
+                          {typeof v === "object" ? JSON.stringify(v) : String(v)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 时间线与审计记录 */}
               <div className="p-3 bg-slate-50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">

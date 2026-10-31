@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Zap,
   Coins,
   Wallet,
   Building2,
@@ -127,122 +126,170 @@ export default function MyPointsPage() {
 
   return (
     <div className="space-y-6 font-sans">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      {/* 头部标题与操作栏 */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
         <div>
-          <h2 className="text-xl font-black text-slate-800 flex items-center gap-2">
-            <Coins className="w-5 h-5 text-amber-500" /> 我的算力中心
-          </h2>
-          <p className="text-xs text-slate-500 font-medium mt-1">
-            个人钱包算力点跨空间通用；企业充值点归入对应空间共享池，保障协同研发效能。
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center text-white shadow-sm shadow-amber-500/20">
+              <Coins className="w-4 h-4" />
+            </div>
+            <h1 className="text-xl font-black text-slate-800 tracking-tight">我的算力中心</h1>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#3182ce] border border-blue-200/60">
+              跨空间通用
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 font-medium mt-1.5 ml-10">
+            个人钱包算力点可在所有空间通用；企业空间算力点仅限对应企业空间内使用。
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2.5 shrink-0 ml-10 sm:ml-0">
           <button
+            type="button"
             onClick={load}
             disabled={loading}
-            className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs rounded-lg shadow-xs flex items-center gap-1.5 cursor-pointer"
+            className="zg-btn zg-btn-default text-xs h-9 px-3.5 gap-1.5"
+            title="刷新算力数据"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : ""}`} /> 刷新
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin text-[#3182ce]" : "text-slate-500"}`} />
+            <span>刷新</span>
           </button>
           <button
-            onClick={() => router.push("/user/billing-center")}
-            className="px-4 py-2 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-bold text-xs rounded-lg shadow-xs hover:brightness-105 transition-all flex items-center gap-1.5 cursor-pointer"
+            type="button"
+            onClick={() => router.push("/user/pay")}
+            className="zg-btn zg-btn-primary text-xs h-9 px-4 gap-1.5 font-bold"
           >
-            <Zap className="w-3.5 h-3.5" /> 立即充值算力
+            <Coins className="w-3.5 h-3.5" />
+            <span>立即充值算力</span>
           </button>
         </div>
       </div>
 
-      {data?.expiringPoints ? (
-        <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl px-4 py-3 flex items-start gap-2.5">
-          <Clock3 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs font-bold text-amber-800 leading-relaxed">
-            您有 <strong>{data.expiringPoints.toLocaleString()}</strong> 算力点即将过期
-            {data.expiringAt ? `（${new Date(data.expiringAt).toLocaleDateString("zh-CN")} 到期）` : ""}
-            ，系统将优先从即将到期的额度中抵扣，请合理安排研发消耗。
-          </p>
-        </div>
-      ) : null}
-
-      {/* 统计卡 */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white/80 backdrop-blur-xl p-5 rounded-2xl border border-white/90 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-400 font-bold mb-1">跨空间通用余额</div>
-            <div className="text-2xl font-black font-mono text-[#3182ce]">
+      {/* 4 维指标统计网格 */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* 通用余额 */}
+        <div className="zg-card relative overflow-hidden p-5 flex flex-col justify-between group hover:border-[#3182ce]/50 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">跨空间通用余额</span>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Wallet className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black font-mono text-[#3182ce] tracking-tight">
               {(data?.walletBalance ?? 0).toLocaleString()}
-              <span className="text-xs font-normal text-slate-400 ml-1">点</span>
+              <span className="text-xs font-bold text-slate-400 ml-1.5 font-sans">点</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1 flex items-center justify-between gap-2 flex-wrap">
+              <span>折合约 ¥{((data?.walletBalance ?? 0) / 100).toFixed(2)} 元可用额度</span>
+              {data?.expiringPoints ? (
+                <span className="inline-flex items-center gap-1 text-[10px] text-amber-600 font-semibold">
+                  <Clock3 className="w-3 h-3" />
+                  {data.expiringPoints.toLocaleString()} 点近期到期
+                </span>
+              ) : null}
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center">
-            <Wallet className="w-5 h-5" />
-          </div>
+          <div className="absolute right-0 bottom-0 w-24 h-24 bg-gradient-to-tl from-[#3182ce]/5 to-transparent rounded-tl-full pointer-events-none" />
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">累计充值 / 线下</div>
-            <div className="text-2xl font-black font-mono text-emerald-600">
+
+        {/* 累计充值 */}
+        <div className="zg-card relative overflow-hidden p-5 flex flex-col justify-between group hover:border-emerald-300 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">累计充值 / 线下入账</span>
+            <div className="w-9 h-9 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <ArrowUpRight className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-3">
+            <div className="text-2xl font-black font-mono text-emerald-600 tracking-tight">
               {(stats?.totalRecharged ?? 0).toLocaleString()}
-              <span className="text-xs font-normal text-slate-400 ml-1">点</span>
+              <span className="text-xs font-bold text-slate-400 ml-1.5 font-sans">点</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">包含自购与对公协议汇款</div>
+          </div>
+          <div className="absolute right-0 bottom-0 w-24 h-24 bg-gradient-to-tl from-emerald-500/5 to-transparent rounded-tl-full pointer-events-none" />
+        </div>
+
+        {/* 累计赠送 */}
+        <div className="zg-card relative overflow-hidden p-5 flex flex-col justify-between group hover:border-blue-300 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">累计获赠点数</span>
+            <div className="w-9 h-9 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center group-hover:scale-105 transition-transform">
+              <Coins className="w-4 h-4" />
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-            <ArrowUpRight className="w-5 h-5" />
-          </div>
-        </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">累计赠送</div>
-            <div className="text-2xl font-black font-mono text-purple-600">
+          <div className="mt-3">
+            <div className="text-2xl font-black font-mono text-[#3182ce] tracking-tight">
               {(stats?.totalGift ?? 0).toLocaleString()}
-              <span className="text-xs font-normal text-slate-400 ml-1">点</span>
+              <span className="text-xs font-bold text-slate-400 ml-1.5 font-sans">点</span>
             </div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">新户注册、活动礼券与福利</div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
-            <Coins className="w-5 h-5" />
-          </div>
+          <div className="absolute right-0 bottom-0 w-24 h-24 bg-gradient-to-tl from-[#3182ce]/5 to-transparent rounded-tl-full pointer-events-none" />
         </div>
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between">
-          <div>
-            <div className="text-xs text-slate-500 font-bold mb-1">累计消耗</div>
-            <div className="text-2xl font-black font-mono text-amber-600">
-              {(stats?.totalConsumed ?? 0).toLocaleString()}
-              <span className="text-xs font-normal text-slate-400 ml-1">点</span>
+
+        {/* 累计消耗 */}
+        <div className="zg-card relative overflow-hidden p-5 flex flex-col justify-between group hover:border-amber-300 transition-all">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500">累计使用消耗</span>
+            <div className="w-9 h-9 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center group-hover:scale-105 transition-transform">
+              <ArrowDownRight className="w-4 h-4" />
             </div>
           </div>
-          <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-            <ArrowDownRight className="w-5 h-5" />
+          <div className="mt-3">
+            <div className="text-2xl font-black font-mono text-amber-600 tracking-tight">
+              {(stats?.totalConsumed ?? 0).toLocaleString()}
+              <span className="text-xs font-bold text-slate-400 ml-1.5 font-sans">点</span>
+            </div>
+            <div className="text-[11px] text-slate-400 font-medium mt-1">模型调用与组件运行消耗</div>
           </div>
+          <div className="absolute right-0 bottom-0 w-24 h-24 bg-gradient-to-tl from-amber-500/5 to-transparent rounded-tl-full pointer-events-none" />
         </div>
       </div>
 
-      {/* 空间池分布 */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5">
-        <div className="flex items-center gap-2 mb-3">
-          <Building2 className="w-4 h-4 text-[#3182ce]" />
-          <h3 className="text-sm font-black text-slate-800">各空间算力池</h3>
+      {/* 空间算力池分布 */}
+      <div className="zg-card p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2">
+            <div className="w-1 h-3.5 bg-gradient-to-b from-[#3182ce] to-[#2b6cb0] rounded-full" />
+            <h2 className="text-sm font-bold text-slate-800">各空间算力池分配</h2>
+          </div>
+          <span className="text-xs text-slate-400 font-medium">
+            共绑定 {data?.workspaces.length ?? 0} 个研发工作空间
+          </span>
         </div>
+
         {data && data.workspaces.length === 0 ? (
-          <div className="text-xs text-slate-400 font-medium py-4 text-center">暂无空间</div>
+          <div className="text-xs text-slate-400 font-medium py-6 text-center">暂未加入任何工作空间</div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {data?.workspaces.map((w) => (
               <div
                 key={w.id}
-                className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200/80 hover:border-[#3182ce]/40 transition-all cursor-pointer"
                 onClick={() => router.push(`/workspace/${w.id}`)}
+                className="flex items-center justify-between p-3.5 rounded-xl bg-white/70 hover:bg-white border border-slate-200/80 hover:border-[#3182ce]/50 hover:shadow-xs transition-all cursor-pointer group"
               >
-                <div className="min-w-0">
-                  <div className="text-sm font-bold text-slate-800 truncate">{w.name}</div>
-                  <div className="text-[11px] font-bold text-slate-400 mt-0.5">
-                    {w.type === "ENTERPRISE" ? "企业共享池" : "个人空间"}
+                <div className="min-w-0 pr-2">
+                  <div className="text-xs font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate">
+                    {w.name}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span
+                      className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        w.type === "ENTERPRISE"
+                          ? "bg-purple-50 text-purple-700 border border-purple-200/60"
+                          : "bg-slate-100 text-slate-500 border border-slate-200/60"
+                      }`}
+                    >
+                      {w.type === "ENTERPRISE" ? "企业共享池" : "个人专属"}
+                    </span>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
-                  <div className="text-lg font-black font-mono text-slate-800">
-                    {w.unlimited ? "无限" : w.balance.toLocaleString()}
+                  <div className="text-base font-black font-mono text-slate-800">
+                    {w.unlimited ? "无限配额" : w.balance.toLocaleString()}
                   </div>
-                  <div className="text-[10px] font-bold text-slate-400">点</div>
+                  {!w.unlimited && <div className="text-[10px] font-bold text-slate-400">点</div>}
                 </div>
               </div>
             ))}
@@ -250,77 +297,82 @@ export default function MyPointsPage() {
         )}
       </div>
 
-      {/* 企业池管理：所有者在此直接回收共享池算力点 / 设置低余额预警阈值
-          （与企业空间内部「充值 → 回收至个人钱包」页签互通） */}
+      {/* 企业池管理：所有者在此直接回收共享池算力点 / 设置低余额预警阈值 */}
       <EnterprisePoolManager onChanged={load} />
 
-      {/* 跨空间流水 */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
-        <div className="flex items-center gap-2 p-4 border-b border-slate-100 flex-wrap">
-          {TYPE_TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTypeFilter(t.key)}
-              className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
-                typeFilter === t.key
-                  ? "bg-gradient-to-r from-[#2b6cb0] to-[#3182ce] text-white shadow-sm"
-                  : "bg-slate-100 text-slate-500 hover:bg-slate-200/60"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-          <span className="ml-auto text-[11px] font-bold text-slate-400">
-            共 {data?.pagination.total ?? 0} 条
+      {/* 跨空间流水账目明细 */}
+      <div className="zg-card p-0 overflow-hidden">
+        {/* Tab 筛选栏 */}
+        <div className="flex items-center justify-between gap-3 p-4 border-b border-slate-100 flex-wrap bg-slate-50/50">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {TYPE_TABS.map((t) => (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTypeFilter(t.key)}
+                className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  typeFilter === t.key
+                    ? "bg-[#3182ce] text-white shadow-xs"
+                    : "bg-white text-slate-600 hover:text-[#3182ce] hover:bg-slate-100/70 border border-slate-200/70"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <span className="text-[11px] font-bold text-slate-400 ml-auto">
+            共 {data?.pagination.total ?? 0} 条流水
           </span>
         </div>
 
+        {/* 状态与表格内容 */}
         {loading ? (
-          <div className="p-16 text-center text-xs font-bold text-slate-400">
-            <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" />
-            读取中...
+          <div className="p-12 space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-10 zg-skeleton rounded-lg" />
+            ))}
           </div>
         ) : error ? (
-          <div className="p-16 text-center text-xs font-bold text-red-500">
-            <AlertCircle className="w-6 h-6 mx-auto mb-2" />
+          <div className="p-14 text-center text-xs font-bold text-red-500">
+            <AlertCircle className="w-6 h-6 mx-auto mb-2 text-red-400" />
             {error}
           </div>
         ) : !data || data.records.length === 0 ? (
-          <div className="p-16 text-center text-xs font-bold text-slate-400">
-            <Inbox className="w-6 h-6 mx-auto mb-2" />
-            暂无流水记录
+          <div className="p-14 text-center text-xs font-medium text-slate-400">
+            <Inbox className="w-8 h-8 mx-auto mb-2 text-slate-300" />
+            暂无匹配的算力流水记录
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse min-w-[760px]">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider">
-                    <th className="px-4 py-3">流水信息</th>
-                    <th className="px-4 py-3 whitespace-nowrap">类型</th>
-                    <th className="px-4 py-3 whitespace-nowrap">时间</th>
-                    <th className="px-4 py-3 whitespace-nowrap text-right">算力点</th>
-                    <th className="px-4 py-3 whitespace-nowrap text-right">折算</th>
-                    <th className="px-4 py-3 whitespace-nowrap">支付方式</th>
+                  <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    <th className="px-5 py-3.5">流水事由 / 业务归属</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">类型分类</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap">发生时间</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap text-right">算力点变动</th>
+                    <th className="px-4 py-3.5 whitespace-nowrap text-right">折算参考</th>
+                    <th className="px-5 py-3.5 whitespace-nowrap">支付 / 入账通道</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {data.records.map((r) => {
                     const isIn = r.direction === "IN";
                     return (
-                      <tr key={r.id} className="hover:bg-slate-50/70">
-                        <td className="px-4 py-3.5">
+                      <tr key={r.id} className="hover:bg-slate-50/60 transition-colors">
+                        <td className="px-5 py-3.5">
                           <div className="font-bold text-slate-800 truncate max-w-[280px]">{r.title}</div>
                           {r.componentName && (
-                            <div className="text-[10px] text-slate-400 mt-0.5">组件：{r.componentName}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">关联组件：{r.componentName}</div>
                           )}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap">
                           <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${
+                            className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
                               isIn
-                                ? "bg-emerald-50 text-emerald-600 border-emerald-200"
-                                : "bg-amber-50 text-amber-600 border-amber-200"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}
                           >
                             {TYPE_LABEL[r.type] || r.type}
@@ -340,8 +392,8 @@ export default function MyPointsPage() {
                         <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
                           ¥{(Number(r.amountCents || 0) / 100).toFixed(2)}
                         </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap text-[11px] font-bold text-slate-500">
-                          {r.paymentMethod ? (PAYMENT_LABEL[r.paymentMethod] || r.paymentMethod) : "-"}
+                        <td className="px-5 py-3.5 whitespace-nowrap text-[11px] font-medium text-slate-600">
+                          {r.paymentMethod ? (PAYMENT_LABEL[r.paymentMethod] || r.paymentMethod) : "—"}
                         </td>
                       </tr>
                     );
@@ -349,22 +401,25 @@ export default function MyPointsPage() {
                 </tbody>
               </table>
             </div>
-            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100">
-              <span className="text-[11px] font-bold text-slate-400">
-                共 {data.pagination.total} 条 · 第 {data.pagination.page}/{data.pagination.totalPages} 页
+            {/* 分页控制器 */}
+            <div className="flex items-center justify-between px-5 py-3.5 border-t border-slate-100 bg-slate-50/40">
+              <span className="text-[11px] font-medium text-slate-500">
+                共 {data.pagination.total} 条 · 第 {data.pagination.page} / {data.pagination.totalPages} 页
               </span>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                   disabled={page <= 1}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg disabled:opacity-40 cursor-pointer"
+                  className="zg-btn zg-btn-default text-xs h-8 px-3 disabled:opacity-40"
                 >
                   上一页
                 </button>
                 <button
+                  type="button"
                   onClick={() => setPage((p) => Math.min(data.pagination.totalPages, p + 1))}
                   disabled={page >= data.pagination.totalPages}
-                  className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg disabled:opacity-40 cursor-pointer"
+                  className="zg-btn zg-btn-default text-xs h-8 px-3 disabled:opacity-40"
                 >
                   下一页
                 </button>
@@ -374,12 +429,13 @@ export default function MyPointsPage() {
         )}
       </div>
 
-      {/* 算力点退款申请入口：任务扣点后结果不可用时，用户可自助申请退回算力点（需管理员审批） */}
-      <UserRefundRequests />
+      {/* 算力点退款申请入口：保留完整业务逻辑 */}
+      <UserRefundRequests onChanged={load} />
 
-      <div className="flex items-center gap-2 text-[11px] font-bold text-slate-400 px-1">
-        <FileText className="w-3.5 h-3.5" />
-        折算口径：100 算力点 = 1 元（仅作参考）；充值行显示实付金额，赠送/消耗行为不计入金额。
+      {/* 口径备注 */}
+      <div className="flex items-center gap-2 text-[11px] font-medium text-slate-400 px-1">
+        <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+        <span>结算口径：100 算力点 = 1 元（仅作参考）；实际计费与消费均以流水明细为准。</span>
       </div>
     </div>
   );

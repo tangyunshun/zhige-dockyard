@@ -1,6 +1,6 @@
 /**
- * 岗位 seed：写入 10 大标准预置岗位定义。
- * 运行时岗位数据一律从数据库 position 表读取（/api/studio?action=preset-positions），
+ * 岗位 seed：写入标准预置岗位定义（合并自原 position 表）。
+ * 运行时岗位数据一律从数据库 platformstandardpost 表读取（/api/studio?action=catalog 的 presetPositions），
  * 本文件仅供初始化一次性写入，代码中不再硬编码岗位信息。
  */
 import { PrismaClient } from "@prisma/client";
@@ -213,12 +213,14 @@ const POSITION_SEED: Array<{
 
 async function main() {
   for (const p of POSITION_SEED) {
-    await prisma.position.upsert({
-      where: { code: p.code },
+    // 合并后统一写入 platformstandardpost（管理员后台主数据表）。
+    // 以唯一 name 为主键；update 不覆盖 color/icon/isWorkspaceDefault/isSystemReserved 等后台可配置项，
+    // 仅同步岗位定义内容字段；create 时补齐默认值。
+    await prisma.platformstandardpost.upsert({
+      where: { name: p.name },
       update: {
         name: p.name,
         badge: p.badge,
-        icon: p.icon,
         colorCls: p.colorCls,
         description: p.description,
         isPreset: true,
@@ -232,14 +234,17 @@ async function main() {
         code: p.code,
         name: p.name,
         badge: p.badge,
-        icon: p.icon,
         colorCls: p.colorCls,
         description: p.description,
+        color: "#3182ce",
+        icon: p.icon,
+        status: "ACTIVE",
+        sortOrder: p.sortOrder,
+        isWorkspaceDefault: false,
+        isSystemReserved: p.code === "OWNER",
         isPreset: true,
         editable: p.editable,
-        status: "ACTIVE",
         defaultAllowedComponentIds: p.defaultAllowedComponentIds ?? undefined,
-        sortOrder: p.sortOrder,
       },
     });
   }

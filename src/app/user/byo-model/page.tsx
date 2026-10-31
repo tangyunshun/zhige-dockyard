@@ -9,7 +9,7 @@
  *  - 「我的自建模型（BYO）」：集中登记自有模型端点与密钥（定义 user_byo_model_def），
  *    通过勾选把同一个定义绑定到多个你拥有的工作空间，materialize 为各空间生效 BYO 行。
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
@@ -28,7 +28,6 @@ import {
   Loader2,
   XCircle,
   Check,
-  Sparkles,
   Info,
   Plus,
   Users,
@@ -41,6 +40,9 @@ import {
   Cpu,
   Eye,
   EyeOff,
+  ChevronLeft,
+  ChevronRight,
+  Copy,
 } from "lucide-react";
 
 interface OwnedWorkspace {
@@ -208,6 +210,17 @@ export default function UserByoModelPage() {
   const [editingId, setEditingId] = useState<string | null>(null); // null=新增；否则编辑该 def
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // 自建模型分页
+  const [byoPage, setByoPage] = useState(1);
+  const [byoPageSize, setByoPageSize] = useState(6);
+
+  // 空间列表分页
+  const [wsPage, setWsPage] = useState(1);
+  const [wsPageSize, setWsPageSize] = useState(4);
 
   const [form, setForm] = useState({
     label: "",
@@ -400,6 +413,7 @@ export default function UserByoModelPage() {
       priceOutputYuan: 0,
     });
     setTestResult(null);
+    setFormErrors({});
     setShowApiKey(false);
     setShowForm(true);
 
@@ -423,6 +437,7 @@ export default function UserByoModelPage() {
       priceOutputYuan: def.priceOutputMicrosPerMillion != null ? def.priceOutputMicrosPerMillion / MICROS_PER_YUAN : 0,
     });
     setTestResult(null);
+    setFormErrors({});
     setShowApiKey(false);
     setShowForm(true);
 
@@ -432,11 +447,88 @@ export default function UserByoModelPage() {
     }, 60);
   };
 
+  const clearError = (field: string) => {
+    setFormErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  // 自建模型表单前端防御性校验
+  const validateForm = () => {
+    const errs: Record<string, string> = {};
+    if (!form.label.trim()) {
+      errs.label = "请输入模型展示名称";
+    } else if (form.label.trim().length < 2) {
+      errs.label = "模型展示名称至少输入 2 个字符";
+    } else if (form.label.trim().length > 50) {
+      errs.label = "模型展示名称不能超过 50 个字符";
+    }
+
+    if (!form.baseUrl.trim()) {
+      errs.baseUrl = "请输入 Base URL 端点地址";
+    } else if (!/^https?:\/\/.+/i.test(form.baseUrl.trim())) {
+      errs.baseUrl = "Base URL 必须以 http:// 或 https:// 开头（必须为有效网络地址）";
+    }
+
+    if (editingId === null && !form.apiKey.trim()) {
+      errs.apiKey = "新增自建模型必须录入 API Key 密钥";
+    }
+
+    if (form.capabilities.length === 0) {
+      errs.capabilities = "请至少勾选一项支持的功能特性（如文本生成）";
+    }
+
+    const ctx = Number(form.contextLimit);
+    if (!form.contextLimit || isNaN(ctx) || ctx < 1000) {
+      errs.contextLimit = "上下文上限必须为不少于 1,000 的有效整数";
+    }
+
+    const pIn = Number(form.priceInputYuan);
+    if (form.priceInputYuan === undefined || form.priceInputYuan === null || isNaN(pIn) || pIn < 0) {
+      errs.priceInputYuan = "输入单价必须为大于等于 0 的有效数值";
+    }
+
+    const pOut = Number(form.priceOutputYuan);
+    if (form.priceOutputYuan === undefined || form.priceOutputYuan === null || isNaN(pOut) || pOut < 0) {
+      errs.priceOutputYuan = "输出单价必须为大于等于 0 的有效数值";
+    }
+
+    setFormErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const copyToClipboard = (text: string, id: string, tip: string) => {
+    try {
+      if (navigator?.clipboard?.writeText) {
+        navigator.clipboard.writeText(text);
+      } else {
+        const input = document.createElement("input");
+        input.value = text;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand("copy");
+        document.body.removeChild(input);
+      }
+      setCopiedId(id);
+      toast.success(`已复制 ${tip}`);
+      setTimeout(() => setCopiedId(null), 2000);
+    } catch {
+      toast.error(`复制 ${tip} 失败，请手动选择复制`);
+    }
+  };
+
   const saveDef = async () => {
-    if (!form.label.trim()) return toast.error("请输入模型展示名称");
-    if (!form.baseUrl.trim() || !/^https?:\/\/.+/i.test(form.baseUrl.trim())) return toast.error("请输入有效的 Base URL 端点地址");
-    if (editingId === null && !form.apiKey.trim()) return toast.error("新增模型库定义请输入 API Key 密钥");
-    if (form.capabilities.length === 0) return toast.error("请至少勾选一项支持的功能特性（如文本生成）");
+    if (!validateForm()) {
+      toast.error("请完善模型配置信息并修正标红错误项");
+      return;
+    }
+
+
+
+
 
     setSaving(true);
     try {
@@ -534,6 +626,7 @@ export default function UserByoModelPage() {
     if (!form.baseUrl.trim()) return;
     setTesting(true);
     setTestResult(null);
+    setFormErrors({});
     try {
       const res = await authFetch(`/api/user/byo-models/test`, {
         method: "POST",
@@ -542,6 +635,7 @@ export default function UserByoModelPage() {
           protocol: form.protocol,
           baseUrl: form.baseUrl,
           apiKey: form.apiKey,
+          defId: editingId || undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -585,6 +679,12 @@ export default function UserByoModelPage() {
   });
   const totalSystemModelsCount = uniqueSystemModelIds.size;
 
+  // 搜索关键字或标签页切换时重置当前页码
+  useEffect(() => {
+    setByoPage(1);
+    setWsPage(1);
+  }, [searchQuery, activeTab]);
+
   // 过滤后的自建模型列表
   const filteredDefs = defs.filter((d) => {
     if (!searchQuery.trim()) return true;
@@ -596,6 +696,17 @@ export default function UserByoModelPage() {
       d.protocol.toLowerCase().includes(q)
     );
   });
+
+  // 自建模型分页切片
+  const totalDefsCount = filteredDefs.length;
+  const totalByoPages = Math.max(1, Math.ceil(totalDefsCount / byoPageSize));
+  const safeByoPage = Math.min(Math.max(1, byoPage), totalByoPages);
+  const pagedDefs = useMemo(() => {
+    const start = (safeByoPage - 1) * byoPageSize;
+    return filteredDefs.slice(start, start + byoPageSize);
+  }, [filteredDefs, safeByoPage, byoPageSize]);
+
+
 
   // 过滤后的空间列表（用于系统模型展示）
   const filteredWorkspaces = workspaces.filter((w) => {
@@ -609,6 +720,17 @@ export default function UserByoModelPage() {
     );
     return matchesWs || matchesModels;
   });
+
+  // 空间列表分页切片
+  const totalWsCount = filteredWorkspaces.length;
+  const totalWsPages = Math.max(1, Math.ceil(totalWsCount / wsPageSize));
+  const safeWsPage = Math.min(Math.max(1, wsPage), totalWsPages);
+  const pagedWorkspaces = useMemo(() => {
+    const start = (safeWsPage - 1) * wsPageSize;
+    return filteredWorkspaces.slice(start, start + wsPageSize);
+  }, [filteredWorkspaces, safeWsPage, wsPageSize]);
+  
+
 
   return (
     <div className="space-y-6 font-sans">
@@ -887,7 +1009,7 @@ export default function UserByoModelPage() {
         <div className="p-4 bg-gradient-to-r from-blue-50/60 via-indigo-50/30 to-purple-50/20 border border-blue-200/80 rounded-xl space-y-2.5 shadow-2xs">
           <div className="flex items-center justify-between">
             <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
-              <Sparkles className="w-4 h-4 text-[#3182ce]" />
+              <Info className="w-4 h-4 text-[#3182ce]" />
               <span>快速套用官方推荐模版</span>
             </span>
             <span className="text-[11px] text-slate-500">点击自动填充推荐端点、上下文与单价参数</span>
@@ -948,21 +1070,37 @@ export default function UserByoModelPage() {
 
           <div className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
-                  模型展示名称 <span className="text-red-500 font-bold ml-0.5">*</span>
-                </span>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  模型展示名称 <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+                </label>
                 <input
-                  className={inputCls}
+                  className={`${inputCls} ${
+                    formErrors.label ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   placeholder="如：DeepSeek-V3、我的私有千问"
                   value={form.label}
-                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, label: e.target.value });
+                    clearError("label");
+                  }}
                 />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
-                  接入接口协议 <span className="text-red-500 font-bold ml-0.5">*</span>
-                </span>
+                {formErrors.label ? (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{formErrors.label}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    设置易于辨识的名称（2~50 字符），如 DeepSeek-V3、我的私有千问
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  接入接口协议 <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+                </label>
                 <select
                   className={inputCls + " font-medium cursor-pointer"}
                   value={form.protocol}
@@ -974,46 +1112,70 @@ export default function UserByoModelPage() {
                     </option>
                   ))}
                 </select>
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700">供应商（厂商）</span>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  选择模型适配的通信接口协议规范（绝大多数端点兼容 OpenAI 协议）
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  供应商（厂商）<span className="text-slate-400 font-normal ml-1">（选填）</span>
+                </label>
                 <input
                   className={inputCls}
                   placeholder="如 DeepSeek / OpenAI / Ollama（选填）"
                   value={form.providerName}
                   onChange={(e) => setForm({ ...form, providerName: e.target.value })}
                 />
-              </label>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  用于在模型列表中显示厂商标识徽章，方便分类识别
+                </p>
+              </div>
             </div>
 
-            <label className="block space-y-1.5">
-              <span className="text-xs font-bold text-slate-700 flex items-center">
-                Base URL 端点地址（必须为 http/https） <span className="text-red-500 font-bold ml-0.5">*</span>
-              </span>
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">
+                Base URL 端点地址（必须为 http/https） <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+              </label>
               <div className="relative">
                 <Link2 className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
-                  className={inputCls + " pl-9"}
+                  className={`${inputCls} pl-9 ${
+                    formErrors.baseUrl ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   placeholder="https://api.deepseek.com/v1 或 http://localhost:11434/v1"
                   value={form.baseUrl}
-                  onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, baseUrl: e.target.value });
+                    clearError("baseUrl");
+                  }}
                 />
               </div>
-            </label>
+              {formErrors.baseUrl ? (
+                <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{formErrors.baseUrl}</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  支持公网 API 或内网反向代理地址，必须包含协议前缀（http:// 或 https://）
+                </p>
+              )}
+            </div>
 
-            <label className="block space-y-1.5">
+            <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
+                <label className="block text-xs font-bold text-slate-700">
                   API Key 密钥
                   {editingId ? (
-                    <span className="text-slate-400 font-normal ml-1">（留空则不修改现有密钥）</span>
+                    <span className="text-slate-400 font-normal ml-1">（留空则保持现有密文不变）</span>
                   ) : (
-                    <span className="text-red-500 font-bold ml-0.5">*</span>
+                    <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
                   )}
-                </span>
+                </label>
               </div>
               {editingId && (editingDef?.apiKeyMasked || editingDef?.hasApiKey) && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 mb-1.5">
                   <input
                     type={showApiKey ? "text" : "password"}
                     readOnly
@@ -1036,28 +1198,46 @@ export default function UserByoModelPage() {
                 <input
                   type={showApiKey ? "text" : "password"}
                   autoComplete="new-password"
-                  className={inputCls + " pl-9 pr-9 font-mono"}
+                  className={`${inputCls} pl-9 pr-9 font-mono ${
+                    formErrors.apiKey ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   placeholder={
                     editingId
                       ? "输入新密钥 = 覆盖现有密钥；留空 = 沿用现有密钥"
                       : "sk-... 明文录入后由服务端以 AES-256-GCM 密文存储，不入明文库"
                   }
                   value={form.apiKey}
-                  onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                  onChange={(e) => {
+                    setForm({ ...form, apiKey: e.target.value });
+                    clearError("apiKey");
+                  }}
                 />
               </div>
-            </label>
+              {formErrors.apiKey ? (
+                <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{formErrors.apiKey}</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  明文录入后由服务端硬件加密模块进行 AES-256-GCM 强加密入库，绝不泄露
+                </p>
+              )}
+            </div>
 
             {/* 能力网格 */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-700 flex items-center">
-                  支持的功能特性 (模型能力标签) <span className="text-red-500 font-bold ml-0.5">*</span>
+                  支持的功能特性 (模型能力标签) <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
                 </span>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setForm((f) => ({ ...f, capabilities: [...BYO_CAPABILITIES] }))}
+                    onClick={() => {
+                      clearError("capabilities");
+                      setForm((f) => ({ ...f, capabilities: [...BYO_CAPABILITIES] }));
+                    }}
                     className="text-[11px] text-[#3182ce] hover:underline font-bold cursor-pointer"
                   >
                     全选
@@ -1103,44 +1283,101 @@ export default function UserByoModelPage() {
                   );
                 })}
               </div>
+              {formErrors.capabilities ? (
+                <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>{formErrors.capabilities}</span>
+                </p>
+              ) : (
+                <p className="text-[11px] text-slate-400 mt-1">
+                  请勾选该模型具备的能力，空间执行具体工作流或组件时将据此智能匹配与调度
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
-                  上下文窗口上限 (Token) <span className="text-red-500 font-bold ml-0.5">*</span>
-                </span>
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  上下文窗口上限 (Token) <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+                </label>
                 <input
                   type="number"
-                  className={inputCls}
+                  className={`${inputCls} ${
+                    formErrors.contextLimit ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   value={form.contextLimit}
-                  onChange={(e) => setForm({ ...form, contextLimit: Number(e.target.value) })}
+                  onChange={(e) => {
+                    setForm({ ...form, contextLimit: Number(e.target.value) });
+                    clearError("contextLimit");
+                  }}
                 />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
-                  官方单价 · 输入（元 / 百万 Token） <span className="text-red-500 font-bold ml-0.5">*</span>
-                </span>
+                {formErrors.contextLimit ? (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{formErrors.contextLimit}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    单次对话最大 Tokens 容量（必须 ≥ 1,000）
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  官方单价 · 输入（元 / 百万 Token） <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+                </label>
                 <input
                   type="number"
                   step="0.0001"
-                  className={inputCls}
+                  className={`${inputCls} ${
+                    formErrors.priceInputYuan ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   value={form.priceInputYuan}
-                  onChange={(e) => setForm({ ...form, priceInputYuan: Number(e.target.value) })}
+                  onChange={(e) => {
+                    setForm({ ...form, priceInputYuan: Number(e.target.value) });
+                    clearError("priceInputYuan");
+                  }}
                 />
-              </label>
-              <label className="block space-y-1.5">
-                <span className="text-xs font-bold text-slate-700 flex items-center">
-                  官方单价 · 输出（元 / 百万 Token） <span className="text-red-500 font-bold ml-0.5">*</span>
-                </span>
+                {formErrors.priceInputYuan ? (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{formErrors.priceInputYuan}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    官方输入基准单价（用于工作台折算，不可为负数）
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700">
+                  官方单价 · 输出（元 / 百万 Token） <span className="zg-required text-rose-500 font-bold ml-0.5">*</span>
+                </label>
                 <input
                   type="number"
                   step="0.0001"
-                  className={inputCls}
+                  className={`${inputCls} ${
+                    formErrors.priceOutputYuan ? "border-rose-400 bg-rose-50/20 ring-1 ring-rose-400/30" : ""
+                  }`}
                   value={form.priceOutputYuan}
-                  onChange={(e) => setForm({ ...form, priceOutputYuan: Number(e.target.value) })}
+                  onChange={(e) => {
+                    setForm({ ...form, priceOutputYuan: Number(e.target.value) });
+                    clearError("priceOutputYuan");
+                  }}
                 />
-              </label>
+                {formErrors.priceOutputYuan ? (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 font-medium mt-1">
+                    <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                    <span>{formErrors.priceOutputYuan}</span>
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    官方输出基准单价（用于工作台折算，不可为负数）
+                  </p>
+                )}
+              </div>
             </div>
 
             <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 leading-relaxed flex items-start gap-2">
@@ -1291,9 +1528,11 @@ export default function UserByoModelPage() {
               </div>
             )
           ) : (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-              {filteredDefs.map((def) => {
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              {pagedDefs.map((def) => {
                 const activeCount = def.assignments.filter((a) => a.enabled).length;
+
                 return (
                   <div
                     key={def.id}
@@ -1358,11 +1597,29 @@ export default function UserByoModelPage() {
                       </div>
                     </div>
 
-                    {/* 端点 Base URL（无复制按钮） */}
-                    <div className="px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/70">
-                      <div className="text-[11px] font-mono text-slate-600 break-all select-all">
+                    {/* 端点 Base URL（支持一键复制与反馈） */}
+                    <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 border border-slate-200/70 group/copy">
+                      <div className="text-[11px] font-mono text-slate-600 break-all select-all flex-1">
                         {def.baseUrl}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(def.baseUrl, `url-${def.id}`, "Base URL 端点地址")}
+                        className="shrink-0 px-2 py-0.5 rounded hover:bg-slate-200/80 text-slate-400 hover:text-slate-700 transition-colors cursor-pointer flex items-center gap-1 text-[10px] font-medium"
+                        title="复制 Base URL"
+                      >
+                        {copiedId === `url-${def.id}` ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-600" />
+                            <span className="text-emerald-600 font-bold">已复制</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>复制</span>
+                          </>
+                        )}
+                      </button>
                     </div>
 
                     {/* 支持能力胶囊徽章 */}
@@ -1442,13 +1699,42 @@ export default function UserByoModelPage() {
                               <span className="text-slate-400 font-normal ml-1">（可多选）</span>
                             </span>
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => setAssigningId(null)}
-                            className="text-[11px] text-slate-500 hover:text-slate-800 font-bold px-2 py-0.5 rounded-md hover:bg-white/80 transition-all cursor-pointer"
-                          >
-                            收起
-                          </button>
+                          <div className="flex items-center gap-3">
+                            <div className="flex items-center gap-2 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = {};
+                                  workspaces.forEach((w) => (next[w.id] = true));
+                                  setSelectedWs(next);
+                                }}
+                                className="text-[11px] text-[#3182ce] hover:underline font-bold cursor-pointer"
+                              >
+                                全选所有空间
+                              </button>
+                              <span className="text-slate-300">|</span>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedWs({})}
+                                className="text-[11px] text-slate-500 hover:text-slate-800 font-bold cursor-pointer"
+                              >
+                                清空所选
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setAssigningId(null)}
+                              className="text-[11px] text-slate-500 hover:text-slate-800 font-bold px-2 py-0.5 rounded-md hover:bg-white/80 transition-all cursor-pointer"
+                            >
+                              收起
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-between text-[11px] text-slate-500 bg-blue-50/50 px-3 py-1.5 rounded-lg border border-blue-100">
+                          <span>
+                            当前已勾选 <strong className="text-[#3182ce] font-bold">{Object.values(selectedWs).filter(Boolean).length}</strong> / {workspaces.length} 个空间
+                          </span>
+                          <span className="text-slate-400">勾选后点击下方确认绑定即可同步生效</span>
                         </div>
 
                         {workspaces.length === 0 ? (
@@ -1461,7 +1747,9 @@ export default function UserByoModelPage() {
                               const sysModels = systemModelsByWs[w.id];
                               const isChecked = !!selectedWs[w.id];
                               const isEnterprise = w.type === "ENTERPRISE";
-                              return (
+                            
+
+  return (
                                 <label
                                   key={w.id}
                                   className={`relative flex flex-col justify-between p-3 rounded-xl border transition-all cursor-pointer select-none group ${
@@ -1602,6 +1890,76 @@ export default function UserByoModelPage() {
                 );
               })}
             </div>
+
+            {/* 自建模型底部分页控制栏 */}
+            {totalDefsCount > 0 && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 text-xs text-slate-600">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span>
+                    共 <strong className="font-bold text-slate-800">{totalDefsCount}</strong> 个自建模型
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <div className="flex items-center gap-1.5">
+                    <span>每页显示</span>
+                    <select
+                      value={byoPageSize}
+                      onChange={(e) => {
+                        setByoPageSize(Number(e.target.value));
+                        setByoPage(1);
+                      }}
+                      className="px-2 py-1 rounded border border-slate-200 bg-white text-xs font-medium cursor-pointer focus:border-[#3182ce] focus:outline-none"
+                    >
+                      <option value={4}>4 条/页</option>
+                      <option value={6}>6 条/页</option>
+                      <option value={10}>10 条/页</option>
+                      <option value={20}>20 条/页</option>
+                      <option value={50}>50 条/页</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1 self-end sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setByoPage(1)}
+                    disabled={safeByoPage <= 1}
+                    className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
+                  >
+                    首页
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setByoPage((p) => Math.max(1, p - 1))}
+                    disabled={safeByoPage <= 1}
+                    className="p-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                    title="上一页"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-3 py-1 text-slate-700 font-bold bg-slate-50 rounded border border-slate-200/80">
+                    {safeByoPage} / {totalByoPages}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setByoPage((p) => Math.min(totalByoPages, p + 1))}
+                    disabled={safeByoPage >= totalByoPages}
+                    className="p-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                    title="下一页"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setByoPage(totalByoPages)}
+                    disabled={safeByoPage >= totalByoPages}
+                    className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
+                  >
+                    末页
+                  </button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </div>
       )}
@@ -1632,9 +1990,10 @@ export default function UserByoModelPage() {
                 {workspaces.length === 0 ? "你暂无关联的工作空间。" : "未找到匹配的空间系统模型。"}
               </div>
             ) : (
-              filteredWorkspaces.map((w) => {
+              pagedWorkspaces.map((w) => {
                 const sys = systemModelsByWs[w.id];
                 const isCollapsed = !!collapsedWs[w.id];
+
                 return (
                   <div
                     key={w.id}
@@ -1750,6 +2109,74 @@ export default function UserByoModelPage() {
               })
             )}
           </div>
+
+          {/* 系统模型工作空间列表底部分页控制栏 */}
+          {totalWsCount > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-4 border-t border-slate-100 text-xs text-slate-600">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span>
+                  共 <strong className="font-bold text-slate-800">{totalWsCount}</strong> 个工作空间
+                </span>
+                <span className="text-slate-300">|</span>
+                <div className="flex items-center gap-1.5">
+                  <span>每页显示</span>
+                  <select
+                    value={wsPageSize}
+                    onChange={(e) => {
+                      setWsPageSize(Number(e.target.value));
+                      setWsPage(1);
+                    }}
+                    className="px-2 py-1 rounded border border-slate-200 bg-white text-xs font-medium cursor-pointer focus:border-[#3182ce] focus:outline-none"
+                  >
+                    <option value={4}>4 个空间/页</option>
+                    <option value={8}>8 个空间/页</option>
+                    <option value={12}>12 个空间/页</option>
+                    <option value={20}>20 个空间/页</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1 self-end sm:self-auto">
+                <button
+                  type="button"
+                  onClick={() => setWsPage(1)}
+                  disabled={safeWsPage <= 1}
+                  className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
+                >
+                  首页
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWsPage((p) => Math.max(1, p - 1))}
+                  disabled={safeWsPage <= 1}
+                  className="p-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  title="上一页"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <span className="px-3 py-1 text-slate-700 font-bold bg-slate-50 rounded border border-slate-200/80">
+                  {safeWsPage} / {totalWsPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setWsPage((p) => Math.min(totalWsPages, p + 1))}
+                  disabled={safeWsPage >= totalWsPages}
+                  className="p-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  title="下一页"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWsPage(totalWsPages)}
+                  disabled={safeWsPage >= totalWsPages}
+                  className="px-2.5 py-1 rounded border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer font-medium"
+                >
+                  末页
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

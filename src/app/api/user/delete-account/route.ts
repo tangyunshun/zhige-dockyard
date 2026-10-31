@@ -35,19 +35,39 @@ export async function POST(request: NextRequest) {
 
     const { verifyToken } = await request.json().catch(() => ({}));
 
-    // 验证二次鉴权令牌 (SCENARIO_033 / PRD E-04，DB 化一次性令牌)
-    const stepUp = await requireStepUp(request, "cancel_account", userId, { verifyToken });
-    if (!stepUp.ok) {
-      return NextResponse.json(
-        {
-          error: stepUp.error,
-          message:
-            stepUp.error === "SEC_AUTH_REQUIRED"
-              ? "此高危操作需要进行二次身份验证"
-              : "验证令牌无效或已过期，请重新验证",
-        },
-        { status: stepUp.status }
+    // 读取「删除与吊销操作强制二次确认」偏好（默认开启）。
+    // 开关开启（requireDeleteConfirm !== false）时强制二次身份验证；
+    // 关闭时免除 step-up，但仍保留 CSRF、冷静期与审计留痕等其余防护。
+    let requireDeleteConfirm = true;
+    try {
+      const prefRows = await prisma.$queryRawUnsafe<Array<{ uiSettings: string | null }>>(
+        `SELECT uiSettings FROM userpreference WHERE userId = ?`,
+        userId
       );
+      const raw = prefRows[0]?.uiSettings;
+      if (raw) {
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (parsed && parsed.requireDeleteConfirm === false) requireDeleteConfirm = false;
+      }
+    } catch {
+      /* 偏好读取失败按默认开启处理，不阻断主流程 */
+    }
+
+    // 验证二次鉴权令牌 (SCENARIO_033 / PRD E-04，DB 化一次性令牌)
+    if (requireDeleteConfirm) {
+      const stepUp = await requireStepUp(request, "cancel_account", userId, { verifyToken });
+      if (!stepUp.ok) {
+        return NextResponse.json(
+          {
+            error: stepUp.error,
+            message:
+              stepUp.error === "SEC_AUTH_REQUIRED"
+                ? "此高危操作需要进行二次身份验证"
+                : "验证令牌无效或已过期，请重新验证",
+          },
+          { status: stepUp.status }
+        );
+      }
     }
 
     // 检查用户是否存在

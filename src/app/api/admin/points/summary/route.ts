@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         .filter((g) => g.direction === direction && types.includes(g.type))
         .reduce((s, g) => s + Number(g._sum?.points || 0), 0);
 
-    const totalIssued = sumBy("IN", ["GIFT_REGISTER", "RECHARGE", "OFFLINE_RECHARGE", "MEMBERSHIP_GRANT", "REFUND", "MANUAL_ADJUST"]);
+    const totalIssued = sumBy("IN", ["GIFT_REGISTER", "RECHARGE", "OFFLINE_RECHARGE", "MEMBERSHIP_GRANT", "REFUND", "MANUAL_ADJUST", "GIFT_BONUS"]);
     const totalRecharged = sumBy("IN", ["RECHARGE", "OFFLINE_RECHARGE"]);
     const totalGift = sumBy("IN", ["GIFT_REGISTER", "MEMBERSHIP_GRANT"]);
     const totalConsumed = sumBy("OUT", ["CONSUME"]);

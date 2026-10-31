@@ -729,8 +729,14 @@ export default function AdminStagesPage() {
                   <input
                     type="date"
                     value={filters.createDateStart}
+                    max={filters.createDateEnd || undefined}
                     onChange={(e) => {
-                      setFilters({ ...filters, createDateStart: e.target.value });
+                      const v = e.target.value;
+                      setFilters((f) => ({
+                        ...f,
+                        createDateStart: v,
+                        ...(f.createDateEnd && v && v > f.createDateEnd ? { createDateEnd: "" } : {}),
+                      }));
                       setCurrentPage(1);
                     }}
                     className="border-none outline-none text-xs font-bold text-slate-700 bg-transparent p-0 w-28"
@@ -740,8 +746,11 @@ export default function AdminStagesPage() {
                   <input
                     type="date"
                     value={filters.createDateEnd}
+                    min={filters.createDateStart || undefined}
                     onChange={(e) => {
-                      setFilters({ ...filters, createDateEnd: e.target.value });
+                      const v = e.target.value;
+                      if (v && filters.createDateStart && v < filters.createDateStart) return;
+                      setFilters({ ...filters, createDateEnd: v });
                       setCurrentPage(1);
                     }}
                     className="border-none outline-none text-xs font-bold text-slate-700 bg-transparent p-0 w-28"
@@ -1060,14 +1069,24 @@ export default function AdminStagesPage() {
                     <input
                       type="date"
                       value={analyticsCustomStart}
-                      onChange={(e) => setAnalyticsCustomStart(e.target.value)}
+                      max={analyticsCustomEnd || undefined}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setAnalyticsCustomStart(v);
+                        if (analyticsCustomEnd && v && v > analyticsCustomEnd) setAnalyticsCustomEnd("");
+                      }}
                       className="border-none outline-none text-xs font-bold text-slate-700 bg-transparent p-0 w-28"
                     />
                     <span className="text-slate-300">-</span>
                     <input
                       type="date"
                       value={analyticsCustomEnd}
-                      onChange={(e) => setAnalyticsCustomEnd(e.target.value)}
+                      min={analyticsCustomStart || undefined}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v && analyticsCustomStart && v < analyticsCustomStart) return;
+                        setAnalyticsCustomEnd(v);
+                      }}
                       className="border-none outline-none text-xs font-bold text-slate-700 bg-transparent p-0 w-28"
                     />
                   </div>

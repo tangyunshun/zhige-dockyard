@@ -24,6 +24,13 @@ interface TokenPack {
   sortOrder: number;
 }
 
+/** 展示图标预设库（管理员可一键选用，也可在文本框自定义） */
+const PRESET_ICONS = [
+  "⚡", "🔥", "💎", "🚀", "📦", "⭐", "🌟", "💰",
+  "🎯", "🏆", "☁️", "🔋", "🌈", "💡", "🛡️", "🍀",
+  "⚙️", "📈", "🧊", "🎁",
+];
+
 export default function AdminTokenPacksPage() {
   const router = useRouter();
   const toast = useToast();
@@ -34,10 +41,20 @@ export default function AdminTokenPacksPage() {
   const [editingPack, setEditingPack] = useState<TokenPack | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    points: number | string;
+    price: number | string;
+    icon: string;
+    color: string;
+    description: string;
+    isPopular: boolean;
+    isActive: boolean;
+    sortOrder: number;
+  }>({
     name: "",
-    points: 1000,
-    price: 99,
+    points: "",
+    price: "",
     icon: "⚡",
     color: "#3182ce",
     description: "",
@@ -82,8 +99,8 @@ export default function AdminTokenPacksPage() {
     setEditingPack(null);
     setFormData({
       name: "",
-      points: 1000,
-      price: 99,
+      points: "",
+      price: "",
       icon: "⚡",
       color: "#3182ce",
       description: "",
@@ -112,7 +129,7 @@ export default function AdminTokenPacksPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || formData.points <= 0 || formData.price < 0) {
+    if (!formData.name.trim() || Number(formData.points) <= 0 || Number(formData.price) < 0) {
       toast.error("请填入有效的包名、正数算力点数与价格");
       return;
     }
@@ -170,17 +187,24 @@ export default function AdminTokenPacksPage() {
     }
   };
 
-  const handleToggleActive = async (pack: TokenPack) => {
-    // 下架影响在售，走二次确认；上架为可逆低风险操作，点击即生效
-    if (pack.isActive) {
-      const ok = await confirm({
-        title: "确认下架该算力包",
-        message: `确定要下架「${pack.name}」吗？下架后用户将无法在充值弹窗中购买该算力包，已购权益不受影响。如需恢复，可点击「上架」立即生效。`,
-        type: "warning",
-      });
-      if (!ok) return;
-    }
+  const [unlistTarget, setUnlistTarget] = useState<TokenPack | null>(null);
 
+  const handleToggleActive = async (pack: TokenPack) => {
+    // 下架影响在售，弹出专用美化确认框；上架为可逆低风险操作，点击即生效
+    if (pack.isActive) {
+      setUnlistTarget(pack);
+      return;
+    }
+    await doToggleActive(pack);
+  };
+
+  const confirmUnlist = async () => {
+    if (!unlistTarget) return;
+    await doToggleActive(unlistTarget);
+    setUnlistTarget(null);
+  };
+
+  const doToggleActive = async (pack: TokenPack) => {
     try {
       const token = getAuthToken();
       const res = await fetch(`/api/admin/token-packs/${pack.id}`, {
@@ -506,14 +530,14 @@ export default function AdminTokenPacksPage() {
                   />
                   <div className="mt-1.5 flex items-center justify-between gap-2">
                     <span className={`text-[10px] font-bold leading-tight ${
-                      isPriceMatchingRule(formData.points, formData.price) ? "text-emerald-600" : "text-amber-600"
+                      isPriceMatchingRule(Number(formData.points), Number(formData.price)) ? "text-emerald-600" : "text-amber-600"
                     }`}>
-                      {POINT_RATE_TEXT} ➔ 应售 {formatYuanFromPoints(formData.points)}
-                      {isPriceMatchingRule(formData.points, formData.price) ? "（符合）" : "（不符）"}
+                      {POINT_RATE_TEXT} ➔ 应售 {formatYuanFromPoints(Number(formData.points))}
+                      {isPriceMatchingRule(Number(formData.points), Number(formData.price)) ? "（符合）" : "（不符）"}
                     </span>
                     <button
                       type="button"
-                      onClick={() => setFormData({ ...formData, price: pointsToYuan(formData.points) })}
+                      onClick={() => setFormData({ ...formData, price: pointsToYuan(Number(formData.points)) })}
                       className="px-2 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-800 text-[10px] font-black rounded-md border border-amber-200 cursor-pointer shrink-0"
                     >
                       按规则填入
@@ -521,13 +545,30 @@ export default function AdminTokenPacksPage() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-xs font-black text-slate-700 mb-1">展示图标</label>
+                <div className="col-span-2">
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">展示图标</label>
+                  <div className="flex flex-wrap gap-2 mb-2.5">
+                    {PRESET_ICONS.map((ic) => (
+                      <button
+                        type="button"
+                        key={ic}
+                        onClick={() => setFormData({ ...formData, icon: ic })}
+                        title={ic}
+                        className={`w-9 h-9 rounded-xl border flex items-center justify-center text-lg transition-all cursor-pointer ${
+                          formData.icon === ic
+                            ? "border-[#3182ce] bg-[#3182ce]/10 ring-2 ring-[#3182ce]/30"
+                            : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                        }`}
+                      >
+                        {ic}
+                      </button>
+                    ))}
+                  </div>
                   <input
                     type="text"
                     value={formData.icon}
                     onChange={(e) => setFormData({ ...formData, icon: e.target.value })}
-                    placeholder="输入一个图标字符"
+                    placeholder="或输入自定义字符 / emoji"
                     className="w-full h-10 px-3 border border-slate-200 rounded-lg text-xs font-bold focus:outline-none focus:ring-2 focus:ring-[#3182ce]"
                   />
                 </div>
@@ -597,6 +638,61 @@ export default function AdminTokenPacksPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 下架算力包专用美化确认弹窗 */}
+      {unlistTarget && (
+        <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full max-w-md rounded-2xl border border-slate-200 shadow-xl overflow-hidden text-left font-sans">
+            <div className="bg-gradient-to-r from-rose-500 to-red-500 p-5 text-white flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center">
+                <Ban className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-black text-sm">确认下架算力包</h3>
+                <p className="text-[11px] text-red-100">下架后用户将无法购买该算力包</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div
+                  className="w-11 h-11 rounded-xl flex items-center justify-center text-xl border"
+                  style={{ backgroundColor: `${unlistTarget.color}15`, borderColor: `${unlistTarget.color}30` }}
+                >
+                  <span>{unlistTarget.icon}</span>
+                </div>
+                <div>
+                  <div className="font-black text-slate-800 text-sm">{unlistTarget.name}</div>
+                  <div className="text-[11px] font-bold text-slate-500 font-mono">
+                    {unlistTarget.points.toLocaleString()} 算力点 · ¥
+                    {Number(unlistTarget.price).toLocaleString("zh-CN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                下架后用户将无法在充值弹窗中购买「{unlistTarget.name}」，但
+                <strong className="text-slate-800">已购用户的权益不受影响</strong>
+                。如需恢复，可随时点击「上架」立即生效。
+              </p>
+            </div>
+            <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setUnlistTarget(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={confirmUnlist}
+                className="px-5 py-2 bg-gradient-to-r from-rose-500 to-red-500 hover:from-red-600 hover:to-rose-600 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
+              >
+                确认下架
+              </button>
+            </div>
           </div>
         </div>
       )}

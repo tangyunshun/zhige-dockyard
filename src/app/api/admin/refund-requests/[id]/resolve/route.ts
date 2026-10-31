@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { grantPoints } from "@/lib/credit-service";
+import { addNotification } from "@/lib/notifications-store";
 
 /**
  * POST /api/admin/refund-requests/[id]/resolve
@@ -49,6 +50,21 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
         data: { status: "REJECTED", adminId, adminRemark: remark, resolvedAt: new Date() },
       });
       await writeAuditLog(adminId, "refund:resolve", { id, action: "REJECT", remark }, null, null, request);
+
+      // 查询任务名称，生成清晰驳回通知
+      const task = await prisma.componenttask.findUnique({
+        where: { id: req.taskId },
+        select: { name: true },
+      }).catch(() => null);
+      const taskName = task?.name || req.taskId;
+
+      await addNotification(
+        req.userId,
+        "算力点退还申请未通过",
+        `您针对任务【${taskName}】提交的退还 ${req.points} 算力点申请未能通过审批。处理说明：${remark}。`,
+        "finance",
+        "/user/points"
+      ).catch((e) => console.warn("[refund-resolve] 发送用户驳回通知失败:", e?.message));
       return NextResponse.json({ success: true, data: { status: "REJECTED" } });
     }
 
@@ -90,6 +106,22 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     });
 
     await writeAuditLog(adminId, "refund:resolve", { id, action: "APPROVE", points, refundLedgerId: grant.ledgerId, userId: req.userId }, null, null, request);
+
+    // 查询任务名称，生成清晰退款到账通知
+    const approvedTask = await prisma.componenttask.findUnique({
+      where: { id: req.taskId },
+      select: { name: true },
+    }).catch(() => null);
+    const approvedTaskName = approvedTask?.name || component?.name || req.taskId;
+
+    await addNotification(
+      req.userId,
+      "算力点退还申请已通过",
+      `您针对任务【${approvedTaskName}】提交的退还申请已获批准，${points} 算力点已全额退还至您的个人钱包，退款流水编号为 ${grant.ledgerId}。`,
+      "finance",
+      "/user/points",
+      true
+    ).catch((e) => console.warn("[refund-resolve] 发送用户退款通知失败:", e?.message));
 
     return NextResponse.json({ success: true, data: { status: "APPROVED", refundLedgerId: grant.ledgerId, refunded: points, updated } });
   } catch (error) {

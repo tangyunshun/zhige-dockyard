@@ -41,6 +41,7 @@ interface UserActivity {
   description: string;
   resourceType: string;
   resourceCategoryLabel: string;
+  resourceLabel?: string | null;
   resourceId?: string | null;
   workspaceId?: string | null;
   ipAddress?: string | null;
@@ -64,42 +65,106 @@ const PROTECTED_ACTION_PATTERN =
 const isProtectedActivity = (a?: { action?: string } | null) =>
   !!a && PROTECTED_ACTION_PATTERN.test(a.action || "");
 
-// 常见业务字段转中文对照表，彻底杜绝 message, deleted, userId 等英文原样暴露
+// 常见业务字段转中文对照表，收录全站数据库核心属性，彻底杜绝 price, points, isActive 等英文原样暴露
 const FIELD_TRANSLATIONS: Record<string, string> = {
+  // 算力与充值包、资金相关
+  price: "套餐单价 (元)",
+  points: "包含算力点数",
+  isActive: "启用状态",
+  isPopular: "热门推荐标记",
+  sortOrder: "显示排序权重",
+  balance: "算力点余额",
+  tokenBalance: "Token/算力余额",
+  grantPoints: "发放/赠送点数",
+  totalPoints: "累计获得点数",
+  remainPoints: "剩余有效点数",
+  expireDays: "有效天数",
+  expiresAt: "有效截止时间",
+  tradeNo: "支付交易流水号",
+  orderNo: "订单编号",
+  orderId: "订单编号",
+  amount: "交易金额 (元)",
+  currency: "结算货币",
+  channel: "支付渠道",
+  paymentMethod: "支付方式",
+  refundAmount: "退款金额 (元)",
+  refundReason: "退款原因",
+  discount: "折扣率",
+
+  // 基础操作与消息
   message: "操作说明",
   description: "详细描述",
   deleted: "删除处理",
   delete: "删除状态",
   status: "执行结果",
   success: "是否成功",
-  targetUserId: "涉及用户编号",
-  targetUserName: "涉及用户姓名",
-  targetEmail: "涉及用户邮箱",
+  action: "操作动作",
+  timestamp: "操作时间",
+  reason: "变更原因",
+  type: "业务分类",
+  count: "涉及数量",
+  scope: "作用范围",
+  config: "配置详情",
+  version: "版本号",
+
+  // 用户与权限
   userId: "用户编号",
   userName: "用户姓名",
   email: "电子邮箱",
+  phone: "手机号码",
+  avatar: "用户头像",
+  targetUserId: "涉及用户编号",
+  targetUserName: "涉及用户姓名",
+  targetEmail: "涉及用户邮箱",
+  operator: "操作人员",
+  role: "协作角色",
+  oldRole: "原分配角色",
+  newRole: "调整后角色",
+  loginAttempts: "登录失败尝试次数",
+  lockedUntil: "账号锁定截止",
+  deviceLimit: "同时在线设备上限",
+  allowMultiDevice: "允许多端同时在线",
+  userAgent: "操作终端环境",
+  ip: "操作IP",
+  ipAddress: "网络地址",
+  lastLoginAt: "最后登录时间",
+  lastLoginIp: "最后登录IP",
+  lastLoginRegion: "最后登录地域",
+  passwordExpireDate: "密码强制轮换日期",
+  bio: "个人签名/简介",
+
+  // 工作空间与组件
   workspaceId: "工作空间编号",
   workspaceName: "工作空间名称",
   componentId: "组件编号",
   componentName: "组件名称",
-  role: "协作角色",
-  oldRole: "原分配角色",
-  newRole: "调整后角色",
-  amount: "金额(元)",
   plan: "套餐方案",
-  orderId: "订单编号",
-  ip: "操作IP",
-  ipAddress: "网络地址",
-  reason: "变更原因",
-  type: "业务分类",
-  count: "涉及数量",
-  action: "操作动作",
-  timestamp: "操作时间",
-  userAgent: "操作终端",
-  operator: "操作人",
-  version: "版本号",
-  scope: "作用范围",
-  config: "配置详情",
+  seats: "席位配额",
+  extraSeats: "扩容席位数",
+  storageLimit: "存储空间配额",
+  storageUsed: "已用存储容量",
+  apiCallsLimit: "API调用总额度",
+  apiCallsUsed: "已消耗调用量",
+  industry: "所属行业",
+  teamSize: "团队规模",
+
+  // 模型相关
+  baseUrl: "端点接入地址",
+  apiKey: "API访问密钥",
+  protocol: "接口通信协议",
+  providerName: "供应商名称",
+  provider: "供应商",
+  capabilities: "支持的功能特性",
+  contextLimit: "上下文窗口上限",
+  priceInputYuan: "官方输入单价 (元/百万)",
+  priceOutputYuan: "官方输出单价 (元/百万)",
+  modelName: "模型标识",
+  displayName: "模型展示名称",
+  enabled: "是否启用",
+  shareWithMembers: "允许空间成员共享",
+  isSpaceDefault: "设为空间默认模型",
+  isGlobalDefault: "设为平台默认模型",
+
   // 岗位职责与权限矩阵相关字段
   positions: "岗位权限列表",
   POSITIONS_CONFIG: "空间岗位配置",
@@ -108,7 +173,12 @@ const FIELD_TRANSLATIONS: Record<string, string> = {
   colorCls: "视觉徽章颜色",
   badge: "岗位级别标识",
   code: "岗位英文编码",
-  icon: "岗位图标",
+  icon: "视觉图标",
+  color: "主题色值",
+  title: "标题名称",
+  content: "文本内容",
+  remark: "备注说明",
+  memo: "备忘信息",
 };
 
 // 岗位与常见英文代码转中文映射表
@@ -134,34 +204,69 @@ const CODE_TRANSLATIONS: Record<string, string> = {
   INACTIVE: "已停用",
 };
 
-// 将字段英文名格式化为通俗、亲切的中文名称
+// 将字段英文名格式化为通俗、亲切的中文名称，全面杜绝英文代码裸露
 const formatMetadataKey = (key: string): string => {
   if (FIELD_TRANSLATIONS[key]) return FIELD_TRANSLATIONS[key];
   const lower = key.toLowerCase();
   if (FIELD_TRANSLATIONS[lower]) return FIELD_TRANSLATIONS[lower];
+
+  // 算力与充值包
+  if (lower.includes("price")) return "价格 (元)";
+  if (lower.includes("point")) return "算力点数";
+  if (lower.includes("token")) return "Token数/算力";
+  if (lower.includes("balance")) return "账户余额";
+  if (lower.includes("active") || lower.includes("enable")) return "启用状态";
+  if (lower.includes("popular") || lower.includes("recommend")) return "推荐标识";
+  if (lower.includes("sort") || lower.includes("order")) return "排序权重";
+  if (lower.includes("color")) return "主题色彩";
+  if (lower.includes("icon")) return "视觉图标";
+  if (lower.includes("expire") || lower.includes("due")) return "到期时限";
+  if (lower.includes("limit") || lower.includes("quota")) return "配额上限";
+  if (lower.includes("channel") || lower.includes("pay")) return "支付方式/渠道";
+
+  // 工作空间与岗位
   if (lower.includes("position")) return "岗位相关配置";
+  if (lower.includes("workspace")) return "工作空间相关";
+  if (lower.includes("component")) return "组件相关";
+  if (lower.includes("model")) return "模型配置";
+
+  // 通用推导
   if (lower.includes("name")) return "相关名称";
   if (lower.includes("id")) return "相关编号";
   if (lower.includes("time") || lower.includes("date")) return "记录时间";
   if (lower.includes("user")) return "涉及用户";
   if (lower.includes("role")) return "涉及角色";
-  if (lower.includes("status")) return "执行状态";
+  if (lower.includes("status") || lower.includes("state")) return "执行状态";
   if (lower.includes("desc") || lower.includes("msg")) return "内容说明";
-  if (lower.includes("count") || lower.includes("num")) return "数量统计";
+  if (lower.includes("count") || lower.includes("num") || lower.includes("qty")) return "数量统计";
+
   return key;
 };
 
-// 将字段值英文转为中文显示（如 true/false/ADMIN/UI_DESIGNER 等）
+// 将字段值英文转为中文显示（如 true/false/ADMIN/UI_DESIGNER 等，带单位智能格式化）
 const formatMetadataValue = (key: string, val: any): string => {
+  const lower = key.toLowerCase();
   if (val === true) {
-    if (key.toLowerCase().includes("delete")) return "已确认删除";
-    return "是 / 启用";
+    if (lower.includes("delete")) return "已确认删除";
+    if (lower.includes("popular")) return "是 / 热门推荐";
+    return "是 / 正常启用";
   }
   if (val === false) {
-    if (key.toLowerCase().includes("delete")) return "未删除";
-    return "否 / 停用";
+    if (lower.includes("delete")) return "未删除";
+    if (lower.includes("popular")) return "否 / 普通展示";
+    return "否 / 停用关闭";
   }
   if (val === null || val === undefined || val === "") return "无";
+
+  // 针对 price 字段若是数值，加上货币符号与“元”
+  if (lower === "price" && typeof val === "number") {
+    return `¥${val.toFixed(2).replace(/\.00$/, "")} 元`;
+  }
+  // 针对 points 字段若是数值，格式化千分符并带上“点”
+  if (lower === "points" && (typeof val === "number" || typeof val === "string")) {
+    const num = Number(val);
+    if (!isNaN(num)) return `${num.toLocaleString()} 点`;
+  }
 
   // 如果是数组，逐项解析显示
   if (Array.isArray(val)) {
@@ -892,122 +997,159 @@ export default function UserActivitiesPage() {
           </span>
         </div>
 
-        {/* 列表内容 */}
+        {/* 列表内容：采用对齐管理员后台的现代化标准数据表格 */}
         {loading ? (
           <div className="p-16 text-center space-y-3">
             <div className="w-10 h-10 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto"></div>
             <p className="text-xs font-bold text-slate-500">正在从数据库加载操作记录...</p>
           </div>
         ) : activities.length > 0 ? (
-          <div className="divide-y divide-slate-100">
-            {activities.map((activity) => {
-              const Icon = getActivityIcon(activity.resourceType);
-              const colorConfig = getActivityColor(activity.resourceType);
-              const isChecked = selectedIds.includes(activity.id);
-
-              return (
-                <div
-                  key={activity.id}
-                  className={`p-4 sm:px-5 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 group ${
-                    isChecked ? "bg-blue-50/40" : "hover:bg-slate-50/80"
-                  }`}
-                >
-                  {/* 左侧：复选框 + 分类图标 + 标题 + 详细标签 */}
-                  <div className="flex items-start gap-3 min-w-0 flex-1">
-                    {/* 单行勾选框 */}
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[960px] border-collapse">
+              <thead className="bg-slate-50/95 backdrop-blur-xs border-b border-slate-200/80 text-[11px] text-slate-500 font-bold sticky top-0 z-10">
+                <tr>
+                  <th className="py-3 px-4 w-12 text-center whitespace-nowrap">
                     <button
                       type="button"
-                      onClick={() => handleToggleSelect(activity.id)}
-                      className="mt-3 text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer shrink-0"
+                      onClick={handleToggleSelectAll}
+                      className="text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer inline-flex items-center"
+                      title={selectAll ? "取消全选" : "全选当前页"}
                     >
-                      {isChecked ? (
+                      {selectAll || (selectedIds.length === activities.length && activities.length > 0) ? (
                         <CheckSquare className="w-4 h-4 text-[#3182ce]" />
                       ) : (
                         <Square className="w-4 h-4" />
                       )}
                     </button>
+                  </th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[130px]">操作类型</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[120px]">业务分类</th>
+                  <th className="py-3 px-4 whitespace-nowrap">操作描述与详细说明</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[140px]">来源 IP 地址</th>
+                  <th className="py-3 px-4 whitespace-nowrap min-w-[160px]">记录生成时间</th>
+                  <th className="sticky right-0 z-10 py-3 px-4 text-right whitespace-nowrap min-w-[140px] bg-slate-50/95 border-l border-slate-200/80 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)]">
+                    操作
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium text-slate-700 bg-white">
+                {activities.map((activity) => {
+                  const isChecked = selectedIds.includes(activity.id);
+                  const colorConfig = getActivityColor(activity.resourceType);
+                  const isProtected = isProtectedActivity(activity);
 
-                    {/* 分类圆形图标 */}
-                    <div
-                      className={`w-10 h-10 rounded-xl ${colorConfig.iconBg} flex items-center justify-center shrink-0 shadow-2xs mt-0.5 group-hover:scale-105 transition-transform`}
+                  return (
+                    <tr
+                      key={activity.id}
+                      className={`hover:bg-blue-50/25 transition-colors group ${
+                        isChecked ? "bg-blue-50/35" : ""
+                      }`}
                     >
-                      <Icon className="w-5 h-5" />
-                    </div>
+                      {/* 复选框 */}
+                      <td className="py-3 px-4 text-center whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSelect(activity.id)}
+                          className="text-slate-400 hover:text-[#3182ce] transition-colors cursor-pointer inline-flex items-center"
+                        >
+                          {isChecked ? (
+                            <CheckSquare className="w-4 h-4 text-[#3182ce]" />
+                          ) : (
+                            <Square className="w-4 h-4" />
+                          )}
+                        </button>
+                      </td>
 
-                    <div className="min-w-0 flex-1 space-y-1">
-                      {/* 第一行：操作标签 + 中文说明 */}
-                      <div className="flex items-center gap-2 flex-wrap">
+                      {/* 操作类型 */}
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-bold border shadow-2xs ${activity.actionBadgeColor}`}
+                          className={`px-2 py-0.5 rounded text-[11px] font-bold border shadow-2xs inline-block ${activity.actionBadgeColor}`}
                         >
                           {activity.actionLabel}
                         </span>
-                        <span className="text-xs font-black text-slate-800 group-hover:text-[#3182ce] transition-colors line-clamp-1">
-                          {activity.description}
-                        </span>
-                      </div>
+                      </td>
 
-                      {/* 第二行：时间 + IP + 模块 */}
-                      <div className="flex items-center gap-2.5 text-[11px] text-slate-400 font-medium flex-wrap pt-0.5">
-                        <span className="flex items-center gap-1 text-slate-500 font-mono font-normal">
-                          <Clock className="w-3 h-3 text-slate-400" />
-                          <span>{new Date(activity.createdAt).toLocaleString("zh-CN")}</span>
-                        </span>
-
-                        {activity.ipAddress && (
-                          <span className="flex items-center gap-1 font-mono text-slate-500 bg-slate-100/80 px-2 py-0.2 rounded border border-slate-200/60">
-                            <Globe className="w-3 h-3 text-slate-400" />
-                            <span>{activity.ipAddress}</span>
-                          </span>
-                        )}
-
+                      {/* 业务分类 */}
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <span
-                          className={`text-[10px] font-medium px-1.5 py-0.2 rounded border ${colorConfig.badge}`}
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border inline-block ${colorConfig.badge}`}
                         >
                           {activity.resourceCategoryLabel}
                         </span>
+                      </td>
 
+                      {/* 操作描述 */}
+                      <td className="py-3 px-4 max-w-[340px]">
+                        <div
+                          className="font-bold text-slate-800 group-hover:text-[#3182ce] transition-colors truncate"
+                          title={activity.description}
+                        >
+                          {activity.description}
+                        </div>
                         {activity.resourceId && (
-                          <span className="text-[10px] text-slate-500 bg-slate-100/80 px-1.5 py-0.2 rounded border border-slate-200/60 max-w-[240px] truncate" title={activity.resourceId}>
-                            {formatResourceLabel(activity.resourceId)}
-                          </span>
+                          <div
+                            className="text-[10px] font-mono text-slate-400 truncate mt-0.5"
+                            title={activity.resourceId}
+                          >
+                            标的：{activity.resourceLabel || formatResourceLabel(activity.resourceId)}
+                          </div>
                         )}
-                      </div>
-                    </div>
-                  </div>
+                      </td>
 
-                  {/* 右侧：相对时间 + 详情按钮 + 鲜艳显眼的红色删除按钮（带图标和文字） */}
-                  <div className="flex items-center gap-2 self-end sm:self-center shrink-0">
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200/60">
-                      {formatTimeAgo(activity.createdAt)}
-                    </span>
+                      {/* 来源 IP */}
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        {activity.ipAddress ? (
+                          <span className="font-mono text-xs text-slate-600 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/60 inline-flex items-center gap-1">
+                            <Globe className="w-3 h-3 text-slate-400" />
+                            <span>{activity.ipAddress === "::1" ? "127.0.0.1 (本地局域网)" : activity.ipAddress}</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
 
-                    <button
-                      type="button"
-                      onClick={() => handleViewDetail(activity)}
-                      className="h-8 px-3 bg-white hover:bg-blue-50 hover:text-[#3182ce] hover:border-blue-200 text-slate-600 border border-slate-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs"
-                      title="查看本条操作的详细内容"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>详情</span>
-                    </button>
+                      {/* 时间（仅保留标准时间，彻底去除相对时间提示） */}
+                      <td className="py-3 px-4 whitespace-nowrap text-slate-600 font-mono text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{new Date(activity.createdAt).toLocaleString("zh-CN", { hour12: false })}</span>
+                        </div>
+                      </td>
 
-                    {/* 单项删除按钮：安全敏感日志（登录/支付/改密/转让等）受合规保护，不可删除 */}
-                    {!isProtectedActivity(activity) && (
-                      <button
-                        type="button"
-                        onClick={() => handleTriggerSingleDelete(activity.id)}
-                        className="h-8 px-2.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white border border-rose-200 hover:border-rose-600 text-xs font-bold rounded-lg transition-all flex items-center gap-1 cursor-pointer shadow-2xs active:scale-95"
-                        title="删除此条操作记录"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>删除</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                      {/* 固定操作列 */}
+                      <td className="sticky right-0 z-10 py-3 px-4 text-right whitespace-nowrap bg-white group-hover:bg-[#f6f9fe] border-l border-slate-200/80 shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)]">
+                        <div className="inline-flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleViewDetail(activity)}
+                            className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-bold text-slate-600 hover:text-[#3182ce] bg-slate-50 hover:bg-blue-50 rounded border border-slate-200/80 hover:border-blue-200 transition-colors cursor-pointer shadow-2xs"
+                            title="查看详情"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span>详情</span>
+                          </button>
+                          {!isProtected ? (
+                            <button
+                              type="button"
+                              onClick={() => handleTriggerSingleDelete(activity.id)}
+                              className="inline-flex items-center gap-1 h-7 px-2 text-xs font-bold text-rose-600 hover:text-white bg-rose-50 hover:bg-rose-600 rounded border border-rose-200/80 hover:border-rose-600 transition-all cursor-pointer shadow-2xs active:scale-95"
+                              title="删除此记录"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                              <span>删除</span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded border border-slate-200/60 select-none" title="安全审计关键日志依法留存，不可擅自删除">
+                              合规保护
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         ) : (
           /* 空状态 */
@@ -1130,7 +1272,7 @@ export default function UserActivitiesPage() {
                   <div className="p-3 bg-slate-50/80 border border-slate-100 rounded-xl space-y-1">
                     <span className="text-[11px] text-slate-400 font-bold block">相关目标</span>
                     <span className="text-xs font-mono font-bold text-slate-700 truncate block">
-                      {formatResourceLabel(selectedActivity.resourceId)}
+                      {selectedActivity.resourceLabel || formatResourceLabel(selectedActivity.resourceId)}
                     </span>
                   </div>
 
@@ -1150,7 +1292,9 @@ export default function UserActivitiesPage() {
                   </span>
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-mono font-bold text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200">
-                      {selectedActivity.ipAddress || "本地局域网络"}
+                      {!selectedActivity.ipAddress || selectedActivity.ipAddress === "::1"
+                        ? "127.0.0.1 (本地局域网)"
+                        : selectedActivity.ipAddress}
                     </span>
                     <span className="text-[10px] text-emerald-600 font-medium bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100">
                       记录有效 · 系统保存1年

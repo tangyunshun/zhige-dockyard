@@ -199,12 +199,13 @@ export default function AdminRechargeOrdersPage() {
           <Banknote className="w-5 h-5 text-[#3182ce]" />
           <h2 className="text-xl font-black text-slate-800">线下充值工单审批</h2>
         </div>
-        <button
-          onClick={load}
-          disabled={loading}
-          className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1.5"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新
+        <div className="flex items-center gap-2">
+          <button
+            onClick={load}
+            disabled={loading}
+            className="px-3 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-lg flex items-center gap-1.5"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新
           </button>
           <button
             onClick={handleExportExcel}
@@ -214,6 +215,7 @@ export default function AdminRechargeOrdersPage() {
           >
             <Download className="w-3.5 h-3.5" /> {exporting ? "导出中…" : "导出 Excel"}
           </button>
+        </div>
       </div>
 
       {stats && (
