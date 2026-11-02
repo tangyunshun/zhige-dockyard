@@ -18,12 +18,7 @@ import {
   maybeFinalizeDeletionIfDue,
   getDeletionCooldownDays,
 } from "@/lib/account-deletion";
-import {
-  grantNewUserGift,
-  NEW_USER_GIFT_POINTS,
-  REGISTER_GIFT_MONTHS,
-} from "@/lib/credit-service";
-import { addNotification } from "@/lib/notifications-store";
+import { grantNewUserGift } from "@/lib/credit-service";
 import { getJwtSecretKey } from "@/lib/jwt-config";
 
 export async function POST(request: NextRequest) {
@@ -701,18 +696,9 @@ export async function POST(request: NextRequest) {
           workspaceName: user.name || "个人空间",
           userEmail: user.email || null,
         });
+        // 到账通知由 grantNewUserGift 内部统一推送（注册/登录/空间读配额等所有路径一致），此处不再重复发送
         if (!gift.skipped) {
-          // 计算当前处于注册福利的第几个月（0=注册当月），仅在窗口内（已发放）才有意义
-          const regMonth = user.createdAt.getFullYear() * 12 + user.createdAt.getMonth();
-          const curMonth = now.getFullYear() * 12 + now.getMonth();
-          const monthIndex = curMonth - regMonth;
-          const monthLabel = `${Math.max(monthIndex + 1, 1)}/${REGISTER_GIFT_MONTHS}`;
-          await addNotification(
-            user.id,
-            "🎁 本月注册福利已到账",
-            `您的注册福利 ${NEW_USER_GIFT_POINTS} 算力点已发放（第 ${monthLabel} 个月，当月有效、月底未用完自动清零，仅限个人空间使用）。第 ${REGISTER_GIFT_MONTHS} 个月结束后如需更多算力，请前往充值中心自助充值。`,
-            "points",
-          );
+          console.log(`[登录注册福利] 本月福利已发放并推送通知: user=${user.id}`);
         }
       } catch (giftErr) {
         console.warn("[登录注册福利] 发放或提示失败（非致命）:", giftErr);

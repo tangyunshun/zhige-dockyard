@@ -207,7 +207,7 @@ export default function ResourceOverview({
                 点
               </span>
               <Link
-                href="/user/pay?tab=detail"
+                href="/user/pay?tab=detail#points-ledger"
                 className="inline-flex items-center gap-0.5 text-[11px] font-bold text-[#2b6cb0] hover:text-[#3182ce] transition-colors cursor-pointer shrink-0"
               >
                 消耗明细

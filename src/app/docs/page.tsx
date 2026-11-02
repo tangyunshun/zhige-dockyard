@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import SearchInput from "@/components/common/SearchInput";
 import { useToast } from "@/components/Toast";
 import {
-  BookOpen,
   ChevronRight,
   Code,
   Rocket,
@@ -22,20 +21,17 @@ import {
   ThumbsUp,
   ThumbsDown,
   Download,
-  Share2,
-  Lock,
-  Layers,
-  Cpu,
   Database,
   Building2,
   FileCheck,
-  AlertCircle,
   ExternalLink,
   X,
-  Bookmark
+  Bookmark,
+  FileText
 } from "lucide-react";
 import Footer from "@/components/Footer";
 import DocumentContentRenderer from "@/components/docs/DocumentContentRenderer";
+import { exportDocumentAsMarkdown, exportDocumentAsWord, copyRichText, markdownToPlainText, markdownToWordHtml } from "@/utils/document-export";
 
 interface DocArticle {
   id: string;
@@ -107,6 +103,8 @@ const DOC_SECTION_DEFS: DocSectionDef[] = [
       "system_doc",
       "system",
       "enterprise",
+      "announcement",
+      "notice",
       "terms-of-service",
       "privacy-policy",
       "terms_of_service",
@@ -235,7 +233,6 @@ export default function DocsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeSection, setActiveSection] = useState("all");
   const [selectedArticle, setSelectedArticle] = useState<DocArticle | null>(null);
-  const [copiedCodeId, setCopiedCodeId] = useState<string | null>(null);
   const [copiedAllText, setCopiedAllText] = useState(false);
   const [articleFeedbackState, setArticleFeedbackState] = useState<Record<string, "up" | "down">>({});
 
@@ -296,39 +293,68 @@ export default function DocsPage() {
     }
   };
 
-  // 代码一键复制
-  const handleCopyCode = (code: string, id: string) => {
-    navigator.clipboard.writeText(code);
-    setCopiedCodeId(id);
-    toast.success("代码示例与 cURL 指令已成功复制到剪贴板");
-    setTimeout(() => setCopiedCodeId(null), 2000);
-  };
+  // 组装导出用 Markdown 正文（含标题/分类/更新时间/摘要/正文/代码示例/页脚）
+  const buildDocExportMarkdown = (article: DocArticle): string =>
+    `# ${article.title}\n\n**分类**: ${article.category}\n**更新时间**: ${
+      article.updateTime || "最新"
+    }\n\n## 概述\n${article.summary}\n\n## 详细说明\n${article.fullContent || "暂无"}\n\n${
+      article.contentCode ? "```bash\n" + article.contentCode + "\n```" : ""
+    }\n\n---\n*导出自 知阁·舟坊 官方文档中心*`;
 
   // 导出文档内容为 Markdown 文件
   const handleExportMarkdown = (article: DocArticle) => {
-    const markdownText = `# ${article.title}\n\n**分类**: ${article.category}\n**更新时间**: ${article.updateTime || "最新"}\n\n## 概述\n${article.summary}\n\n## 详细说明\n${article.fullContent || "暂无"}\n\n${article.contentCode ? `\`\`\`bash\n${article.contentCode}\n\`\`\`` : ""}\n\n---\n*导出自 知阁·舟坊 官方文档中心*`;
-    const blob = new Blob([markdownText], { type: "text/markdown;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", `${article.id}_${article.title}.md`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success(`文档《${article.title}》已导出为 Markdown 文件`);
+    try {
+      exportDocumentAsMarkdown(article.title, buildDocExportMarkdown(article));
+      toast.success(`文档《${article.title}》已导出为 Markdown 文件`);
+    } catch {
+      toast.error("导出 Markdown 文件时发生异常");
+    }
   };
 
-  // 文章 Useful / Not Helpful 反馈评价
-  const handleRateArticle = (articleId: string, rating: "up" | "down") => {
-    if (articleFeedbackState[articleId]) {
-      toast.info("您已提交过对该文档的评价");
+  // 导出文档内容为可编辑 Word 文档（真 .docx）
+  const handleExportWord = async (article: DocArticle) => {
+    try {
+      await exportDocumentAsWord(article.title, buildDocExportMarkdown(article));
+      toast.success(`文档《${article.title}》已导出为 Word 文档 (.docx)`);
+    } catch {
+      toast.error("导出 Word 文档时发生异常");
+    }
+  };
+
+  // 文章 Useful / Not Helpful 反馈评价（真实落库：调用 /api/documents/[id]/feedback）
+  const handleRateArticle = async (articleId: string, rating: "up" | "down") => {
+    // 游客引导登录后再评价
+    if (!user) {
+      toast.info("请先登录后再为文档评分");
+      router.push("/auth/login?redirect=" + encodeURIComponent(window.location.pathname));
       return;
     }
-    setArticleFeedbackState(prev => ({ ...prev, [articleId]: rating }));
-    if (rating === "up") {
-      toast.success("感谢您的评价！我们将持续优化该文档。");
-    } else {
-      toast.info("感谢反馈，已将该文档标记为需更新提示。");
+
+    const vote = rating === "up" ? "HELPFUL" : "NOT_HELPFUL";
+    try {
+      const res = await fetch(`/api/documents/${articleId}/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ vote }),
+      });
+      const json = await res.json().catch(() => ({}));
+
+      if (res.ok && json.success) {
+        // 回显自身票型 + 用接口返回的最新计数刷新卡片上的 👍 数字
+        setArticleFeedbackState(prev => ({ ...prev, [articleId]: rating }));
+        setDbDocuments(prev =>
+          prev.map(d => (d.id === articleId ? { ...d, helpfulCount: json.helpfulCount } : d)),
+        );
+        if (rating === "up") {
+          toast.success("感谢您的评价！我们将持续优化该文档。");
+        } else {
+          toast.info("感谢反馈，已记录您的改进建议。");
+        }
+      } else {
+        toast.error(json.error || "评价提交失败，请重试");
+      }
+    } catch {
+      toast.error("网络异常，请稍后重试");
     }
   };
 
@@ -362,11 +388,17 @@ export default function DocsPage() {
 
       if (res.ok) {
         const json = await res.json();
-        const ticketId = json.data?.id || `FB_${Date.now()}`;
-        setSubmittedTicketId(ticketId);
-        toast.success(`反馈提交成功！已自动生成官方工单 ${ticketId}`);
-        setFeedbackTitle("");
-        setFeedbackContent("");
+        const ticketId = json.data?.id;
+        if (!ticketId) {
+          toast.error("反馈提交成功，但未获取到工单号，请联系管理员");
+          setFeedbackTitle("");
+          setFeedbackContent("");
+        } else {
+          setSubmittedTicketId(ticketId);
+          toast.success(`反馈提交成功！已自动生成官方工单 ${ticketId}`);
+          setFeedbackTitle("");
+          setFeedbackContent("");
+        }
       } else {
         const errJson = await res.json();
         toast.error(errJson.error || "提交反馈失败，请重试");
@@ -443,6 +475,24 @@ export default function DocsPage() {
       .filter(section => section.articles.length > 0);
   }, [docSections, searchQuery, activeSection]);
 
+  // 热门检索标签：由库内已发布文档的 tags 聚合出现频率 Top6（无标签则隐藏）
+  const popularTags = useMemo(() => {
+    const freq: Record<string, number> = {};
+    dbDocuments.forEach((doc: any) => {
+      const tags = String(doc?.tags || "")
+        .split(/[,，、]/)
+        .map((t: string) => t.trim())
+        .filter(Boolean);
+      tags.forEach((t: string) => {
+        freq[t] = (freq[t] || 0) + 1;
+      });
+    });
+    return Object.entries(freq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([t]) => t);
+  }, [dbDocuments]);
+
   // 支持 URL 锚点直达文档：访问 /docs#doc-<文档ID> 自动弹出对应阅读弹层（数据库加载完成后执行）
   useEffect(() => {
     if (!dbDocuments.length || loadingDocs) return;
@@ -465,6 +515,46 @@ export default function DocsPage() {
       history.replaceState(null, "", window.location.href.split("#")[0]);
       lastSelectedRef.current = null;
     }
+  }, [selectedArticle]);
+
+  // 打开阅读弹层时：①上报一次真实浏览量（24h 去重由服务端处理）；②登录用户回显自身已投的票
+  useEffect(() => {
+    if (!selectedArticle) return;
+    const id = selectedArticle.id;
+
+    // 真实阅读计数：匿名访客经 Cookie 标识、登录用户经 userId 去重，杜绝无限刷
+    fetch("/api/documents/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: id }),
+    }).catch(() => {});
+
+    // 回显本人已提交的票（已投票显示“已提交”并回显自己的票）
+    if (user) {
+      fetch(`/api/documents/${id}/feedback`, { method: "GET" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (data?.success && data.myVote) {
+            setArticleFeedbackState((prev) => ({
+              ...prev,
+              [id]: data.myVote === "HELPFUL" ? "up" : "down",
+            }));
+          }
+        })
+        .catch(() => {});
+    }
+  }, [selectedArticle, user]);
+
+  // 阅读弹层支持 ESC 键关闭（点击遮罩关闭在弹层 JSX 内实现）
+  useEffect(() => {
+    if (!selectedArticle) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setSelectedArticle(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedArticle]);
 
   return (
@@ -492,27 +582,31 @@ export default function DocsPage() {
               placeholder="搜索文档要点、API 接口（如 Bearer Token / Webhook）或解散自愈..."
               debounceMs={150}
             />
-            {/* 热门搜索标签 */}
-            <div className="flex flex-wrap items-center justify-center gap-2 mt-3 text-xs font-semibold text-slate-400">
-              <span>热门检索:</span>
-              {["OpenAPI", "Webhook 验签", "组件授权", "解散校验", "算力计费", "私有部署"].map(tag => (
-                <button
-                  key={tag}
-                  onClick={() => setSearchQuery(tag)}
-                  className="px-2.5 py-0.5 bg-white border border-slate-200/80 hover:border-indigo-400 hover:text-indigo-600 rounded-md text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
-                >
-                  {tag}
-                </button>
-              ))}
-              {searchQuery && (
+            {/* 热门检索标签：由库内已发布文档 tags 聚合 Top6，无标签则整块隐藏 */}
+            {popularTags.length > 0 && (
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-3 text-xs font-semibold text-slate-400">
+                <span>热门检索:</span>
+                {popularTags.map(tag => (
+                  <button
+                    key={tag}
+                    onClick={() => setSearchQuery(tag)}
+                    className="px-2.5 py-0.5 bg-white border border-slate-200/80 hover:border-indigo-400 hover:text-indigo-600 rounded-md text-[11px] font-bold transition-all cursor-pointer shadow-2xs"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            )}
+            {searchQuery && (
+              <div className="flex justify-center mt-2">
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="text-red-500 hover:underline font-bold text-[11px] cursor-pointer ml-1"
+                  className="text-red-500 hover:underline font-bold text-[11px] cursor-pointer"
                 >
                   ✕ 清空搜索
                 </button>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
@@ -653,7 +747,7 @@ export default function DocsPage() {
                         <div className="space-y-2">
                           <div className="flex items-center justify-between gap-2">
                             <span className="px-2.5 py-0.5 bg-indigo-50/80 text-indigo-700 border border-indigo-100 rounded text-[10px] font-black">
-                              {toCategoryBadgeLabel(article.category, null)}
+                              {article.category}
                             </span>
                             {article.contentCode && (
                               <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded text-[10px] font-mono font-bold flex items-center gap-1">
@@ -671,7 +765,7 @@ export default function DocsPage() {
 
                         <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-400 font-bold group-hover:text-indigo-600 transition-colors">
                           <div className="flex items-center gap-2">
-                            <span>阅读完整说明与代码</span>
+                            <span>{article.contentCode ? "阅读完整说明与代码" : "阅读完整说明"}</span>
                             {article.helpfulCount && (
                               <span className="text-[10px] text-slate-400 font-normal">
                                 👍 {article.helpfulCount}
@@ -698,7 +792,7 @@ export default function DocsPage() {
                 需要专属大客户方案或私有部署支持？
               </h3>
               <p className="text-xs text-indigo-100 font-medium">
-                我们的架构师团队提供 7x24 小时技术保障与定制化组件解耦服务。
+                我们的架构师团队提供定制化方案咨询与私有部署支持服务。
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -724,8 +818,14 @@ export default function DocsPage() {
 
       {/* 详细文档全屏/半屏阅读 Modal (知阁设计系统顶级视觉与专业 Markdown / Code 排版规范) */}
       {selectedArticle && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl max-w-4xl lg:max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left">
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 animate-in fade-in duration-200"
+          onClick={() => setSelectedArticle(null)}
+        >
+          <div
+            className="bg-white rounded-3xl border border-slate-200/90 shadow-2xl max-w-4xl lg:max-w-5xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 duration-200 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Header */}
             <div className="p-4 sm:p-5 bg-gradient-to-r from-blue-50/80 via-indigo-50/30 to-white border-b border-slate-200/70 flex items-center justify-between gap-3 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
@@ -741,7 +841,6 @@ export default function DocsPage() {
                       共 {(selectedArticle.fullContent || "").length} 字 · 约需{" "}
                       {Math.max(1, Math.round((selectedArticle.fullContent || "").length / 400))} 分钟阅读
                     </span>
-                    <span className="hidden sm:inline">· 平台官方知识库认证</span>
                   </div>
                 </div>
               </div>
@@ -750,15 +849,18 @@ export default function DocsPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    const fullText = `# ${selectedArticle.title}\n\n${selectedArticle.summary || ""}\n\n${selectedArticle.fullContent || ""}${
-                      selectedArticle.contentCode ? `\n\n\`\`\`python\n${selectedArticle.contentCode}\n\`\`\`` : ""
-                    }`;
-                    navigator.clipboard.writeText(fullText);
+                    // 复制成文格式（富文本优先，粘贴进 Word 带排版；回退为无符号纯文本），绝不复制 Markdown 源码
+                    const md = buildDocExportMarkdown(selectedArticle);
+                    const html = `<div style="font-family:'Microsoft YaHei',Arial,sans-serif;font-size:12pt;line-height:1.6;color:#2d3748;">${markdownToWordHtml(md)}</div>`;
+                    const plain = markdownToPlainText(md);
+                    void copyRichText(html, plain).then((ok) => {
+                      if (!ok) toast.error("复制失败，请使用导出按钮");
+                    });
                     setCopiedAllText(true);
                     setTimeout(() => setCopiedAllText(false), 2000);
                   }}
                   className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
-                  title="复制文档全文 Markdown"
+                  title="复制文档全文（成文格式，可直接粘贴到 Word）"
                 >
                   {copiedAllText ? (
                     <>
@@ -771,6 +873,14 @@ export default function DocsPage() {
                       <span>复制全文</span>
                     </>
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExportWord(selectedArticle)}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
+                  title="导出为可编辑 Word 文档 (.docx)"
+                >
+                  <FileText className="w-3.5 h-3.5 text-slate-500" /> 导出 Word
                 </button>
                 <button
                   type="button"
@@ -838,6 +948,11 @@ export default function DocsPage() {
                   >
                     <ThumbsDown className="w-3.5 h-3.5" /> 需改进
                   </button>
+                  {articleFeedbackState[selectedArticle.id] && (
+                    <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
+                      <Check className="w-3 h-3" /> 已提交
+                    </span>
+                  )}
                 </div>
 
                 {selectedArticle.relatedLink && (
@@ -913,7 +1028,7 @@ export default function DocsPage() {
                   工单单号: {submittedTicketId}
                 </div>
                 <p className="text-xs text-slate-500 font-medium max-w-sm mx-auto">
-                  已成功写入系统数据库 `userfeedback` 记录。舟坊架构师团队将评估并在 24 小时内跟进。
+                  已成功写入系统数据库 `userfeedback` 记录。舟坊架构师团队将评估您的反馈并尽快处理。
                 </p>
                 <button
                   onClick={() => setIsFeedbackOpen(false)}

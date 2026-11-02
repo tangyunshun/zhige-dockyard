@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   Info,
   ChevronRight,
-  Hash,
 } from "lucide-react";
 
 interface DocumentContentRendererProps {
@@ -24,25 +23,12 @@ interface DocumentContentRendererProps {
 
 /** 语法关键词染色（支持 Python、SQL、JavaScript 等常见语言） */
 function syntaxHighlight(code: string, language: string = "python"): string {
-  // 简易安全逃逸，防止 XSS
-  let escaped = code
+  // 安全逃逸，防止 XSS
+  const escaped = code
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
-  // 1. 注释高亮 (如 # 注释 或 // 注释)
-  escaped = escaped.replace(
-    /(#[^\n]*|\/\/[^\n]*)/g,
-    '<span class="text-slate-400 italic font-normal">$1</span>'
-  );
-
-  // 2. 字符串高亮 (支持单双引号)
-  escaped = escaped.replace(
-    /(".*?"|'.*?'|`.*?`)/g,
-    '<span class="text-emerald-400">$1</span>'
-  );
-
-  // 3. 常见关键字微高亮
   const keywords = [
     "from", "import", "def", "class", "return", "if", "elif", "else",
     "for", "while", "try", "except", "finally", "with", "as", "in", "is",
@@ -52,19 +38,23 @@ function syntaxHighlight(code: string, language: string = "python"): string {
     "CREATE", "DROP", "ALTER", "const", "let", "var", "function", "export", "default"
   ];
 
-  const keywordRegex = new RegExp(`\\b(${keywords.join("|")})\\b`, "g");
-  escaped = escaped.replace(
-    keywordRegex,
-    '<span class="text-sky-300 font-bold">$1</span>'
+  // 单遍扫描 tokenize：注释 / 字符串 / 数字 / 关键字 一次性切分，
+  // 绝不对已生成的 <span> HTML 再跑正则（消除 <span <span ...> 自毁式嵌套）。
+  const TOKEN_RE = new RegExp(
+    "(#[^\\n]*|\\/\\/[^\\n]*)" +        // 1: 注释
+      "|(\"[^\"]*\"|'[^']*'|`[^`]*`)" + // 2: 字符串
+      "|(\\b\\d+(?:\\.\\d+)?\\b)" +      // 3: 数字
+      "|(\\b(?:" + keywords.join("|") + ")\\b)", // 4: 关键字
+    "g"
   );
 
-  // 4. 数字高亮
-  escaped = escaped.replace(
-    /\b(\d+(\.\d+)?)\b/g,
-    '<span class="text-amber-300">$1</span>'
-  );
-
-  return escaped;
+  return escaped.replace(TOKEN_RE, (match, comment, str, num, kw) => {
+    if (comment) return `<span class="text-slate-400 italic font-normal">${comment}</span>`;
+    if (str) return `<span class="text-emerald-400">${str}</span>`;
+    if (num) return `<span class="text-amber-300">${num}</span>`;
+    if (kw) return `<span class="text-sky-300 font-bold">${kw}</span>`;
+    return match;
+  });
 }
 
 /** 判断文本是否本质上是一段纯代码/脚本文件 */
@@ -350,29 +340,7 @@ export default function DocumentContentRenderer({
     [content, title]
   );
 
-  // 如果整篇文档就是一段可执行脚本/代码，直接以专业级代码编辑器视图渲染！
-  if (isPureScript) {
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-3.5 rounded-full bg-[#3182ce]" />
-            <span className="text-xs font-black text-slate-800">
-              🛠️ 脚本源文件与运行规范
-            </span>
-          </div>
-          <span className="text-[11px] text-slate-400 font-medium">
-            可直接复制并在本地沙箱或终端中执行
-          </span>
-        </div>
-        <CodeBlockView
-          code={content}
-          language={detectedLang}
-          title={title}
-        />
-      </div>
-    );
-  }
+  // 纯脚本文档的提前返回已下移（见组件末尾），确保所有 hooks 在任何 return 之前完成声明，避免条件调用 hooks 报错。
 
   // 2. 针对 Markdown 技术规范、SOP、法律条款文档进行智能流式结构化排版
   const parsedElements = useMemo(() => {
@@ -382,8 +350,7 @@ export default function DocumentContentRenderer({
     let normalized = content;
     normalized = normalized.replace(/([^\n])\s*(第[一二三四五六七八九十]+章)/g, "$1\n\n$2");
     normalized = normalized.replace(/([^\n])\s*(【(?:核心提示|重要提示|严禁红线|违规处理|用户成果所有权|AI 生成内容权利归属|数据保密承诺)】)/g, "$1\n\n$2");
-    normalized = normalized.replace(/([^\n])\s*(##\s+)/g, "$1\n\n$2");
-    normalized = normalized.replace(/([^\n])\s*(#\s+)/g, "$1\n\n$2");
+    normalized = normalized.replace(/([^\n#])\s*(#{1,6}\s+)/g, "$1\n\n$2");
 
     const rawLines = normalized.split("\n");
     const elements: React.ReactNode[] = [];
@@ -492,7 +459,7 @@ export default function DocumentContentRenderer({
             key={`h2-${i}`}
             className="mt-5 mb-2.5 flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-blue-50/60 border-l-3 border-[#3182ce]"
           >
-            <Hash className="w-3.5 h-3.5 text-[#3182ce]" />
+
             <h3 className="text-xs sm:text-sm font-extrabold text-slate-800 tracking-tight">
               {trimmed.slice(3)}
             </h3>
@@ -511,6 +478,27 @@ export default function DocumentContentRenderer({
             <span className="w-1.5 h-1.5 rounded-full bg-[#3182ce]"></span>
             <span>{trimmed.slice(4)}</span>
           </h4>
+        );
+        continue;
+      }
+
+      // 四级及更深 Markdown 标题 `#### 标题`（不再按原样吐出井号）
+      if (/^#{4,6}\s+/.test(trimmed)) {
+        elements.push(
+          <h5
+            key={`h4-${i}`}
+            className="mt-3 mb-1.5 text-xs font-bold text-slate-700"
+          >
+            {trimmed.replace(/^#{4,6}\s+/, "")}
+          </h5>
+        );
+        continue;
+      }
+
+      // 水平分隔线 `---` / `***`
+      if (/^(-{3,}|\*{3,})$/.test(trimmed)) {
+        elements.push(
+          <hr key={`hr-${i}`} className="my-4 border-t border-slate-200" />
         );
         continue;
       }
@@ -605,13 +593,48 @@ export default function DocumentContentRenderer({
 
   const isSpreadsheetDoc = useMemo(() => {
     const lowerTitle = (title || "").toLowerCase();
-    return (
-      lowerTitle.endsWith(".xlsx") ||
-      lowerTitle.endsWith(".xls") ||
-      lowerTitle.endsWith(".csv") ||
-      (content && (content.match(/\|\s*:?---+:?\s*\|/g) || []).length >= 2)
-    );
+    const separatorRows = (content || "")
+      .split("\n")
+      .filter((l) => /^\|(\s*:?-+:?\s*\|)+\s*$/.test(l.trim())).length;
+    return lowerTitle.endsWith(".xlsx") || lowerTitle.endsWith(".xls") || lowerTitle.endsWith(".csv") || separatorRows >= 1;
   }, [title, content]);
+
+  // 代码示例语言/文件名由实际内容推断（不再写死 api_example.py/Python；
+  // 若 DOC-CONTENT 批次为 codeSample 增加 language 字段，此处改为直接读取数据方字段）
+  const sampleLang = codeSample ? detectLanguage(codeSample) : "text";
+  const sampleFileNameMap: Record<string, string> = {
+    python: "example.py",
+    sql: "example.sql",
+    bash: "example.sh",
+    json: "example.json",
+    typescript: "example.ts",
+    text: "example.txt",
+  };
+  const sampleFileName = sampleFileNameMap[sampleLang] || "example.txt";
+
+  // 如果整篇文档就是一段可执行脚本/代码，直接以专业级代码编辑器视图渲染！
+  if (isPureScript) {
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-3.5 rounded-full bg-[#3182ce]" />
+            <span className="text-xs font-black text-slate-800">
+              🛠️ 脚本源文件与运行规范
+            </span>
+          </div>
+          <span className="text-[11px] text-slate-400 font-medium">
+            可直接复制并在本地沙箱或终端中执行
+          </span>
+        </div>
+        <CodeBlockView
+          code={content}
+          language={detectedLang}
+          title={title}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-1 text-left">
@@ -643,8 +666,8 @@ export default function DocumentContentRenderer({
           </div>
           <CodeBlockView
             code={codeSample}
-            language={detectLanguage(codeSample, "api_example.py")}
-            title="api_example.py"
+            language={sampleLang}
+            title={sampleFileName}
           />
         </div>
       )}

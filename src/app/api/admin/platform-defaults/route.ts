@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { withModelRegistryLock } from "@/lib/model-registry-lock";
+import { REGISTER_GIFT_KEYS } from "@/lib/credit-service";
+import { loadRegisterGiftConfig } from "@/lib/register-gift-config";
 
 /**
- * 平台级默认配置（默认模型池 + 新空间赠送额度）。
+ * 平台级默认配置（默认模型池 + 新空间赠送额度 + 注册福利规则）。
  *
- * GET  ：读取默认模型池与赠送配置（供后台配置页回显）
- * PUT  ：保存默认模型池（FREE / PAID）与赠送配置；可选同步到所有空间
+ * GET  ：读取默认模型池、新空间赠送配置与注册福利配置（供后台配置页回显）
+ * PUT  ：保存默认模型池（FREE / PAID）、新空间赠送配置与注册福利配置；可选同步到所有空间
  *
  * 存储策略：
  *  - 默认模型池 → platformdefaultmodel 表（结构化，支持 FREE/PAID 与排序）
- *  - 赠送配置   → systemconfig 键值对（标量配置，避免为此新建单列表）
+ *  - 赠送/福利配置 → systemconfig 键值对（标量配置，避免为此新建单列表）
  */
 
 const GIFT_KEYS = {
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
       return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     }
 
-    const [poolRows, deployments, gift] = await Promise.all([
+    const [poolRows, deployments, gift, registerGift] = await Promise.all([
       prisma.platformdefaultmodel.findMany({
         orderBy: [{ kind: "asc" }, { sortOrder: "desc" }, { createdAt: "asc" }],
       }),
@@ -78,6 +80,7 @@ export async function GET(request: NextRequest) {
         },
       }),
       loadNewSpaceGiftConfig(),
+      loadRegisterGiftConfig(),
     ]);
 
     const poolMap = new Map(poolRows.map((r) => [`${r.kind}:${r.deploymentId}`, r]));
@@ -104,6 +107,7 @@ export async function GET(request: NextRequest) {
         freeIds: poolRows.filter((r) => r.kind === "FREE" && r.enabled).map((r) => r.deploymentId),
         paidIds: poolRows.filter((r) => r.kind === "PAID" && r.enabled).map((r) => r.deploymentId),
         gift,
+        registerGift,
         models,
       },
     });
@@ -128,6 +132,13 @@ export async function PUT(request: NextRequest) {
     const giftEnabled = body.giftEnabled === true;
     const giftPoints = Number(body.giftPoints);
     const giftExpireDays = Number(body.giftExpireDays);
+
+    // 注册福利配置（仅当请求携带 registerGiftEnabled 字段时才覆盖，兼容旧客户端）
+    const rgProvided = body.registerGiftEnabled !== undefined;
+    const rgEnabled = body.registerGiftEnabled === true;
+    const rgPoints = Number(body.registerGiftPoints);
+    const rgMonths = Number(body.registerGiftMonths);
+    const rgClearOnMonthEnd = body.registerGiftClearOnMonthEnd !== false;
 
     // 免费与付费不得重复配置同一模型（语义互斥）
     const overlap = freeIds.filter((id) => paidIds.includes(id));
@@ -184,9 +195,64 @@ export async function PUT(request: NextRequest) {
           update: { value: c.value, updatedAt: now },
         });
       }
+
+      // 注册福利配置写入 systemconfig（未携带时保持原值不动）
+      if (rgProvided) {
+        const rgConfigs: Array<{ key: string; value: string }> = [
+          { key: REGISTER_GIFT_KEYS.enabled, value: rgEnabled ? "true" : "false" },
+          {
+            key: REGISTER_GIFT_KEYS.points,
+            value: Number.isFinite(rgPoints) && rgPoints > 0 ? String(Math.floor(rgPoints)) : "100",
+          },
+          {
+            key: REGISTER_GIFT_KEYS.months,
+            value:
+              Number.isFinite(rgMonths) && rgMonths >= 1
+                ? String(Math.min(Math.floor(rgMonths), 36))
+                : "3",
+          },
+          {
+            key: REGISTER_GIFT_KEYS.clearOnMonthEnd,
+            value: rgClearOnMonthEnd ? "true" : "false",
+          },
+        ];
+        for (const c of rgConfigs) {
+          await tx.systemconfig.upsert({
+            where: { key: c.key },
+            create: { key: c.key, value: c.value, updatedAt: now },
+            update: { value: c.value, updatedAt: now },
+          });
+        }
+      }
     });
 
-    await writeAuditLog(auth.user?.id || "", "platform_default:update", { freeCount: freeIds.length, paidCount: paidIds.length, giftEnabled, giftPoints, syncToAll }, null, null, request);
+    await writeAuditLog(
+      auth.user?.id || "",
+      "platform_default:update",
+      {
+        freeCount: freeIds.length,
+        paidCount: paidIds.length,
+        giftEnabled,
+        giftPoints,
+        syncToAll,
+        ...(rgProvided
+          ? {
+              registerGift: {
+                enabled: rgEnabled,
+                points: Number.isFinite(rgPoints) && rgPoints > 0 ? Math.floor(rgPoints) : 100,
+                months:
+                  Number.isFinite(rgMonths) && rgMonths >= 1
+                    ? Math.min(Math.floor(rgMonths), 36)
+                    : 3,
+                clearOnMonthEnd: rgClearOnMonthEnd,
+              },
+            }
+          : {}),
+      },
+      null,
+      null,
+      request,
+    );
 
     // 可选：同步默认初始模型到所有已存在空间
     let syncResult: { synced: number; skipped: number } | null = null;

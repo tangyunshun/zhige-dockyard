@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { validateUser, isAdminRole } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -9,21 +10,23 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const category = searchParams.get("category");
 
-    // 历史误迁移数据自动清理与解耦：
-    // 用户组件业务数据（《工程监理智能化替代分析-V1.xlsx》与《系统功能汇总表.xlsx》）
-    // 曾被历史迁移脚本误写入系统帮助文档表，在此执行自动安全清理，保障系统文档纯净性
-    await prisma.systemdocument.deleteMany({
-      where: {
-        id: { in: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
-      },
-    }).catch((err) => {
-      console.warn("清理历史误迁移组件文档非阻断提示:", err);
-    });
+    // 登录态解析：无 token 或无效 → 游客，仅返回 PUBLIC 文档；
+    // 已登录用户可见 PUBLIC 与 LOGIN_REQUIRED 文档。
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    const isLoggedIn = auth.valid && !!auth.user;
+    const isAdmin = isLoggedIn && isAdminRole((auth.user as { role?: string }).role);
 
+    // 注意：历史上误迁移的两条组件业务数据（doc_mig_1792267375767_7、doc_mig_1792267375780_9）
+    // 已由一次性脚本 scripts/cleanup-migrated-docs.ts 安全删除，此处不再每次 GET 执行写操作。
     const where: any = {
       isPublished: true,
-      id: { notIn: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
     };
+    // 可见范围三态：游客仅 PUBLIC；登录用户 PUBLIC + LOGIN_REQUIRED；管理员全部（含 ADMIN_ONLY）
+    if (!isLoggedIn) {
+      where.visibility = "PUBLIC";
+    } else if (!isAdmin) {
+      where.visibility = { in: ["PUBLIC", "LOGIN_REQUIRED"] };
+    }
 
     if (category) {
       where.category = category;

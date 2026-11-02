@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
         name,
         role: role || null,
         org: org || null,
-        avatar: auth.user.avatar || null, // 优先关联当前登录用户的真实头像
+        avatar: null,
         rating,
         content,
         tags: tags.length > 0 ? tags : undefined,

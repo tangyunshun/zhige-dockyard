@@ -17,13 +17,15 @@ import {
   Search,
   Coins,
   Clock,
+  Gift,
 } from "lucide-react";
 
 /**
  * 平台级默认配置页：
  *  1) 默认模型池（默认初始 / 默认付费），新空间自动继承免费模型；
  *  2) 新空间一次性体验额度（开关 / 数值 / 有效期）；
- *  3) 可选「同步到所有空间」（谨慎使用，仅对未显式禁用该模型的空间生效）。
+ *  3) 注册福利规则（开关 / 每月点数 / 连续月数 / 到期是否清零）——按月自动发放，改配置即可，无需改代码；
+ *  4) 可选「同步到所有空间」（谨慎使用，仅对未显式禁用该模型的空间生效）。
  */
 
 interface ModelRow {
@@ -43,6 +45,20 @@ interface GiftConfig {
   expireDays: number;
 }
 
+interface RegisterGiftConfig {
+  enabled: boolean;
+  points: number;
+  months: number;
+  clearOnMonthEnd: boolean;
+}
+
+const DEFAULT_REGISTER_GIFT: RegisterGiftConfig = {
+  enabled: true,
+  points: 100,
+  months: 3,
+  clearOnMonthEnd: true,
+};
+
 const authFetch = async (url: string, init?: RequestInit) => {
   const token = getAuthToken();
   const res = await fetch(url, {
@@ -60,6 +76,7 @@ export default function PlatformDefaultsPage() {
   const toast = useToast();
   const [models, setModels] = useState<ModelRow[]>([]);
   const [gift, setGift] = useState<GiftConfig>({ enabled: false, points: 100, expireDays: 0 });
+  const [registerGift, setRegisterGift] = useState<RegisterGiftConfig>(DEFAULT_REGISTER_GIFT);
   const [freeIds, setFreeIds] = useState<string[]>([]);
   const [paidIds, setPaidIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
@@ -68,10 +85,16 @@ export default function PlatformDefaultsPage() {
   const [syncToAll, setSyncToAll] = useState(false);
 
   // 已保存快照，用于「放弃修改」
-  const [saved, setSaved] = useState<{ freeIds: string[]; paidIds: string[]; gift: GiftConfig }>({
+  const [saved, setSaved] = useState<{
+    freeIds: string[];
+    paidIds: string[];
+    gift: GiftConfig;
+    registerGift: RegisterGiftConfig;
+  }>({
     freeIds: [],
     paidIds: [],
     gift: { enabled: false, points: 100, expireDays: 0 },
+    registerGift: DEFAULT_REGISTER_GIFT,
   });
 
   const load = useCallback(async () => {
@@ -86,10 +109,12 @@ export default function PlatformDefaultsPage() {
       setFreeIds(res.data.freeIds || []);
       setPaidIds(res.data.paidIds || []);
       setGift(res.data.gift || { enabled: false, points: 100, expireDays: 0 });
+      setRegisterGift(res.data.registerGift || DEFAULT_REGISTER_GIFT);
       setSaved({
         freeIds: res.data.freeIds || [],
         paidIds: res.data.paidIds || [],
         gift: res.data.gift || { enabled: false, points: 100, expireDays: 0 },
+        registerGift: res.data.registerGift || DEFAULT_REGISTER_GIFT,
       });
     } catch (e) {
       toast.error((e as Error)?.message || "加载平台默认配置失败");
@@ -141,6 +166,10 @@ export default function PlatformDefaultsPage() {
           giftEnabled: gift.enabled,
           giftPoints: gift.points,
           giftExpireDays: gift.expireDays,
+          registerGiftEnabled: registerGift.enabled,
+          registerGiftPoints: registerGift.points,
+          registerGiftMonths: registerGift.months,
+          registerGiftClearOnMonthEnd: registerGift.clearOnMonthEnd,
           syncToAll,
         }),
       });
@@ -162,7 +191,8 @@ export default function PlatformDefaultsPage() {
     JSON.stringify(paidIds.slice().sort()) !== JSON.stringify(saved.paidIds.slice().sort()) ||
     gift.enabled !== saved.gift.enabled ||
     gift.points !== saved.gift.points ||
-    gift.expireDays !== saved.gift.expireDays;
+    gift.expireDays !== saved.gift.expireDays ||
+    JSON.stringify(registerGift) !== JSON.stringify(saved.registerGift);
 
   if (loading) {
     return (
@@ -187,7 +217,7 @@ export default function PlatformDefaultsPage() {
             <span>平台默认配置</span>
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-1">
-            配置新空间默认可用的模型，以及新空间自动赠送的体验额度
+            配置新空间默认可用的模型，以及新空间体验额度与注册福利规则
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
@@ -205,6 +235,7 @@ export default function PlatformDefaultsPage() {
               setFreeIds(saved.freeIds);
               setPaidIds(saved.paidIds);
               setGift(saved.gift);
+              setRegisterGift(saved.registerGift);
             }}
             className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/80 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer active:scale-95"
           >
@@ -282,6 +313,94 @@ export default function PlatformDefaultsPage() {
             />
             <div className="text-[10px] text-slate-400 mt-1">填 0 表示永久有效</div>
           </div>
+        </div>
+      </div>
+
+      {/* 注册福利规则配置 */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-5 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <span className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center">
+            <Gift className="w-4.5 h-4.5" />
+          </span>
+          <div>
+            <h2 className="text-sm font-black text-slate-800">注册福利（按月自动发放）</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              新注册用户在其个人空间按月自动获得福利；改这里即可生效，无需改代码
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          {/* 启用开关 */}
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer hover:border-slate-200 transition-colors">
+            <input
+              type="checkbox"
+              checked={registerGift.enabled}
+              onChange={(e) => setRegisterGift({ ...registerGift, enabled: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce]/30 cursor-pointer"
+            />
+            <div>
+              <div className="text-xs font-bold text-slate-700">启用注册福利</div>
+              <div className="text-[10px] text-slate-400">关闭后新注册用户不再赠送</div>
+            </div>
+          </label>
+
+          {/* 每月点数 */}
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5 text-emerald-500" />
+              每月赠送（算力点）
+            </label>
+            <input
+              type="number"
+              min={1}
+              value={registerGift.points}
+              onChange={(e) => setRegisterGift({ ...registerGift, points: Number(e.target.value) })}
+              className="mt-1.5 w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+            />
+          </div>
+
+          {/* 连续月数 */}
+          <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+            <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-[#3182ce]" />
+              连续赠送月数
+            </label>
+            <input
+              type="number"
+              min={1}
+              max={36}
+              value={registerGift.months}
+              onChange={(e) => setRegisterGift({ ...registerGift, months: Number(e.target.value) })}
+              className="mt-1.5 w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold text-slate-800 outline-none focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/15"
+            />
+            <div className="text-[10px] text-slate-400 mt-1">注册当月起连续发放（1–36 个月）</div>
+          </div>
+
+          {/* 到期清零 */}
+          <label className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-100 cursor-pointer hover:border-slate-200 transition-colors">
+            <input
+              type="checkbox"
+              checked={registerGift.clearOnMonthEnd}
+              onChange={(e) =>
+                setRegisterGift({ ...registerGift, clearOnMonthEnd: e.target.checked })
+              }
+              className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500/30 cursor-pointer"
+            />
+            <div>
+              <div className="text-xs font-bold text-slate-700">月底未用完清零</div>
+              <div className="text-[10px] text-slate-400">
+                不勾选则每笔发放后长期有效、不清零
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div className="text-[11px] text-slate-400">
+          当前规则预览：启用时，新注册用户从注册当月起连续 {registerGift.months} 个月、每月获得{" "}
+          {registerGift.points} 算力点
+          {registerGift.clearOnMonthEnd ? "，当月未用完月底自动清零" : "，发放后长期有效不清零"}
+          ；关闭开关则完全停发。
         </div>
       </div>
 

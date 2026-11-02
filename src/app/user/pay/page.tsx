@@ -1221,7 +1221,7 @@ export default function UserPayPage() {
                       <div className="flex justify-between items-center">
                         <span className="text-slate-500">购买商品规格</span>
                         <span className="font-bold text-slate-800">
-                          {(selectedPack?.name || order.title)}（{order.points.toLocaleString()} 算力点）
+                          {(selectedPack?.name ?? "算力点充值")}（{order.points.toLocaleString()} 算力点）
                         </span>
                       </div>
                       <div className="flex justify-between items-center">

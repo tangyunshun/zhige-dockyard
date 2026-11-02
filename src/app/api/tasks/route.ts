@@ -8,15 +8,29 @@ import {
   buildTaskWorkspacePermissionFilter,
   serializeTaskListItem,
 } from "@/lib/task-query-helpers";
+import { statusFilterToPrisma } from "@/lib/task-status";
+import { recoverZombieRunningTasks } from "@/app/api/studio/handler";
+import { enqueueRefundRecovery } from "@/lib/refund-recovery";
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
-      return NextResponse.json({ success: false, error: "未登录或身份令牌失效" }, { status: 401 });
+      return NextResponse.json(
+        { success: false, error: "登录已过期，请重新登录", code: "SESSION_EXPIRED" },
+        { status: 401 },
+      );
     }
 
     const userId = auth.user.id;
+
+    // 0. 僵尸任务恢复：任务中心打开即触发（按执行租约原子转失败 + 退款入队，幂等可重入）
+    //    此前恢复只在 simulate 入口触发，导致用户在任务中心看到永远"进行中"的假象。
+    try {
+      await recoverZombieRunningTasks(prisma, { enqueueRefundRecovery });
+    } catch (e) {
+      console.warn("[TasksAPI] 僵尸任务恢复非致命警告:", e);
+    }
 
     // 1. 查询当前用户有成员关系或明确所有权的工作空间 ID（严禁信任未校验的 lastWorkspaceId）
     const [memberRecords, ownedWorkspaces] = await Promise.all([
@@ -41,7 +55,33 @@ export async function GET(request: NextRequest) {
     const targetWsIds = permissionFilter.tenantId.in;
 
     if (targetWsIds.length === 0) {
-      return NextResponse.json({ success: true, data: [] });
+      return NextResponse.json({ success: true, data: { tasks: [], total: 0, page: 1, pageSize: 20, stats: { success: 0, failed: 0, running: 0, unknown: 0, pointsSum: 0 } } });
+    }
+
+    // ── 服务端筛选/分页参数（TASK-1：真分页，禁止前端全量切片）──
+    const sp = request.nextUrl.searchParams;
+    const page = Math.max(1, parseInt(sp.get("page") || "1", 10) || 1);
+    const pageSize = Math.min(100, Math.max(1, parseInt(sp.get("pageSize") || "20", 10) || 20));
+    const statusParam = (sp.get("status") || "").toUpperCase();
+    const workspaceParam = sp.get("workspaceId") || "";
+    const keyword = (sp.get("keyword") || "").trim();
+    const scopeMine = sp.get("scope") === "mine";
+
+    const where: Record<string, unknown> = {
+      tenantId: { in: targetWsIds },
+      status: { not: "ARCHIVED" },
+    };
+    const statusFilter = statusFilterToPrisma(statusParam);
+    if (statusFilter) where.status = statusFilter;
+    if (workspaceParam && targetWsIds.includes(workspaceParam)) {
+      where.tenantId = workspaceParam;
+    }
+    if (keyword) {
+      where.name = { contains: keyword };
+    }
+    // "只看我的"：仅返回当前用户发起的任务
+    if (scopeMine) {
+      where.userId = userId;
     }
 
     // 2. 查询这些工作空间的元数据 (名称与类型)
@@ -55,14 +95,16 @@ export async function GET(request: NextRequest) {
       wsMap.set(w.id, { name: w.name, type: w.type });
     });
 
-    // 3. 跨空间查询 componenttask (必须强制包含 tenantId 权限条件，过滤 ARCHIVED，按创建时间降序)
-    const tasks = await prisma.componenttask.findMany({
-      where: {
-        tenantId: { in: targetWsIds },
-        status: { not: "ARCHIVED" },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    // 3. 跨空间查询 componenttask（服务端过滤 + 分页 + 计数）
+    const [tasks, total] = await Promise.all([
+      prisma.componenttask.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      prisma.componenttask.count({ where }),
+    ]);
 
     // 4. 查询 componentcatalog 匹配真实组件名称
     const compIds = Array.from(new Set(tasks.map((t) => t.type).filter((id): id is string => !!id)));
@@ -101,7 +143,43 @@ export async function GET(request: NextRequest) {
       return serializeTaskListItem(t, wsInfo, compNameMap.get(cId) || t.type || "", refundMeta);
     });
 
-    return NextResponse.json({ success: true, data: formattedData });
+    // 7. 统计口径（跟随当前筛选，不随分页截断；点数取实际结算值，缺失回退预估）
+    const statStatusFilter = { ...where } as Record<string, unknown>;
+    delete statStatusFilter.status;
+    const statusBase = statusFilter ? statusFilter : { not: "ARCHIVED" };
+    const statGroups = await prisma.componenttask.groupBy({
+      by: ["status"],
+      where: { ...statStatusFilter, status: statusBase },
+      _count: { _all: true },
+    });
+    const stats = { success: 0, failed: 0, running: 0, unknown: 0, pointsSum: 0 };
+    statGroups.forEach((g) => {
+      const n = g._count._all;
+      const s = (g.status || "").toUpperCase();
+      if (["SUCCESS", "COMPLETED", "DONE", "SUCCEEDED"].includes(s)) stats.success += n;
+      else if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TIMEOUT", "REJECTED"].includes(s)) stats.failed += n;
+      else if (["RUNNING", "PENDING", "QUEUED", "PROCESSING", "READY", "IN_PROGRESS"].includes(s)) stats.running += n;
+      else stats.unknown += n;
+    });
+    // 点数合计：统计范围内逐任务取实际结算值（缺失回退预估），上限 1000 行防全表扫描
+    const statTasks = await prisma.componenttask.findMany({
+      where: { ...statStatusFilter, status: statusBase },
+      select: { config: true },
+      take: 1000,
+      orderBy: { createdAt: "desc" },
+    });
+    statTasks.forEach((t) => {
+      const cfg = t.config && typeof t.config === "object" ? (t.config as Record<string, unknown>) : null;
+      const exec = cfg?.execution && typeof cfg.execution === "object" ? (cfg.execution as Record<string, unknown>) : null;
+      const actual = typeof exec?.actualPoints === "number" ? exec.actualPoints : null;
+      const est = typeof exec?.estimatedPoints === "number" ? exec.estimatedPoints : 0;
+      stats.pointsSum += actual ?? est;
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: { tasks: formattedData, total, page, pageSize, stats },
+    });
   } catch (error: any) {
     console.error("[TasksAPI Error]:", error);
     return NextResponse.json({ success: false, error: error.message || "获取任务档案失败" }, { status: 500 });

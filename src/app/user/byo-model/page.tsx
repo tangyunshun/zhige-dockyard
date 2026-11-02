@@ -1704,7 +1704,7 @@ export default function UserByoModelPage() {
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const next = {};
+                                  const next: Record<string, boolean> = {};
                                   workspaces.forEach((w) => (next[w.id] = true));
                                   setSelectedWs(next);
                                 }}

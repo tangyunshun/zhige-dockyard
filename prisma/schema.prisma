@@ -280,6 +280,10 @@ model document {
   filePath    String?  @map("file_path")
   mimeType    String?  @map("mime_type") @db.VarChar(128)
   originalName String? @map("original_name") @db.VarChar(255)
+  /// 知识条目分类（KN-2：此前前端必填但后端丢弃、库中无字段可存）
+  category    String?
+  // KB-2：知识标签（最多 5 个，每个 1~20 字，存 JSON 字符串数组）
+  tags        Json?
   createdAt   DateTime @default(now())
   updatedAt   DateTime
 
@@ -482,7 +486,7 @@ model systemdocument {
 
 model systemdocumenthistory {
   id           String   @id @default(cuid())
-  documentId   String   @map("document_id")
+  documentId   String?  @map("document_id")
   title        String
   content      String?  @db.Text
   category     String
@@ -494,13 +498,32 @@ model systemdocumenthistory {
   isPublished  Boolean  @default(false)
   sortOrder    Int      @default(0)
   editorId     String?  @map("editor_id")
+  note         String?  @map("note")
   createdAt   DateTime @default(now())
-  document    systemdocument @relation(fields: [documentId], references: [id], onDelete: Cascade, map: "SystemDocumentHistory_documentId_fkey")
+  document    systemdocument? @relation(fields: [documentId], references: [id], onDelete: SetNull, map: "SystemDocumentHistory_documentId_fkey")
   user        user?    @relation(fields: [editorId], references: [id], onDelete: SetNull, map: "SystemDocumentHistory_editorId_fkey")
 
   @@index([documentId], map: "SystemDocumentHistory_documentId_idx")
   @@index([createdAt], map: "SystemDocumentHistory_createdAt_idx")
   @@map("system_document_history")
+}
+
+// 系统文档（服务条款/隐私协议/帮助文档）真实点赞与踩反馈表：
+// 每条 (documentId, userId) 唯一，前端点赞走真实落库，helpfulCount 由 HELPFUL 票数实时重算，
+// 彻底替代此前纯前端表演、后台手填 helpfulCount 的虚假实现。
+model systemdocumentfeedback {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  userId     String
+  // HELPFUL（点赞/有用）| NOT_HELPFUL（踩/需改进）
+  vote       String   @default("HELPFUL")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([documentId, userId], map: "SystemDocumentFeedback_documentId_userId_key")
+  @@index([documentId], map: "SystemDocumentFeedback_documentId_idx")
+  @@index([userId], map: "SystemDocumentFeedback_userId_idx")
+  @@map("system_document_feedback")
 }
 
 model upgradeapplication {
@@ -1041,6 +1064,17 @@ model stepuptoken {
   @@index([userId, operation], map: "StepUpToken_userId_operation_idx")
   @@index([expireAt], map: "StepUpToken_expireAt_idx")
   @@map("stepup_token")
+}
+
+// KN-CAT-V2 知识库个人分类：普通用户自建分类，仅创建人可见、可自删；
+// 与 systemconfig 中的系统内置分类（管理员管理、全员可见）共同构成分类体系。
+// name 全局唯一（含系统分类），避免 document.category 字符串归属歧义。
+model knowledgecategory {
+  id        String   @id
+  name      String   @unique
+  creatorId String
+  createdAt DateTime @default(now())
+  @@map("knowledge_category")
 }
 
 // G-02 系统维护模式持久化（替代进程内存变量，确保多实例一致）

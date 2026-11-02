@@ -59,6 +59,8 @@ export default function PointsLedgerPanel() {
   const [exporting, setExporting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 锚点定位高亮：从「消耗明细」等入口带 #points-ledger 进入时短暂高亮面板
+  const [ledgerHighlighted, setLedgerHighlighted] = useState(false);
 
   // 加载账单显示字典（与账单/发票面板共用一套数据库字典；模块级缓存避免重复请求）
   useEffect(() => {
@@ -125,6 +127,21 @@ export default function PointsLedgerPanel() {
   useEffect(() => {
     void loadLedger(1, startDate, endDate);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 携带 #points-ledger 锚点进入时（如工作台「消耗明细」入口）：
+  // 兜底平滑滚动定位到本面板并短暂高亮，避免异步渲染导致浏览器原生锚点滚动失效。
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (window.location.hash !== "#points-ledger") return;
+    const timer = setTimeout(() => {
+      document
+        .getElementById("points-ledger")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setLedgerHighlighted(true);
+      setTimeout(() => setLedgerHighlighted(false), 1600);
+    }, 200);
+    return () => clearTimeout(timer);
   }, []);
 
   // 开始时间变化：若已选结束时间且开始晚于结束，自动清空结束时间
@@ -216,7 +233,12 @@ export default function PointsLedgerPanel() {
   const hasFilter = !!(startDate || endDate);
 
   return (
-    <section id="points-ledger" className="mt-6 scroll-mt-24">
+    <section
+      id="points-ledger"
+      className={`mt-6 scroll-mt-24 rounded-2xl transition-all duration-500 ${
+        ledgerHighlighted ? "ring-2 ring-[#3182ce] ring-offset-2 shadow-lg" : ""
+      }`}
+    >
       <div className="flex items-center justify-between mb-3">
         <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
           <Wallet className="w-4 h-4 text-[#3182ce]" />

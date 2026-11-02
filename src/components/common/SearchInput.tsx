@@ -1,5 +1,6 @@
 ﻿﻿"use client";
 
+import { useEffect, useRef } from "react";
 import { Search, X } from "lucide-react";
 
 interface SearchInputProps {
@@ -19,32 +20,40 @@ export default function SearchInput({
   className = "",
   debounceMs = 300,
 }: SearchInputProps) {
+  const onSearchRef = useRef(onSearch);
+  onSearchRef.current = onSearch;
+  const isFirstRender = useRef(true);
+
   const handleClear = () => {
     onChange("");
-    if (onSearch) {
-      onSearch("");
+    if (onSearchRef.current) {
+      onSearchRef.current("");
     }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     onChange(newValue);
-
-    // 实时搜索（防抖）
-    if (onSearch) {
-      const timeoutId = setTimeout(() => {
-        onSearch(newValue);
-      }, debounceMs);
-
-      return () => clearTimeout(timeoutId);
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && onSearch) {
-      onSearch(value);
+    if (e.key === "Enter" && onSearchRef.current) {
+      onSearchRef.current(value);
     }
   };
+
+  // 防抖：value 变化后延迟触发 onSearch；依赖变化或组件卸载时由 useEffect 返回的清理函数清除定时器
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+    if (!onSearchRef.current) return;
+    const timeoutId = setTimeout(() => {
+      onSearchRef.current?.(value);
+    }, debounceMs);
+    return () => clearTimeout(timeoutId);
+  }, [value, debounceMs]);
 
   return (
     <div className={`relative ${className}`}>

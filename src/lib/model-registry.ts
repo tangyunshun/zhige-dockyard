@@ -1250,8 +1250,8 @@ export async function resolvePolishModelPlan(
   const candidates = [...(personal ? [personal] : []), ...enterprises];
   if (candidates.length === 0) {
     throw new ContractValidationError(
-      "MODEL_DEFAULT_NOT_CONFIGURED",
-      "润色失败：无可用模型，请先前往个人空间或名下企业空间配置默认模型。",
+      "NO_MODEL_AVAILABLE",
+      "您的空间尚未配置可用模型，润色功能暂无法使用。请在空间设置中配置默认模型，或联系企业管理员",
       403,
     );
   }

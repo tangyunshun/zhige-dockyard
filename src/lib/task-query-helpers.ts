@@ -90,6 +90,8 @@ export type TaskDetailSafeDTO = {
   artifacts: TaskDetailArtifactItem[];
   artifact: TaskDetailArtifactItem | null;
   hasArtifact: boolean;
+  /** 知识引用带入执行：被引用条目标题（仅展示用，内容走标准 text 通道） */
+  refKnowledgeTitle: string | null;
 };
 
 /**
@@ -411,6 +413,7 @@ export function serializeTaskDetailItem(
     artifacts: safeArtifacts,
     artifact: safeArtifact,
     hasArtifact,
+    refKnowledgeTitle: typeof cfg?.refKnowledgeTitle === "string" ? cfg.refKnowledgeTitle : null,
   };
 }
 

@@ -4,12 +4,32 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useParams, usePathname, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/Toast";
+import { exportDocumentAsMarkdown, exportDocumentAsWord } from "@/utils/document-export";
+
+// 组装 /knowledge 资料预览的导出 Markdown（含标题/分类/更新时间/摘要/正文/页脚）
+function buildKnowledgeExportMarkdown(d: {
+  title?: string;
+  type?: string;
+  createdAt?: string;
+  summary?: string | null;
+  content?: string;
+}): string {
+  const parts: string[] = [`# ${d.title || "资料预览"}`];
+  const meta: string[] = [];
+  if (d.type) meta.push(`**分类**: ${d.type}`);
+  if (d.createdAt) meta.push(`**更新时间**: ${d.createdAt}`);
+  if (meta.length) parts.push(meta.join("\n\n"));
+  parts.push(`## 概述\n${d.summary || "（无摘要）"}`);
+  parts.push(`## 正文\n${d.content || "暂无内容"}`);
+  parts.push(`\n---\n*导出自 知阁·舟坊 官方文档中心*`);
+  return parts.join("\n\n");
+}
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { 
   ArrowLeft, Settings, ChevronDown, Plus, FileText, Layers, Database, Layout, Box,
   Server, ShieldCheck, Check, ArrowRight, BookOpen, AlertCircle, 
   CheckCircle2, Play, Users, BarChart2, ShieldAlert, FileDown, Clipboard, Trash2, Edit2, HelpCircle, Info,
-  Upload, Save, AlertTriangle, Copy, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
+  Upload, Save, AlertTriangle, Copy, Download, KeyRound, ExternalLink, Share2, Ban, Clock, History, Zap, PenLine, Eye,
   Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock,
   SlidersHorizontal, Briefcase, Crown, Loader2, ChevronRight
 } from "lucide-react";
@@ -55,6 +75,7 @@ import OverviewTab from "@/components/studio/OverviewTab";
 import UsageStatsTab from "@/components/studio/UsageStatsTab";
 import WorkspacePostsPermissionsTab from "@/components/studio/WorkspacePostsPermissionsTab";
 import { ResultViewer, ResultViewerTask } from "@/components/studio/ResultViewer";
+import KnowledgePickerModal from "@/components/studio/KnowledgePickerModal";
 import KnowledgeTab from "@/components/studio/KnowledgeTab";
 import LogsTab from "@/components/studio/LogsTab";
 import PointsLedgerTab from "@/components/studio/PointsLedgerTab";
@@ -70,6 +91,7 @@ import AiMatchDetailModal from "@/components/workspace/AiMatchDetailModal";
 import TransferOwnershipModal from "@/components/workspace/TransferOwnershipModal";
 import { PostIcon } from "@/components/studio/PostIcon";
 import type { PositionDefinition } from "@/constants/positions";
+import { normalizeTaskStatus } from "@/lib/task-status";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
 // 能力展示名：数据库 systemsetting 下发为准，此处内置值仅作缺失兜底
@@ -319,17 +341,8 @@ function coerceTaskListItem(t: RawTaskListItem, components: ZhiGeComponent[]): T
   };
 }
 
-// 任务状态归一化：把后端各类任务状态显式映射到前端四种展示状态，
-// 杜绝"未识别状态一律当作成功"的误判；未知状态归入 UNKNOWN 并明确展示。
-function normalizeTaskStatus(rawStatus?: string | null): TaskRecord["status"] {
-  const s = (rawStatus || "").trim().toUpperCase();
-  if (s === "SUCCESS" || s === "COMPLETED" || s === "DONE") return "SUCCESS";
-  if (s === "FAILED" || s === "ERROR" || s === "CANCELLED" || s === "CANCELED") return "FAILED";
-  if (s === "RUNNING" || s === "PENDING" || s === "READY" || s === "PROCESSING" || s === "DRAFT" || s === "NEEDS_REVIEW") {
-    return "RUNNING";
-  }
-  return "UNKNOWN";
-}
+// 任务状态归一化：使用共享真源 src/lib/task-status.ts（与任务中心同口径，
+// 超时/取消等一律判失败，未知状态明确展示 UNKNOWN）
 
 // 空间资料
 export interface AssetRecord {
@@ -450,6 +463,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   // 挂载周期初始化防重复守卫
   const initializedWsIdRef = useRef<string | null>(null);
   const isInitializingRef = useRef<boolean>(false);
+  // 知识“带入执行”URL 参数一次性消费守卫：防止重复拉取回填
+  const consumedKnowledgeIdRef = useRef<string | null>(null);
 
   // 状态管理
   const [activeTab, setActiveTab] = useState<string>(initialActiveTab || "quick");
@@ -554,7 +569,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const [quickSubStep, setQuickSubStep] = useState<"select" | "material">("select");
   const [isExecutingTask, setIsExecutingTask] = useState(false);
   const [quickResultHistoryOpen, setQuickResultHistoryOpen] = useState(false);
-  const [materialInputMode, setMaterialInputMode] = useState<"text" | "file" | "asset">("text");
+  const [materialInputMode, setMaterialInputMode] = useState<"text" | "file" | "asset" | "knowledge">("text");
+  // 知识引用：选中知识带入执行后，记录被引用条目的标题（仅用于结果页展示与超限校验，不追踪编辑差异）
+  const [refKnowledgeTitle, setRefKnowledgeTitle] = useState<string>("");
+  // 知识选择器弹窗显隐
+  const [showKnowledgePicker, setShowKnowledgePicker] = useState(false);
   // 材料校验行内错误：格式不符 / 超限 / 字数不足等，显示在输入框正下方并高亮输入区（替代顶部 toast）
   const [materialValidationError, setMaterialValidationError] = useState<string>("");
   // 行内提示 10 秒后自动消失：避免过时提示一直挂着与文件实际状态不一致；新提示出现会重置计时
@@ -2739,6 +2758,53 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     };
   }, [searchParams]);
 
+  // 知识库“带入执行”：消费 URL 中的 knowledgeId，拉取该空间对应知识条目内容填入快速任务材料框
+  useEffect(() => {
+    if (!workspaceId) return;
+    const knowledgeId = searchParams.get("knowledgeId");
+    if (!knowledgeId) return;
+    // 一次进入只消费一次，避免重复回填覆盖用户编辑
+    if (consumedKnowledgeIdRef.current === knowledgeId) return;
+    consumedKnowledgeIdRef.current = knowledgeId;
+
+    let cancelled = false;
+    const pull = async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch(`/api/studio?action=knowledges&workspaceId=${encodeURIComponent(workspaceId)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          credentials: "include",
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        const list: any[] = data.data || data.knowledges || [];
+        const entry = list.find((d) => d.id === knowledgeId);
+        if (!entry || cancelled) return;
+        const content = entry.content || "";
+        setQuickInputMaterial(content);
+        setRefKnowledgeTitle(entry.title || "未命名知识");
+        setMaterialInputMode("text");
+        // 切到快速任务的材料输入态，激活材料 tab
+        setActiveTab("quick");
+        setQuickSubStep("material");
+        setMaterialValidationError("");
+        toastRef.current?.success?.("知识内容已带入，请选择组件并确认后执行");
+        // 干净抹除 URL 参数，避免刷新重复消费
+        if (typeof window !== "undefined") {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("knowledgeId");
+          window.history.replaceState({}, "", url.toString());
+        }
+      } catch {
+        // 拉取失败静默忽略，用户仍可手动在知识库页重试
+      }
+    };
+    pull();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, searchParams]);
+
   // 监听路由参数中的 tab 字段以自动聚焦特定选项卡 (如从空间中枢直达设置 Tab)
   // 守卫：个人空间不允许通过 URL 参数强开成员/权限等企业专属页；settings 仍按下方 canManageSettings 回退
   useEffect(() => {
@@ -2758,6 +2824,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     if (queryCompId) {
       setQuickSelectedCompId(queryCompId);
       setActiveTab("quick");
+    }
+    // 失败任务重试：组件已带入；原材料出于安全设计不予回显，需重新提交（TASK-2 闭环补全）
+    const retryTaskId = searchParams.get("retryTaskId");
+    if (retryTaskId && queryCompId) {
+      setTimeout(() => {
+        toast.info("已带入失败任务的组件；原材料出于安全考虑不予回显，请重新提交材料后执行");
+      }, 800);
     }
   }, [searchParams]);
 
@@ -2962,7 +3035,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
   const handleExecuteSimulation = async (overrides?: {
     componentId?: string;
     inputMaterial?: string;
-    materialInputMode?: "text" | "file" | "asset";
+    materialInputMode?: "text" | "file" | "asset" | "knowledge";
     uploadedFileMeta?: { name: string; size: string; sizeBytes?: number; file?: File } | null;
     selectedAsset?: { id: string; title: string } | null;
     /** 个人点支付：企业成员自身余额不足时，确认用个人算力点支付本次任务 */
@@ -3130,6 +3203,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
               taskName,
               inputMaterial: finalExecInputMaterial,
               inputSource,
+              // 知识引用带入执行：仅透传被引用条目标题用于结果页展示，内容本身走标准 text 通道
+              refKnowledgeTitle: refKnowledgeTitle || undefined,
               payWithPersonal: overrides?.payWithPersonal || false,
               // 结构化表单组件：以 formData 提交（服务端按合同字段强校验）
               ...(execIsStructuredForm ? { formData: quickFormData } : {}),
@@ -4510,6 +4585,12 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     reason: "该组件仅支持文本 / 选择资料作为主材料，不支持上传文件",
                                   },
                                   { key: "asset", label: "📦 资料", disabled: false, reason: "" },
+                                  {
+                                    key: "knowledge",
+                                    label: "📚 引用知识",
+                                    disabled: quickInputMode === "file",
+                                    reason: "该组件仅支持上传文件作为主材料，不支持引用知识文本",
+                                  },
                                 ];
                                 return allModes.map(mode => (
                                   <button
@@ -4519,12 +4600,24 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                     title={mode.disabled ? mode.reason : undefined}
                                     onClick={() => {
                                       if (mode.disabled) return;
+                                      if (mode.key === "knowledge") {
+                                        // 引用知识：打开选择器，知识内容将回填到文本输入框（本质仍是 text 通道）
+                                        setMaterialInputMode("knowledge");
+                                        setUploadedFileMeta(null);
+                                        setUploadedFiles([]);
+                                        setSelectedAsset(null);
+                                        setMaterialValidationError("");
+                                        if (fileInputRef.current) fileInputRef.current.value = "";
+                                        setShowKnowledgePicker(true);
+                                        return;
+                                      }
                                       setMaterialInputMode(mode.key as any);
                                       // 切换输入方式时清理其它方式的残留状态与校验提示，保证单一主材料
                                       setUploadedFileMeta(null);
                                       setUploadedFiles([]);
                                       setSelectedAsset(null);
                                       setQuickInputMaterial("");
+                                      setRefKnowledgeTitle("");
                                       setMaterialValidationError("");
                                       if (fileInputRef.current) fileInputRef.current.value = "";
                                     }}
@@ -4575,7 +4668,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                             </div>
                           )}
 
-                          {selCatalogCompLeft?.inputContractKind !== "STRUCTURED_FORM" && materialInputMode === "text" && selCatalogCompLeft?.inputMode !== "file" && (
+                          {selCatalogCompLeft?.inputContractKind !== "STRUCTURED_FORM" && (materialInputMode === "text" || materialInputMode === "knowledge") && selCatalogCompLeft?.inputMode !== "file" && (
                             <div className="space-y-1.5">
                               {(() => {
                                 const maxTextChars = selCatalogCompLeft?.textConstraints?.maxLength;
@@ -4594,7 +4687,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                             ? `在此直接输入或粘贴 ${selCatalogCompLeft.name} 所需的分析材料${typeof maxTextChars === "number" ? `（上限 ${maxTextChars.toLocaleString()} 字符）` : "（长度限制由服务端合同校验）"}...`
                                             : "在此直接输入或粘贴分析文本材料（长度限制由服务端合同校验）..."
                                         }
-                                        maxLength={typeof maxTextChars === "number" ? maxTextChars : undefined}
+                                        // 知识引用内容可能超过合同上限：引用态不裁剪，由下方校验提示并禁用提交
+                                        maxLength={typeof maxTextChars === "number" && !refKnowledgeTitle ? maxTextChars : undefined}
                                         className={`w-full h-32 p-3 rounded-lg text-xs font-medium text-slate-700 outline-none resize-none transition-all font-sans leading-relaxed ${
                                           materialValidationError && materialInputMode === "text"
                                             ? "border border-rose-400 bg-rose-50/50 focus:border-rose-500 focus:ring-1 focus:ring-rose-300"
@@ -4613,6 +4707,18 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                         </button>
                                       )}
                                     </div>
+                                    {refKnowledgeTitle && (
+                                      <div className="flex items-center justify-between gap-2 px-0.5 text-[11px]">
+                                        <span className="flex items-center gap-1 font-bold text-[#2b6cb0]">
+                                          📚 已引用知识：《{refKnowledgeTitle}》（{quickInputMaterial.length} 字），可编辑后执行
+                                        </span>
+                                        {typeof maxTextChars === "number" && quickInputMaterial.length > maxTextChars && (
+                                          <span className="text-red-600 font-black shrink-0">
+                                            已超出输入上限（当前 {quickInputMaterial.length} 字 / 上限 {maxTextChars} 字）
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
                                     <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold px-0.5">
                                       <span className="flex items-center gap-1">
                                         {typeof maxTextChars === "number" ? (
@@ -4899,6 +5005,14 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                               disableReason = "未配置默认模型，请先配置默认模型再执行任务。";
                             } else if (!disableReason && isShortOnTokens) {
                               disableReason = "当前空间服务算力点不足，请升级或联系管理员";
+                            }
+
+                            // 知识引用带入后若总字数超出组件合同上限，禁用提交并明确提示
+                            if (!disableReason && refKnowledgeTitle) {
+                              const kMax = selCatalogCompLeft?.textConstraints?.maxLength;
+                              if (typeof kMax === "number" && quickInputMaterial.length > kMax) {
+                                disableReason = `已超出输入上限（当前 ${quickInputMaterial.length} 字 / 上限 ${kMax} 字）`;
+                              }
                             }
                           }
 
@@ -7699,19 +7813,57 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                   previewData.type?.toLowerCase().includes("image") ||
                   previewData.mimeType?.startsWith("image/")
                 ) && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (previewData.content) {
-                        navigator.clipboard.writeText(previewData.content);
-                        toast.success("已复制资料全文");
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
-                    title="复制全文"
-                  >
-                    📋 复制全文
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (previewData.content) {
+                          navigator.clipboard.writeText(previewData.content);
+                          toast.success("已复制资料全文");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="复制全文"
+                    >
+                      📋 复制全文
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          exportDocumentAsMarkdown(
+                            previewData.title || "资料预览",
+                            buildKnowledgeExportMarkdown(previewData),
+                          );
+                          toast.success(`已导出 Markdown 文件：${previewData.title || "资料预览"}.md`);
+                        } catch {
+                          toast.error("导出 Markdown 文件时发生异常");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="导出为 Markdown 文件"
+                    >
+                      <Download className="w-3.5 h-3.5 text-slate-500" /> 导出 MD
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          exportDocumentAsWord(
+                            previewData.title || "资料预览",
+                            buildKnowledgeExportMarkdown(previewData),
+                          );
+                          toast.success(`已导出 Word 文档：${previewData.title || "资料预览"}.doc`);
+                        } catch {
+                          toast.error("导出 Word 文档时发生异常");
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl shadow-2xs transition-all flex items-center gap-1 cursor-pointer active:scale-95"
+                      title="导出为可编辑 Word 文档 (.doc)"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-slate-500" /> 导出 Word
+                    </button>
+                  </>
                 )}
                 <button
                   type="button"
@@ -8130,6 +8282,29 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           </div>
         </div>
       )}
+      {/* 知识引用选择器：从当前空间知识库挑选条目带入执行（标准 text 通道） */}
+      {showKnowledgePicker && (
+        <KnowledgePickerModal
+          workspaceId={workspaceId}
+          maxChars={(() => {
+            const sel = componentCatalog.find((c: any) => c.id === quickSelectedCompId);
+            return (sel?.textConstraints?.maxLength as number) || 0;
+          })()}
+          onSelect={(entry) => {
+            setQuickInputMaterial(entry.content);
+            setRefKnowledgeTitle(entry.title);
+            setMaterialInputMode("text");
+            setShowKnowledgePicker(false);
+            setMaterialValidationError("");
+          }}
+          onClose={() => {
+            setShowKnowledgePicker(false);
+            // 关闭选择器但未选中：若仍处于 knowledge 态则回到 text，避免文本区凭空消失
+            setMaterialInputMode((m) => (m === "knowledge" ? "text" : m));
+          }}
+        />
+      )}
+
       {/* 2000字长文本大屏全景编辑器 Modal */}
       {showFullMaterialModal && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-200">

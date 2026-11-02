@@ -24,6 +24,75 @@ export async function GET(request: NextRequest) {
 
     const { searchParams } = new URL(request.url);
 
+    // KN-CAT-V3：知识分类总览分支——统一数据列表（服务端分页 + 关键字/类型筛选）
+    // 行结构：{ name, type: "system"|"personal", creatorName, createdAt, count }；系统内置分类无创建人/创建时间
+    if (searchParams.get("view") === "categories") {
+      let systemCats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) systemCats = parsed.map(String);
+        }
+      } catch (e) {}
+
+      const personalRows = await prisma.knowledgecategory.findMany({ orderBy: { createdAt: "desc" } });
+      const creatorIds = Array.from(new Set(personalRows.map((r) => r.creatorId)));
+      const creators = creatorIds.length
+        ? await prisma.user.findMany({ where: { id: { in: creatorIds } }, select: { id: true, name: true, email: true } })
+        : [];
+      const creatorMap = new Map(creators.map((u) => [u.id, u.name || u.email || "未知用户"]));
+
+      const usageCounts = await prisma.document.groupBy({
+        by: ["category"],
+        where: { type: "knowledge", status: { not: "deleted" }, category: { not: null } },
+        _count: { _all: true },
+      });
+      const usageMap = new Map(usageCounts.map((g) => [g.category as string, g._count._all]));
+
+      // 合并为统一行集：系统内置在前（按配置顺序），用户自建按创建时间倒序
+      const allRows: Array<{ name: string; type: "system" | "personal"; creatorName: string | null; createdAt: string | null; count: number }> = [
+        ...systemCats.map((name) => ({ name, type: "system" as const, creatorName: null, createdAt: null, count: usageMap.get(name) || 0 })),
+        ...personalRows.map((r) => ({
+          name: r.name,
+          type: "personal" as const,
+          creatorName: creatorMap.get(r.creatorId) || "未知用户",
+          createdAt: r.createdAt.toISOString(),
+          count: usageMap.get(r.name) || 0,
+        })),
+      ];
+
+      // 筛选：类型 + 关键字（分类名/创建人模糊匹配）
+      const typeFilter = searchParams.get("type") || "ALL";
+      const search = (searchParams.get("search") || "").trim().toLowerCase();
+      const filtered = allRows.filter((r) => {
+        if (typeFilter !== "ALL" && r.type !== typeFilter) return false;
+        if (search && !(r.name.toLowerCase().includes(search) || (r.creatorName || "").toLowerCase().includes(search))) return false;
+        return true;
+      });
+
+      const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+      const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get("pageSize") || "10") || 10));
+      const total = filtered.length;
+      const totalPages = Math.ceil(total / pageSize) || 1;
+      const safePage = Math.min(page, totalPages);
+      const paged = filtered.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+      return NextResponse.json({
+        success: true,
+        rows: paged,
+        total,
+        page: safePage,
+        pageSize,
+        totalPages,
+        stats: {
+          systemCount: allRows.filter((r) => r.type === "system").length,
+          personalCount: allRows.filter((r) => r.type === "personal").length,
+          totalEntries: allRows.reduce((sum, r) => sum + r.count, 0),
+        },
+      });
+    }
+
     // 历史版本查询分支：/api/admin/documents?mode=history&documentId=xxx
     if (searchParams.get("mode") === "history") {
       const documentId = searchParams.get("documentId");
@@ -83,16 +152,9 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    // 自动清理误迁移的组件业务数据，保障后台文档库只收录平台官方系统文档
-    await prisma.systemdocument.deleteMany({
-      where: {
-        id: { in: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
-      },
-    }).catch(() => {});
-
-    const where: any = {
-      id: { notIn: ["doc_mig_1792267375767_7", "doc_mig_1792267375780_9"] },
-    };
+    // 注意：历史上误迁移的两条组件业务数据已通过一次性脚本安全删除，
+    // 此处不再每次 GET 执行写操作（删除逻辑见 scripts/cleanup-migrated-docs.ts）。
+    const where: any = {};
     
     if (search) {
       where.OR = [
@@ -118,7 +180,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 聚合全局真实统计指标（不受分页截断影响）
-    const [documents, total, totalAll, publishedCount, unPublishedCount, viewAggResult, categoryStats] = await Promise.all([
+    const [documents, total, totalAll, publishedCount, unPublishedCount, viewAggResult, categoryStats, feedbackGroups] = await Promise.all([
       prisma.systemdocument.findMany({
         where,
         include: {
@@ -144,12 +206,31 @@ export async function GET(request: NextRequest) {
         by: ["category"],
         _count: { id: true },
       }),
+      // 用户反馈两态票数（真实落库的 systemdocumentfeedback）
+      prisma.systemdocumentfeedback.groupBy({
+        by: ["documentId", "vote"],
+        _count: { _all: true },
+      }),
     ]);
 
     const categoryCountMap: Record<string, number> = {};
     categoryStats.forEach((cat) => {
       categoryCountMap[cat.category] = cat._count.id;
     });
+
+    // 反馈票数映射：documentId → { helpful, notHelpful }
+    const feedbackMap: Record<string, { helpful: number; notHelpful: number }> = {};
+    feedbackGroups.forEach((g) => {
+      const entry = feedbackMap[g.documentId] || { helpful: 0, notHelpful: 0 };
+      if (g.vote === "HELPFUL") entry.helpful += g._count._all;
+      if (g.vote === "NOT_HELPFUL") entry.notHelpful += g._count._all;
+      feedbackMap[g.documentId] = entry;
+    });
+    const documentsWithFeedback = documents.map((d) => ({
+      ...d,
+      helpfulVotes: feedbackMap[d.id]?.helpful ?? 0,
+      notHelpfulVotes: feedbackMap[d.id]?.notHelpful ?? 0,
+    }));
 
     // 从数据库异步拉取全部自定义分类，随 summary 静默下发，实现全功能联动
     let customCategories: any[] = [];
@@ -178,7 +259,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        documents,
+        documents: documentsWithFeedback,
         total,
         totalPages,
         page,
@@ -215,7 +296,7 @@ export async function POST(request: NextRequest) {
       summary,
       codeSample,
       relatedLink,
-      helpfulCount,
+      visibility,
     } = body;
 
     if (!title || !category) {
@@ -246,8 +327,7 @@ export async function POST(request: NextRequest) {
         summary: summary !== undefined ? String(summary).trim() : null,
         codeSample: codeSample !== undefined ? String(codeSample).trim() : null,
         relatedLink: relatedLink !== undefined ? String(relatedLink).trim() : null,
-        helpfulCount:
-          helpfulCount !== undefined ? Number(helpfulCount) || 0 : 0,
+        visibility: visibility || "PUBLIC",
         isPublished: isPublished || false,
         sortOrder: sortOrder || 0,
         authorId: userId,
@@ -285,7 +365,7 @@ export async function POST(request: NextRequest) {
       console.warn("[文档历史快照] 记录初始创建版本非阻断提示:", err);
     });
 
-    await writeAuditLog(userId, "document:create", { id: document.id, title: document.title, category: document.category }, null, null, request);
+    await writeAuditLog(userId, "document:create", { id: document.id, title: document.title, category: document.category, visibility: document.visibility }, null, null, request);
 
     return NextResponse.json({ success: true, data: document });
   } catch (error) {
@@ -325,7 +405,7 @@ export async function PATCH(request: NextRequest) {
       summary,
       codeSample,
       relatedLink,
-      helpfulCount,
+      visibility,
     } = body;
 
     const current = await prisma.systemdocument.findUnique({
@@ -398,7 +478,7 @@ export async function PATCH(request: NextRequest) {
         ...(summary !== undefined && { summary: String(summary).trim() || null }),
         ...(codeSample !== undefined && { codeSample: String(codeSample).trim() || null }),
         ...(relatedLink !== undefined && { relatedLink: String(relatedLink).trim() || null }),
-        ...(helpfulCount !== undefined && { helpfulCount: Number(helpfulCount) || 0 }),
+        ...(visibility !== undefined && { visibility }),
         ...(isPublished !== undefined && { isPublished }),
         ...(sortOrder !== undefined && { sortOrder }),
         updatedAt: new Date(),
@@ -408,7 +488,7 @@ export async function PATCH(request: NextRequest) {
       },
     });
 
-    await writeAuditLog(userId, "document:update", { id: documentId, title: newTitle, category: newCategory }, null, null, request);
+    await writeAuditLog(userId, "document:update", { id: documentId, title: newTitle, category: newCategory, visibility: document.visibility }, null, null, request);
 
     return NextResponse.json({ success: true, data: document });
   } catch (error) {
@@ -439,7 +519,6 @@ export async function DELETE(request: NextRequest) {
 
     const targetDoc = await prisma.systemdocument.findUnique({
       where: { id: documentId },
-      select: { id: true, isPublished: true, title: true },
     });
 
     if (!targetDoc) {
@@ -453,9 +532,29 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    // 删除留痕：先写一份“删除前快照”到历史表（note 标注 + editorId）。
+    // 历史表外键已改为 ON DELETE SET NULL，删除主文档后该快照仍保留，可审计溯源。
+    await prisma.systemdocumenthistory.create({
+      data: {
+        documentId: targetDoc.id,
+        title: targetDoc.title,
+        content: targetDoc.content,
+        category: targetDoc.category,
+        tags: targetDoc.tags,
+        summary: targetDoc.summary,
+        codeSample: targetDoc.codeSample,
+        relatedLink: targetDoc.relatedLink,
+        helpfulCount: targetDoc.helpfulCount,
+        isPublished: targetDoc.isPublished,
+        sortOrder: targetDoc.sortOrder,
+        editorId: userId,
+        note: "删除前快照",
+      },
+    });
+
     await prisma.systemdocument.delete({ where: { id: documentId } });
 
-    await writeAuditLog(userId, "document:delete", { id: documentId, title: targetDoc.title }, null, null, request);
+    await writeAuditLog(userId, "document:delete", { id: documentId, title: targetDoc.title, category: targetDoc.category }, null, null, request);
 
     return NextResponse.json({ success: true, message: "文档已删除" });
   } catch (error) {

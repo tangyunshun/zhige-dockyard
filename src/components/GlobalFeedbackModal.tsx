@@ -121,10 +121,10 @@ export default function GlobalFeedbackModal() {
           setIsOpen(true);
         }}
         aria-label="提交官方工单"
-        className="fixed bottom-22 right-6 md:bottom-26 md:right-10 z-[89] px-4 h-11 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200/90 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-2 cursor-pointer font-extrabold text-xs hover:scale-105 active:scale-95"
+        className="fixed bottom-[136px] right-6 md:bottom-[152px] md:right-8 z-[89] px-4 h-11 bg-white hover:bg-indigo-50 text-indigo-700 border border-indigo-200/90 rounded-full shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center gap-2 cursor-pointer font-extrabold text-xs hover:scale-105 active:scale-95 whitespace-nowrap"
       >
-        <MessageSquare className="w-4 h-4 text-indigo-600" />
-        <span>提交官方工单</span>
+        <MessageSquare className="w-4 h-4 text-indigo-600 shrink-0" />
+        <span className="whitespace-nowrap">提交官方工单</span>
       </button>
 
       {/* 2. 全局工单持久化 Modal */}

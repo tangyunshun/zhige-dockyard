@@ -150,9 +150,10 @@ import {
 import { getDefaultCatalogComponentIds } from "@/lib/workspaceInit";
 import { BATCH_2C } from "@/lib/component-contract/catalog-contracts-c12-c15";
 
-// ── AI 需求润色（真实模型调用）──
-// 口径：润色是组件执行前的辅助工具，走与执行同一套空间模型策略（resolveDefaultDeployment，
-// 能力=TEXT_GENERATION），平台承担微额模型成本；因此必须硬性限频 + 全程留痕 + 输出封顶。
+// ── AI 需求润色（真实模型调用 + 按所用模型真实计费）──
+// 口径：润色走与执行同一套空间模型策略（resolveDefaultDeployment，能力=TEXT_GENERATION），
+// 按所用模型的真实计费规则扣算力点（与组件执行完全同口径，不再由平台白承担）；
+// 因此必须硬性限频 + 全程留痕 + 输出封顶，并在调用前先估算/扣点、模型失败时原路退款。
 const REFINE_PROMPT_SYSTEM = [
   "你是研发需求描述润色助手。把用户输入的需求草稿改写成一段清晰、具体、结构化的研发需求描述：",
   "1) 保留用户的原始意图与全部已知信息，绝不编造用户未提到的内容；",
@@ -426,13 +427,26 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
       });
 
       // 真实成功率映射（componentId → { total, success }）
+      //
+      // 【成功率计算准则（唯一口径，禁止另起炉灶）】
+      //   成功率 = 已终结任务中的成功占比 = SUCCESS / (SUCCESS + FAILED)
+      //   - 分母仅包含明确终态 SUCCESS / FAILED，真实反映组件执行成败；
+      //   - 排除 PENDING / RUNNING：任务尚未产生成败结论，计入分母会人为拉低成功率；
+      //     （僵尸 RUNNING 任务由回收流程转为 FAILED 后自动纳入统计）
+      //   - 排除 CANCELLED：用户主动中止，不属于组件执行质量失败，计入会低估组件能力；
+      //   - 状态统一转大写比较，兼容历史小写（如默认 "pending"）脏数据；
+      //   - 无任何终态任务时 total = 0，前端展示「暂无」，绝不臆造或兜底默认成功率。
+      const TERMINAL_STATUSES = new Set(["SUCCESS", "FAILED"]);
       const taskStatsMap = new Map<string, { total: number; success: number }>();
       taskStatsRows.forEach((row) => {
         const key = (row.type || "").trim().toUpperCase();
         if (!key) return;
+        const status = (row.status || "").trim().toUpperCase();
+        // 非终态（PENDING / RUNNING / CANCELLED 等）一律不参与成功率计算
+        if (!TERMINAL_STATUSES.has(status)) return;
         const cur = taskStatsMap.get(key) || { total: 0, success: 0 };
         cur.total += row._count._all;
-        if (row.status === "SUCCESS") cur.success += row._count._all;
+        if (status === "SUCCESS") cur.success += row._count._all;
         taskStatsMap.set(key, cur);
       });
 
@@ -1296,14 +1310,26 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
       const logicalRole = await getLogicalWorkspaceRole(userId, workspaceId);
       const canViewPending = logicalRole === "OWNER" || logicalRole === "ADMIN" || logicalRole === "KNOWLEDGE_MANAGER";
 
+      // KN-3：软删（status="deleted"）对所有人不可见；普通成员额外可见自己提交的待审/驳回条目（审核透明）
       const documents = await prisma.document.findMany({
         where: {
           workspaceId,
           type: "knowledge",
-          ...(canViewPending ? {} : { status: "active" }),
+          status: { not: "deleted" },
+          ...(canViewPending ? {} : { OR: [{ status: "active" }, { uploaderId: userId }] }),
         },
         orderBy: { createdAt: "desc" }
       });
+
+      // KN-2：知识分类（systemconfig 覆盖 + 默认清单），随列表一并下发
+      let knowledgeCategories: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const kcatCfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (kcatCfg?.value) {
+          const parsed = JSON.parse(kcatCfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) knowledgeCategories = parsed.map(String);
+        }
+      } catch (e) {}
 
       const auditLogs = await prisma.operationlog.findMany({
         where: {
@@ -1329,6 +1355,19 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           }
         }
       });
+
+      // KN-1：批量解析创建人姓名与空间内角色（真实查询，杜绝前端伪造）
+      const uploaderIds = Array.from(new Set(documents.map((d) => d.uploaderId).filter((id): id is string => !!id)));
+      const uploaderUsers = uploaderIds.length
+        ? await prisma.user.findMany({ where: { id: { in: uploaderIds } }, select: { id: true, name: true, email: true } })
+        : [];
+      const uploaderNameMap = new Map<string, string>(
+        uploaderUsers.map((u) => [u.id, u.name || u.email || "未知用户"]),
+      );
+      const uploaderMembers = uploaderIds.length
+        ? await prisma.workspacemember.findMany({ where: { workspaceId, userId: { in: uploaderIds } }, select: { userId: true, role: true } })
+        : [];
+      const uploaderRoleMap = new Map<string, string>(uploaderMembers.map((m) => [m.userId, m.role]));
 
       // 批量拉取来源任务与组件目录，避免 N+1 查询
       const parentIds = documents.map(d => d.parentId).filter((id): id is string => !!id);
@@ -1370,15 +1409,43 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
           componentId,
           componentName: catalog?.name || "",
           componentCategory: catalog?.category || "",
-          status: d.status === "active" ? "APPROVED" : d.status === "rejected" ? "REJECTED" : "PENDING",
+          category: (d as any).category || "",
+          status: d.status === "active" ? "APPROVED" : d.status === "rejected" ? "REJECTED" : d.status === "deleted" ? "DELETED" : "PENDING",
           createdAt: d.createdAt,
           content: d.content,
           reviewComment: resolvedReviewComment,
+          // KN-1：作者身份真实化（真实创建人 + 其在空间内的角色）
+          uploaderId: d.uploaderId || null,
+          uploaderName: uploaderNameMap.get(d.uploaderId || "") || "早期成员",
+          uploaderRole: uploaderRoleMap.get(d.uploaderId || "") || null,
+          tags: Array.isArray((d as any).tags) ? ((d as any).tags as string[]) : [],
         };
       });
 
-      return NextResponse.json({ success: true, data });
+      // KN-ATT：批量拉取知识条目的附件（parentId 指向知识条目的 document 记录）
+      const kEntryIds = documents.map((d) => d.id);
+      const kAttachments = kEntryIds.length
+        ? await prisma.document.findMany({
+            where: { parentId: { in: kEntryIds }, type: "knowledge", status: { not: "deleted" }, filePath: { not: null } },
+            select: { id: true, parentId: true, title: true, originalName: true, fileSize: true, mimeType: true },
+          })
+        : [];
+      const attachMap: Record<string, Array<{ id: string; title: string; originalName: string; fileSize: number | null; mimeType: string | null }>> = {};
+      kAttachments.forEach((a) => {
+        const pid = a.parentId || "";
+        if (!attachMap[pid]) attachMap[pid] = [];
+        attachMap[pid].push({ id: a.id, title: a.title, originalName: a.originalName || a.title, fileSize: a.fileSize, mimeType: a.mimeType });
+      });
+      const dataWithAttachments = data.map((d: any) => ({
+        ...d,
+        attachments: attachMap[d.id] || [],
+      }));
+
+      // KN-CAT-V2：随列表一并下发当前用户的个人分类（仅创建人可见）
+      const myCats = await prisma.knowledgecategory.findMany({ where: { creatorId: userId }, orderBy: { createdAt: "asc" } });
+      return NextResponse.json({ success: true, data: dataWithAttachments, categories: knowledgeCategories, myCategories: myCats.map((c) => c.name) });
     }
+
 
     // ===== 拉取空间审计与操作日志列表 =====
     if (action === "logs" || action === "operation_logs") {
@@ -1719,6 +1786,8 @@ function buildRunningTaskConfig(params: {
   materialSummary: string;
   inputSource: unknown;
   deploymentId?: string;
+  /** 知识引用标题：仅用于结果页展示，内容本身走标准 text 通道 */
+  refKnowledgeTitle?: string;
 }): Record<string, unknown> {
   const now = new Date();
   return {
@@ -1732,6 +1801,8 @@ function buildRunningTaskConfig(params: {
     inputSource: params.inputSource as unknown as Prisma.InputJsonValue,
     materialSummary: params.materialSummary,
     ...(params.deploymentId ? { deploymentId: params.deploymentId } : {}),
+    // 知识引用带入执行：仅透传标题用于结果页展示，不写入正文、不影响计费/权限/熔断
+    ...(params.refKnowledgeTitle ? { refKnowledgeTitle: params.refKnowledgeTitle } : {}),
     // 严禁写入原始 Prompt / API Key / 供应商响应 / 异常堆栈 / 原始 inputMaterial
   };
 }
@@ -1985,7 +2056,7 @@ async function safeRefundOnFailure(
 
 // RUNNING 僵尸任务恢复：超过 executionLeaseUntil 的 RUNNING 任务必须进入 FAILED；
 // 若账务存在 CONSUME，则登记退款恢复（幂等键 CONSUME:${taskId}），不得留下永久 RUNNING 僵尸任务。
-async function recoverZombieRunningTasks(
+export async function recoverZombieRunningTasks(
   prisma: typeof import("@/lib/prisma").prisma,
   deps: { enqueueRefundRecovery: typeof enqueueRefundRecovery },
 ): Promise<number> {
@@ -2243,17 +2314,18 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
     }
 
     // ── AI 需求润色（真实模型调用 + 按所用模型计费规则真实扣算力点）──
+    // ── AI 需求润色（真实模型调用 + 按所用模型计费规则真实扣算力点）──
     if (action === "refine-prompt") {
       const rawText = typeof body.text === "string" ? body.text.trim() : "";
       if (rawText.length < 5 || rawText.length > 2000) {
         return NextResponse.json({ success: false, error: "请输入 5~2000 字的需求描述后再润色" }, { status: 400 });
       }
-      // 平台承担成本的能力必须设防
+      // 限频：每人每分钟 3 次（进程内滑动窗口）
       if (!allowRefinePrompt(userId)) {
         return NextResponse.json({ success: false, error: "润色请求过于频繁，请稍后再试（每人每分钟 3 次）" }, { status: 429 });
       }
       try {
-        // 模型解析链：个人空间默认 → 名下企业空间(所有者)默认 → 无则报错
+        // 模型解析链：个人空间默认 → 名下企业空间(所有者)默认 → 无则 NO_MODEL_AVAILABLE
         // （润色是用户级能力，不再按当前浏览的组件大厅解析；前端可指定模型，未指定/auto 走默认链）
         const requestedDeploymentId = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
         const { plan, workspaceId: billingWsId } = await resolvePolishModelPlan(userId, {
@@ -2265,92 +2337,151 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         });
         await checkAndResetQuotaCycle(prisma, billingWsId, userId);
 
+        // 调用前估算点数：输入 = 系统提示词 + 用户文本 token，输出 = maxOutputTokens(800)
+        const isByok = resolvePricingSource(plan.deploymentId) === "USER_BYOK";
+        const inputTokens = estimateCombinedTokenCount(REFINE_PROMPT_SYSTEM, rawText);
+        let points = 0;
+        if (!isByok) {
+          const est = await estimatePoints({
+            modelDeploymentId: plan.deploymentId,
+            inputTokens,
+            outputTokens: 800,
+            pricingSource: resolvePricingSource(plan.deploymentId),
+            estimateSource: "REFINE_PROMPT",
+          });
+          points = est.points ?? 0;
+          if (!points || points <= 0) {
+            return NextResponse.json(
+              { success: false, error: "该模型暂无可用的计费规则，润色功能暂无法使用" },
+              { status: 400 },
+            );
+          }
+        }
+
+        // 扣点（BYO 不扣平台算力点）；模型调用失败时按原路全额退回
+        const taskId = crypto.randomUUID();
+        const idempotencyKey = `refine:${userId}:${Date.now()}`;
+        let consumeResult: ConsumeResult | null = null;
+        if (!isByok) {
+          try {
+            consumeResult = await consumePoints({
+              workspaceId: billingWsId,
+              userId,
+              points,
+              taskId,
+              workspaceType: billingWs?.type || null,
+              workspaceName: billingWs?.name || null,
+              componentName: "AI 需求润色",
+              idempotencyKey,
+            });
+          } catch (consumeErr) {
+            if (consumeErr instanceof InsufficientPointsError) {
+              return NextResponse.json({ success: false, error: "算力点余额不足，无法完成润色" }, { status: 402 });
+            }
+            throw consumeErr;
+          }
+        }
+
+        // 调用模型
         const refineAdapter = await createModelAdapter(plan);
-        const modelResult = await refineAdapter.execute({
-          providerId: refineAdapter.providerId,
-          modelId: refineAdapter.modelId,
-          systemPrompt: REFINE_PROMPT_SYSTEM,
-          userPrompt: rawText,
-          temperature: 0.4,
-          maxOutputTokens: 800,
-        });
+        let modelResult: Awaited<ReturnType<typeof refineAdapter.execute>>;
+        try {
+          modelResult = await refineAdapter.execute({
+            providerId: refineAdapter.providerId,
+            modelId: refineAdapter.modelId,
+            systemPrompt: REFINE_PROMPT_SYSTEM,
+            userPrompt: rawText,
+            temperature: 0.4,
+            maxOutputTokens: 800,
+          });
+        } catch (execErr) {
+          // 模型调用失败 → 全额原路退回（BYO 未扣点则无需退）
+          if (consumeResult) {
+            await refundConsumedPoints({
+              consumeResult,
+              userId,
+              workspaceId: billingWsId,
+              taskId,
+              componentName: "AI 需求润色",
+            }).catch((refundErr) => console.warn("[refine-prompt] 退款失败（已落库待恢复）:", refundErr));
+          }
+          const isContract = execErr instanceof ContractValidationError;
+          const failCode = isContract
+            ? (execErr as { code?: string }).code
+            : execErr instanceof ModelAdapterError
+              ? execErr.code
+              : "MODEL_UPSTREAM_ERROR";
+          const failMsg = isContract
+            ? (execErr as { message?: string }).message
+            : execErr instanceof ModelAdapterError
+              ? execErr.message
+              : "模型服务调用失败，请稍后重试";
+          const status = isContract ? ((execErr as { status?: number }).status || 403) : 502;
+          console.warn("[refine-prompt] 润色失败:", failCode, failMsg);
+          return NextResponse.json({ success: false, error: `润色失败（${failCode}）：${failMsg}` }, { status });
+        }
+
         const refined = (modelResult.text || "").trim();
         if (!refined) {
+          if (consumeResult) {
+            await refundConsumedPoints({
+              consumeResult,
+              userId,
+              workspaceId: billingWsId,
+              taskId,
+              componentName: "AI 需求润色",
+            }).catch(() => undefined);
+          }
           return NextResponse.json({ success: false, error: "模型未返回润色结果，请稍后重试" }, { status: 502 });
         }
 
-        // 按所用模型的计费规则真实换算扣点数（不再由平台白承担）
-        const usage = (modelResult.usage || {}) as { inputTokens?: number; outputTokens?: number; totalTokens?: number };
-        const est = await estimatePoints({
-          modelDeploymentId: plan.deploymentId,
-          inputTokens: typeof usage.inputTokens === "number" ? usage.inputTokens : 0,
-          outputTokens: typeof usage.outputTokens === "number" ? usage.outputTokens : 0,
-          pricingSource: resolvePricingSource(plan.deploymentId),
-          estimateSource: "REFINE_PROMPT",
-        });
-        const points = est.points ?? 0;
-        if (!points || points <= 0) {
-          return NextResponse.json(
-            { success: false, error: "该模型暂无可用的计费规则，润色功能暂无法使用" },
-            { status: 400 },
-          );
-        }
-
-        const taskId = crypto.randomUUID();
-        let consumeResult;
-        try {
-          consumeResult = await consumePoints({
+        // 全程留痕（非阻断式）：模型、归属空间、消耗点数、BYO 标记
+        const pointsConsumed = isByok ? 0 : points;
+        await writeAuditLog(
+          userId,
+          "studio:refine_prompt",
+          {
             workspaceId: billingWsId,
-            userId,
-            points,
+            billingWorkspaceId: billingWsId,
+            viewingWorkspaceId: (typeof workspaceId === "string" && workspaceId) || null,
+            model: `${refineAdapter.providerId}/${refineAdapter.modelId}`,
+            modelDeploymentId: plan.deploymentId,
+            inputChars: rawText.length,
+            outputChars: refined.length,
+            inputTokens,
+            outputTokens: 800,
+            tokens: modelResult.usage ?? null,
+            costPoints: pointsConsumed,
+            pointsConsumed,
+            byok: isByok,
             taskId,
-            workspaceType: billingWs?.type || null,
-            workspaceName: billingWs?.name || null,
-            idempotencyKey: `REFINE:${taskId}`,
-          });
-        } catch (consumeErr) {
-          if (consumeErr instanceof InsufficientPointsError) {
-            return NextResponse.json({ success: false, error: "算力点余额不足，无法完成润色" }, { status: 402 });
-          }
-          throw consumeErr;
-        }
-
-        // 全程留痕（非阻断式）：谁、用哪个模型、扣了多少、多少字
-        await writeAuditLog(userId, "studio:refine_prompt", {
-          workspaceId: billingWsId,
-          viewingWorkspaceId: workspaceId || null,
-          model: `${refineAdapter.providerId}/${refineAdapter.modelId}`,
-          inputChars: rawText.length,
-          outputChars: refined.length,
-          tokens: modelResult.usage ?? null,
-          costPoints: points,
-          taskId,
-        }, billingWsId).catch((e) => console.warn("[refine-prompt] 审计日志写入失败:", e));
+          },
+          billingWsId,
+        ).catch((e) => console.warn("[refine-prompt] 审计日志写入失败:", e));
 
         return NextResponse.json({
           success: true,
           data: {
             text: refined,
             model: `${refineAdapter.providerId}/${refineAdapter.modelId}`,
-            costPoints: points,
+            costPoints: pointsConsumed,
+            pointsConsumed,
+            byok: isByok,
             latencyMs: modelResult.latencyMs ?? null,
           },
         });
       } catch (e) {
-        const isContract = e instanceof ContractValidationError;
-        const failCode = isContract
-          ? (e as { code?: string }).code
-          : e instanceof ModelAdapterError
-            ? e.code
-            : "MODEL_UPSTREAM_ERROR";
-        const failMsg = isContract
-          ? (e as { message?: string }).message
-          : e instanceof ModelAdapterError
-            ? e.message
-            : "模型服务调用失败，请稍后重试";
-        const status = isContract ? ((e as { status?: number }).status || 403) : 502;
-        console.warn("[refine-prompt] 润色失败:", failCode, failMsg);
-        return NextResponse.json({ success: false, error: `润色失败（${failCode}）：${failMsg}` }, { status });
+        // 解析链无可用模型等 ContractValidationError（含 NO_MODEL_AVAILABLE）
+        if (e instanceof ContractValidationError) {
+          const code = (e as { code?: string }).code || "NO_MODEL_AVAILABLE";
+          const message =
+            (e as { message?: string }).message ||
+            "您的空间尚未配置可用模型，润色功能暂无法使用。请在空间设置中配置默认模型，或联系企业管理员";
+          const status = (e as { status?: number }).status || 403;
+          return NextResponse.json({ success: false, error: message, code }, { status });
+        }
+        console.warn("[refine-prompt] 未预期错误:", e);
+        return NextResponse.json({ success: false, error: "润色服务暂不可用，请稍后重试" }, { status: 500 });
       }
     }
 
@@ -2846,6 +2977,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         // 任务名称与输入材料来自请求体，但执行状态与产出结果一律由服务端判定
         const taskName = body.taskName;
         const rawInputMaterial = typeof body.inputMaterial === "string" ? body.inputMaterial : "";
+        // 知识引用标题：仅用于结果页展示，内容本身走标准 text 通道（长度封顶防滥用）
+        const refKnowledgeTitle = typeof body.refKnowledgeTitle === "string" ? body.refKnowledgeTitle.slice(0, 200).trim() : "";
 
         // 输入清洗：阻止二进制乱码（如 PDF 被 readAsText 读出的 %PDF-1.7...）进入数据库
         const inputMaterial = sanitizeTextContent(rawInputMaterial);
@@ -3373,6 +3506,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             executionMode,
             materialSummary,
             inputSource: storedInputSource,
+            refKnowledgeTitle: refKnowledgeTitle || undefined,
             ...(isAuto ? {} : { deploymentId: rawTarget }),
           });
           // 并发任务数上限校验（会员等级 vs 空间套餐，就高不就低）
@@ -5769,14 +5903,549 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       });
     }
 
+    // KB-2：解析并净化知识标签（字符串数组；每个 trim 后 1~20 字，最多 5 个，去重）
+    const parseKnowledgeTags = (input: unknown): string[] => {
+      if (!Array.isArray(input)) return [];
+      const out: string[] = [];
+      for (const t of input) {
+        if (typeof t !== "string") continue;
+        const s = t.trim();
+        if (!s || s.length > 20) continue; // 1~20 字
+        if (out.includes(s)) continue; // 去重
+        if (out.length >= 5) break; // 最多 5 个
+        out.push(s);
+      }
+      return out;
+    };
+
+    // ===== KN-2：编辑知识条目（创建人或空间 OWNER/ADMIN；写审计留痕） =====
+    // KN-CAT-V2：分类合法性校验辅助——允许 = 系统内置 ∪ 本人个人分类 ∪ 未分类/空
+    const resolveAllowedCategories = async (uid: string): Promise<string[]> => {
+      let sysCats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) sysCats = parsed.map(String);
+        }
+      } catch (e) {}
+      const mine = await prisma.knowledgecategory.findMany({ where: { creatorId: uid } });
+      return Array.from(new Set([...sysCats, ...mine.map((c) => c.name), "未分类"]));
+    };
+
+    if (action === "update_knowledge") {
+      const { knowledgeId, title: kTitle, content: kContent, category: kCategory, tags: kTags } = body;
+      if (!knowledgeId || !kTitle) {
+        return NextResponse.json({ success: false, error: "缺少知识条目 ID 或标题" }, { status: 400 });
+      }
+      const kDoc = await prisma.document.findUnique({ where: { id: knowledgeId } });
+      if (!kDoc || kDoc.status === "deleted") {
+        return NextResponse.json({ success: false, error: "知识条目不存在" }, { status: 404 });
+      }
+      if (kDoc.type !== "knowledge") {
+        return NextResponse.json({ success: false, error: "仅知识条目支持此编辑操作" }, { status: 400 });
+      }
+      // 权限：创建人本人，或空间 OWNER/ADMIN
+      const kRole = await getLogicalWorkspaceRole(userId, kDoc.workspaceId);
+      const isCreator = kDoc.uploaderId === userId;
+      if (!isCreator && kRole !== "OWNER" && kRole !== "ADMIN") {
+        return NextResponse.json({ success: false, error: "仅条目创建人或空间管理员可编辑" }, { status: 403 });
+      }
+      const reqUpdCategory = typeof kCategory === "string" ? kCategory.trim().slice(0, 30) : "";
+      if (reqUpdCategory && reqUpdCategory !== "未分类") {
+        const allowedCats = await resolveAllowedCategories(userId);
+        const existingCat = (kDoc as any).category || "";
+        // 放行条目现有分类：成员编辑他人条目时该分类可能不在其可见列表，但保持原值不变是合法操作
+        if (!allowedCats.includes(reqUpdCategory) && reqUpdCategory !== existingCat) {
+          return NextResponse.json({ success: false, error: "分类不存在或无权使用该分类" }, { status: 400 });
+        }
+      }
+      await prisma.document.update({
+        where: { id: knowledgeId },
+        data: {
+          title: String(kTitle).trim(),
+          content: typeof kContent === "string" ? kContent : kDoc.content,
+          category: reqUpdCategory || ((kDoc as any).category ?? null),
+          tags: parseKnowledgeTags(kTags),
+          updatedAt: new Date(),
+        },
+      });
+      // 审计留痕
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId: kDoc.workspaceId,
+          action: "KNOWLEDGE_UPDATE",
+          resource: "DOCUMENT",
+          details: { knowledgeId, title: String(kTitle).trim() },
+        },
+      }).catch(() => {});
+      return NextResponse.json({ success: true, message: "知识条目已更新" });
+    }
+
+    // ===== KN-3：恢复软删的知识条目（空间 OWNER/ADMIN） =====
+    if (action === "restore_knowledge") {
+      const { knowledgeId } = body;
+      if (!knowledgeId) {
+        return NextResponse.json({ success: false, error: "缺少知识条目 ID" }, { status: 400 });
+      }
+      const kDoc = await prisma.document.findUnique({ where: { id: knowledgeId } });
+      if (!kDoc) {
+        return NextResponse.json({ success: false, error: "知识条目不存在" }, { status: 404 });
+      }
+      const rRole = await getLogicalWorkspaceRole(userId, kDoc.workspaceId);
+      if (rRole !== "OWNER" && rRole !== "ADMIN") {
+        return NextResponse.json({ success: false, error: "仅空间管理员可恢复已删除条目" }, { status: 403 });
+      }
+      await prisma.document.update({ where: { id: knowledgeId }, data: { status: "active" } });
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId: kDoc.workspaceId,
+          action: "KNOWLEDGE_RESTORE",
+          resource: "DOCUMENT",
+          details: { knowledgeId, title: kDoc.title },
+        },
+      }).catch(() => {});
+      return NextResponse.json({ success: true, message: "知识条目已恢复" });
+    }
+
+    // ===== KN-CAT：知识分类管理（管理员增删分类，存 systemconfig） =====
+    if (action === "get_knowledge_categories") {
+      let cats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) cats = parsed.map(String);
+        }
+      } catch (e) {}
+      const myCats = await prisma.knowledgecategory.findMany({ where: { creatorId: userId }, orderBy: { createdAt: "asc" } });
+      return NextResponse.json({ success: true, data: cats, myCategories: myCats.map((c) => c.name) });
+    }
+
+    if (action === "add_knowledge_category") {
+      const { categoryName } = body;
+      const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+      if (!trimmed || trimmed.length > 30) {
+        return NextResponse.json({ success: false, error: "分类名须为 1~30 字" }, { status: 400 });
+      }
+      // KN-CAT-V3：系统内置分类仅平台管理员可增删（与 remove 口径一致，空间 OWNER/普通用户不可删改）
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isAdmin = ["super_admin", "superadmin", "admin"].includes((user?.role || "").toLowerCase());
+      if (!isAdmin) {
+        return NextResponse.json({ success: false, error: "仅管理员可管理知识分类" }, { status: 403 });
+      }
+      let cats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) cats = parsed.map(String);
+        }
+      } catch (e) {}
+      if (cats.includes(trimmed)) {
+        return NextResponse.json({ success: false, error: "该分类已存在" }, { status: 409 });
+      }
+      // KN-CAT-V2：与用户个人分类查重（全局唯一）
+      const dupPersonal = await prisma.knowledgecategory.findUnique({ where: { name: trimmed } });
+      if (dupPersonal) {
+        return NextResponse.json({ success: false, error: "该名称已被用户自建分类占用" }, { status: 409 });
+      }
+      cats.push(trimmed);
+      await prisma.systemconfig.upsert({
+        where: { key: "knowledge_categories" },
+        create: { key: "knowledge_categories", value: JSON.stringify(cats) },
+        update: { value: JSON.stringify(cats) },
+      });
+      return NextResponse.json({ success: true, data: cats, message: `已添加分类「${trimmed}」` });
+    }
+
+    if (action === "remove_knowledge_category") {
+      const { categoryName } = body;
+      const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+      if (!trimmed) {
+        return NextResponse.json({ success: false, error: "缺少分类名" }, { status: 400 });
+      }
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isAdmin = ["super_admin", "superadmin", "admin"].includes((user?.role || "").toLowerCase());
+      if (!isAdmin) {
+        return NextResponse.json({ success: false, error: "仅管理员可管理知识分类" }, { status: 403 });
+      }
+      let cats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) cats = parsed.map(String);
+        }
+      } catch (e) {}
+      if (cats.length <= 1) {
+        return NextResponse.json({ success: false, error: "至少保留一个分类" }, { status: 400 });
+      }
+      // KN-CAT：分类下仍有知识条目时禁止删除，须先「移动」或「删除」这些知识
+      const inUseCount = await prisma.document.count({
+        where: { type: "knowledge", status: { not: "deleted" }, category: trimmed },
+      });
+      if (inUseCount > 0) {
+        return NextResponse.json({
+          success: false,
+          error: `该分类下还有 ${inUseCount} 篇知识，请先「移动」或「删除」这些知识后再删除分类`,
+        }, { status: 400 });
+      }
+      const filtered = cats.filter((c) => c !== trimmed);
+      if (filtered.length === cats.length) {
+        return NextResponse.json({ success: false, error: "该分类不存在" }, { status: 404 });
+      }
+      await prisma.systemconfig.upsert({
+        where: { key: "knowledge_categories" },
+        create: { key: "knowledge_categories", value: JSON.stringify(filtered) },
+        update: { value: JSON.stringify(filtered) },
+      });
+      return NextResponse.json({ success: true, data: filtered, message: `已删除分类「${trimmed}」` });
+    }
+
+    // ===== KN-CAT-V5：系统内置分类重命名（管理员；分类下条目自动迁移到新名称） =====
+    if (action === "rename_knowledge_category") {
+      const { oldName, newName } = body;
+      const oldTrim = typeof oldName === "string" ? oldName.trim() : "";
+      const newTrim = typeof newName === "string" ? newName.trim() : "";
+      if (!oldTrim || !newTrim) {
+        return NextResponse.json({ success: false, error: "缺少原分类名或新分类名" }, { status: 400 });
+      }
+      if (newTrim.length > 30) {
+        return NextResponse.json({ success: false, error: "分类名须为 1~30 字" }, { status: 400 });
+      }
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isAdmin = ["super_admin", "superadmin", "admin"].includes((user?.role || "").toLowerCase());
+      if (!isAdmin) {
+        return NextResponse.json({ success: false, error: "仅管理员可管理系统分类" }, { status: 403 });
+      }
+      if (oldTrim === newTrim) {
+        return NextResponse.json({ success: true, message: "名称未变化" });
+      }
+      let cats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) cats = parsed.map(String);
+        }
+      } catch (e) {}
+      if (!cats.includes(oldTrim)) {
+        return NextResponse.json({ success: false, error: "原分类不存在" }, { status: 404 });
+      }
+      // 查重：新名称不得与系统分类或任何个人分类重名
+      if (cats.includes(newTrim) || newTrim === "未分类") {
+        return NextResponse.json({ success: false, error: "新名称与现有分类重名或为保留名" }, { status: 409 });
+      }
+      const dupPersonal = await prisma.knowledgecategory.findUnique({ where: { name: newTrim } });
+      if (dupPersonal) {
+        return NextResponse.json({ success: false, error: "该名称已被用户自建分类占用" }, { status: 409 });
+      }
+      // 条目迁移：旧名 → 新名（含待审/驳回/软删外的全部未删条目）
+      const migrated = await prisma.document.updateMany({
+        where: { type: "knowledge", status: { not: "deleted" }, category: oldTrim },
+        data: { category: newTrim },
+      });
+      const nextCats = cats.map((c) => (c === oldTrim ? newTrim : c));
+      await prisma.systemconfig.upsert({
+        where: { key: "knowledge_categories" },
+        create: { key: "knowledge_categories", value: JSON.stringify(nextCats) },
+        update: { value: JSON.stringify(nextCats) },
+      });
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId: "",
+          action: "KNOWLEDGE_CATEGORY_RENAME",
+          resource: "SYSTEMCONFIG",
+          details: { oldName: oldTrim, newName: newTrim, movedEntries: migrated.count },
+        },
+      }).catch(() => {});
+      return NextResponse.json({
+        success: true,
+        data: nextCats,
+        message: migrated.count > 0 ? `已重命名为「${newTrim}」，${migrated.count} 篇知识已同步迁移` : `已重命名为「${newTrim}」`,
+      });
+    }
+
+    // ===== KN-CAT-V5：系统内置分类批量删除（管理员；逐个检测条目，有条目者跳过并报告） =====
+    if (action === "batch_remove_knowledge_categories") {
+      const { names } = body;
+      if (!Array.isArray(names) || names.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少待删除分类列表" }, { status: 400 });
+      }
+      const user = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } });
+      const isAdmin = ["super_admin", "superadmin", "admin"].includes((user?.role || "").toLowerCase());
+      if (!isAdmin) {
+        return NextResponse.json({ success: false, error: "仅管理员可管理系统分类" }, { status: 403 });
+      }
+      let cats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) cats = parsed.map(String);
+        }
+      } catch (e) {}
+      const results: Array<{ name: string; success: boolean; error?: string }> = [];
+      const removed: string[] = [];
+      for (const raw of names) {
+        const name = typeof raw === "string" ? raw.trim() : "";
+        if (!name) continue;
+        if (!cats.includes(name)) {
+          results.push({ name, success: false, error: "分类不存在" });
+          continue;
+        }
+        // 限制条件：分类下仍有未删除知识条目 → 拒绝删除
+        const inUseCount = await prisma.document.count({
+          where: { type: "knowledge", status: { not: "deleted" }, category: name },
+        });
+        if (inUseCount > 0) {
+          results.push({ name, success: false, error: `该分类下还有 ${inUseCount} 篇知识，须先移动后再删除` });
+          continue;
+        }
+        // 至少保留一个系统分类
+        if (cats.length - removed.length <= 1) {
+          results.push({ name, success: false, error: "至少保留一个系统分类" });
+          continue;
+        }
+        removed.push(name);
+        results.push({ name, success: true });
+      }
+      if (removed.length > 0) {
+        const filtered = cats.filter((c) => !removed.includes(c));
+        await prisma.systemconfig.upsert({
+          where: { key: "knowledge_categories" },
+          create: { key: "knowledge_categories", value: JSON.stringify(filtered) },
+          update: { value: JSON.stringify(filtered) },
+        });
+        await prisma.operationlog.create({
+          data: {
+            id: crypto.randomUUID(),
+            userId,
+            workspaceId: "",
+            action: "KNOWLEDGE_CATEGORY_BATCH_DELETE",
+            resource: "SYSTEMCONFIG",
+            details: { names: removed },
+          },
+        }).catch(() => {});
+      }
+      const failCount = results.filter((r) => !r.success).length;
+      return NextResponse.json({
+        success: true,
+        data: results,
+        message: `批量删除完成：成功 ${results.length - failCount} 个${failCount > 0 ? `，失败 ${failCount} 个（分类下仍有知识或保留名限制）` : ""}`,
+      });
+    }
+
+    // ===== KN-CAT-V2：普通用户自建个人分类（仅创建人可见、可自删；name 全局唯一防歧义） =====
+    if (action === "create_my_knowledge_category") {
+      const { categoryName } = body;
+      const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+      if (!trimmed || trimmed.length > 30) {
+        return NextResponse.json({ success: false, error: "分类名须为 1~30 字" }, { status: 400 });
+      }
+      if (trimmed === "未分类") {
+        return NextResponse.json({ success: false, error: "「未分类」为保留名称，不能创建" }, { status: 400 });
+      }
+      // 与系统内置分类查重
+      let sysCats: string[] = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
+      try {
+        const cfg = await prisma.systemconfig.findUnique({ where: { key: "knowledge_categories" } });
+        if (cfg?.value) {
+          const parsed = JSON.parse(cfg.value);
+          if (Array.isArray(parsed) && parsed.length > 0) sysCats = parsed.map(String);
+        }
+      } catch (e) {}
+      if (sysCats.includes(trimmed)) {
+        return NextResponse.json({ success: false, error: "与系统内置分类重名，请换一个名称" }, { status: 409 });
+      }
+      // 与所有用户的个人分类查重（全局唯一，避免 document.category 字符串归属歧义）
+      const dupMine = await prisma.knowledgecategory.findUnique({ where: { name: trimmed } });
+      if (dupMine) {
+        return NextResponse.json({
+          success: false,
+          error: dupMine.creatorId === userId ? "你已创建过同名分类" : "该分类名已被其他用户占用，请换一个名称",
+        }, { status: 409 });
+      }
+      await prisma.knowledgecategory.create({
+        data: { id: crypto.randomUUID(), name: trimmed, creatorId: userId },
+      });
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId: workspaceId || "",
+          action: "KNOWLEDGE_CATEGORY_CREATE",
+          resource: "SYSTEMCONFIG",
+          details: { name: trimmed, scope: "personal" },
+        },
+      }).catch(() => {});
+      const mine = await prisma.knowledgecategory.findMany({ where: { creatorId: userId }, orderBy: { createdAt: "asc" } });
+      return NextResponse.json({ success: true, data: mine.map((c) => c.name), message: `已创建分类「${trimmed}」（仅你自己可见）` });
+    }
+
+    if (action === "delete_my_knowledge_category") {
+      const { categoryName } = body;
+      const trimmed = typeof categoryName === "string" ? categoryName.trim() : "";
+      if (!trimmed) {
+        return NextResponse.json({ success: false, error: "缺少分类名" }, { status: 400 });
+      }
+      const cat = await prisma.knowledgecategory.findUnique({ where: { name: trimmed } });
+      if (!cat) {
+        return NextResponse.json({ success: false, error: "分类不存在" }, { status: 404 });
+      }
+      if (cat.creatorId !== userId) {
+        return NextResponse.json({ success: false, error: "仅分类创建人可删除个人分类" }, { status: 403 });
+      }
+      // 数据影响：挂在该分类下的知识条目自动回退「未分类」（分类名全局唯一，按名迁移无歧义）
+      const moved = await prisma.document.updateMany({
+        where: { type: "knowledge", status: { not: "deleted" }, category: trimmed },
+        data: { category: "未分类" },
+      });
+      await prisma.knowledgecategory.delete({ where: { name: trimmed } });
+      await prisma.operationlog.create({
+        data: {
+          id: crypto.randomUUID(),
+          userId,
+          workspaceId: workspaceId || "",
+          action: "KNOWLEDGE_CATEGORY_DELETE",
+          resource: "SYSTEMCONFIG",
+          details: { name: trimmed, scope: "personal", movedEntries: moved.count },
+        },
+      }).catch(() => {});
+      const mine = await prisma.knowledgecategory.findMany({ where: { creatorId: userId }, orderBy: { createdAt: "asc" } });
+      return NextResponse.json({
+        success: true,
+        data: mine.map((c) => c.name),
+        message: moved.count > 0 ? `已删除分类「${trimmed}」，${moved.count} 篇知识已归入「未分类」` : `已删除分类「${trimmed}」`,
+      });
+    }
     // 知识库沉淀：个人空间直接发布；企业空间 MEMBER/VIEWER 提交审核，管理角色直接发布
+    // ===== KN-ATT：知识条目附件上传（multipart，复用已有文件存储通道） =====
+
+    if (action === "upload_knowledge_attachment") {
+      if (!isMultipartRequest || uploadFiles.length === 0) {
+        return NextResponse.json({ success: false, error: "缺少附件文件" }, { status: 400 });
+      }
+      const attKnowledgeId = body.knowledgeId || searchParams.get("knowledgeId") || "";
+      const attWsId = body.workspaceId || searchParams.get("workspaceId") || "";
+      if (!attKnowledgeId || !attWsId) {
+        return NextResponse.json({ success: false, error: "缺少 knowledgeId 或 workspaceId" }, { status: 400 });
+      }
+      const parentEntry = await prisma.document.findUnique({ where: { id: attKnowledgeId } });
+      if (!parentEntry || parentEntry.type !== "knowledge" || parentEntry.status === "deleted") {
+        return NextResponse.json({ success: false, error: "知识条目不存在" }, { status: 404 });
+      }
+      const attRole = await getLogicalWorkspaceRole(userId, attWsId);
+      const attIsCreator = parentEntry.uploaderId === userId;
+      if (!attIsCreator && attRole !== "OWNER" && attRole !== "ADMIN") {
+        return NextResponse.json({ success: false, error: "仅条目创建人或空间管理员可上传附件" }, { status: 403 });
+      }
+      const attFile = uploadFiles[0];
+      if (attFile.size > 20 * 1024 * 1024) {
+        return NextResponse.json({ success: false, error: "附件大小不能超过 20MB" }, { status: 400 });
+      }
+      // KN-UI-ORDER：单个知识条目最多 5 个附件（与前端一致，防止 API 直调绕过）
+      const existingAttCount = await prisma.document.count({
+        where: { parentId: attKnowledgeId, status: { not: "deleted" }, filePath: { not: null } },
+      });
+      if (existingAttCount >= 5) {
+        return NextResponse.json({ success: false, error: "一个知识最多上传 5 个附件" }, { status: 400 });
+      }
+
+      // 文件类型白名单：允许常见文档/图片/压缩包/文本，拒绝可执行文件与脚本
+      const attExt = attFile.name.split(".").pop()?.toLowerCase() || "";
+      const ALLOWED_EXTS = new Set([
+        "pdf","doc","docx","xls","xlsx","ppt","pptx","csv","txt","md",
+        "png","jpg","jpeg","gif","svg","webp","bmp",
+        "zip","rar","7z","tar","gz",
+        "mp4","mp3","wav","json","xml","yaml","yml",
+      ]);
+      if (!ALLOWED_EXTS.has(attExt)) {
+        return NextResponse.json({ success: false, error: `不支持的附件格式 .${attExt}，请上传常见文档、图片或压缩包` }, { status: 400 });
+      }
+
+      const attBuffer = Buffer.from(await attFile.arrayBuffer());
+
+      // 存储配额校验 + 入账
+      try {
+        await assertStorageQuota(attWsId, attBuffer.length);
+      } catch (quotaErr) {
+        if (quotaErr instanceof StorageQuotaError) {
+          return NextResponse.json({ success: false, error: quotaErr.message }, { status: 403 });
+        }
+        throw quotaErr;
+      }
+
+      // 直接写盘到 uploads/assets/{wsId}/{uuid.ext}，与 readAssetFile 的路径解析一致
+      const fs = await import("fs/promises");
+      const path = await import("path");
+      const attFileName = crypto.randomUUID() + (attExt ? "." + attExt : "");
+      const attDir = path.join(process.cwd(), "uploads", "assets", attWsId);
+      await fs.mkdir(attDir, { recursive: true });
+      const attAbsPath = path.join(attDir, attFileName);
+      await fs.writeFile(attAbsPath, attBuffer);
+      const attRelPath = attWsId + "/" + attFileName;
+      await addStorageUsed(attWsId, attBuffer.length);
+      const attDoc = await prisma.document.create({
+        data: {
+          id: crypto.randomUUID(),
+          workspaceId: attWsId,
+          title: attFile.name,
+          content: null,
+          type: "knowledge",
+          status: parentEntry.status,
+          parentId: attKnowledgeId,
+          uploaderId: userId,
+          filePath: attRelPath,
+          originalName: attFile.name,
+          fileSize: attBuffer.length,
+          fileExt: attExt,
+          mimeType: attFile.type || "application/octet-stream",
+          visibility: "PUBLIC",
+          updatedAt: new Date(),
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        data: { id: attDoc.id, title: attDoc.originalName, fileSize: attDoc.fileSize },
+      });
+    }
+
     if (action === "save_knowledge") {
-      const { title, content, sourceTaskId, componentId } = body;
+      const { title, content, sourceTaskId, componentId, category, tags: rawTags } = body;
       if (!workspaceId || !title) {
         return NextResponse.json({
           success: false,
           error: "缺少必要的 workspaceId 或 title 参数"
         }, { status: 400 });
+      }
+
+      // KN-2：同空间同标题防重复（此前恒 create，重复提交会产生重复条目）
+      const dupKnowledge = await prisma.document.findFirst({
+        where: { workspaceId, type: "knowledge", title: String(title).trim(), status: { not: "deleted" } },
+        select: { id: true },
+      });
+      if (dupKnowledge) {
+        return NextResponse.json({
+          success: false,
+          error: "该空间已存在同名知识条目，请直接编辑原文或更换标题",
+        }, { status: 409 });
+      }
+
+      // KN-CAT-V2：分类合法性校验（仅允许系统内置/本人个人分类/未分类）
+      const reqCategory = typeof category === "string" ? category.trim().slice(0, 30) : "";
+      if (reqCategory && reqCategory !== "未分类") {
+        const allowedCats = await resolveAllowedCategories(userId);
+        if (!allowedCats.includes(reqCategory)) {
+          return NextResponse.json({ success: false, error: "分类不存在或无权使用该分类" }, { status: 400 });
+        }
       }
 
       // 空间归属强校验
@@ -5861,6 +6530,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           status: finalStatus,
           parentId: sourceTaskId || null,
           uploaderId: userId,
+          category: typeof category === "string" && category.trim() ? category.trim().slice(0, 30) : null,
+          tags: parseKnowledgeTags(rawTags),
           updatedAt: new Date()
         }
       });
@@ -6618,21 +7289,88 @@ export async function DELETE(request: NextRequest) {
     // 删除知识库文档记录 (支持 delete_knowledge 与 deleteDocument)
     if (action === "delete_knowledge" || action === "deleteDocument") {
       const documentId = searchParams.get("documentId") || searchParams.get("id");
-      const workspaceId = searchParams.get("workspaceId");
+      const reqWorkspaceId = searchParams.get("workspaceId");
 
       if (!documentId) {
         return NextResponse.json({ success: false, error: "缺少 documentId 参数" }, { status: 400 });
       }
 
-      if (workspaceId) {
-        const accessCheck = await checkWorkspaceAccess(userId, workspaceId);
-        if (accessCheck.error) {
-          return NextResponse.json({ success: false, error: accessCheck.error.message }, { status: accessCheck.error.status });
+      // 先查文档，校验归属与权限：严禁“凭 workspaceId 即放行删除任意文档”或“无 workspaceId 直接放行”
+      const targetDocFull = await prisma.document.findUnique({
+        where: { id: documentId },
+        select: { id: true, title: true, workspaceId: true, type: true, uploaderId: true, status: true },
+      });
+      if (!targetDocFull || targetDocFull.status === "deleted") {
+        return NextResponse.json({ success: false, error: "文档不存在或已被删除" }, { status: 404 });
+      }
+      const targetDoc = {
+        id: targetDocFull.id,
+        title: targetDocFull.title,
+        workspaceId: targetDocFull.workspaceId,
+      };
+
+      // KN-3：知识条目删除权限收紧——仅创建人本人或空间 OWNER/ADMIN
+      if (targetDocFull.type === "knowledge") {
+        const dRole = await getLogicalWorkspaceRole(userId, targetDocFull.workspaceId);
+        const isCreator = targetDocFull.uploaderId === userId;
+        if (!isCreator && dRole !== "OWNER" && dRole !== "ADMIN") {
+          return NextResponse.json(
+            { success: false, error: "仅条目创建人或空间管理员可删除该知识条目" },
+            { status: 403 },
+          );
         }
       }
 
-      await prisma.document.delete({
+      if (reqWorkspaceId) {
+        // 带 workspaceId：必须与该文档所属空间一致，否则越权
+        if (targetDoc.workspaceId !== reqWorkspaceId) {
+          return NextResponse.json(
+            { success: false, error: "该文档不属于此工作空间，无权删除" },
+            { status: 403 },
+          );
+        }
+        const accessCheck = await checkWorkspaceAccess(userId, reqWorkspaceId);
+        if (accessCheck.error) {
+          return NextResponse.json(
+            { success: false, error: accessCheck.error.message },
+            { status: accessCheck.error.status },
+          );
+        }
+      } else {
+        // 不带 workspaceId：校验请求者是否为该文档所属空间的成员（而非无条件放行）
+        if (!targetDoc.workspaceId) {
+          return NextResponse.json(
+            { success: false, error: "文档缺少空间归属，无法校验删除权限" },
+            { status: 403 },
+          );
+        }
+        const accessCheck = await checkWorkspaceAccess(userId, targetDoc.workspaceId);
+        if (accessCheck.error) {
+          return NextResponse.json(
+            { success: false, error: accessCheck.error.message },
+            { status: accessCheck.error.status },
+          );
+        }
+      }
+
+      // KN-3：软删除（status="deleted"），数据保留可由管理员恢复
+      await prisma.document.update({
         where: { id: documentId },
+        data: { status: "deleted" },
+      });
+
+      // 真实落操作日志：含文档 ID、标题、操作人，便于审计溯源
+      await prisma.operationlog.create({
+        data: {
+          id: `op_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          userId,
+          workspaceId: targetDoc.workspaceId || undefined,
+          action: "DOC_DELETE",
+          resource: "WORKSPACE_DOCUMENT",
+          details: { documentId: targetDoc.id, title: targetDoc.title },
+        },
+      }).catch((err) => {
+        console.warn("[文档删除] 操作日志非阻断提示:", err);
       });
 
       return NextResponse.json({ success: true, message: "知识记录已成功删除" });

@@ -120,7 +120,7 @@ describe("退款事实：chargeAttempted 三态", () => {
 });
 
 describe("serializeTaskDetailItem：真实详情安全 DTO 序列化行为", () => {
-  test("9. 白名单字段严格限制为 21 个，execution 严禁包含 artifacts/prompt/apiKey/堆栈", () => {
+  test("9. 白名单字段严格限制为 22 个，execution 严禁包含 artifacts/prompt/apiKey/堆栈", () => {
     const sampleTask = {
       id: "task-001",
       name: "测试任务",
@@ -154,7 +154,7 @@ describe("serializeTaskDetailItem：真实详情安全 DTO 序列化行为", () 
       "workspaceId", "execution", "contractVersion", "hasContractSnapshot",
       "contractView", "qualityHints", "refundStatus", "refundedPoints",
       "chargeAttempted", "errorCode", "errorMessage", "outputData",
-      "artifacts", "artifact", "hasArtifact",
+      "artifacts", "artifact", "hasArtifact", "refKnowledgeTitle",
     ];
 
     assert.deepEqual(Object.keys(dto).sort(), expectedKeys.sort(), "DTO 顶层字段必须与白名单严格一致");

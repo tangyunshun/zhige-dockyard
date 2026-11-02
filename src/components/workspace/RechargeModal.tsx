@@ -131,7 +131,7 @@ export default function RechargeModal(props: RechargeModalProps) {
     officialAccount,
   } = props;
 
-  const { toast } = useToast();
+  const toast = useToast();
   const copyText = (text: string, label: string) => {
     if (!text) return;
     navigator.clipboard?.writeText(text).then(

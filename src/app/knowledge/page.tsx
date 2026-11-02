@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { markdownToPlainText, exportDocumentAsMarkdown, exportDocumentAsWord } from "@/utils/document-export";
 import { useToast } from "@/components/Toast";
 import { getAuthToken, getCurrentUserId } from "@/utils/auth";
 import Pagination from "@/components/Pagination";
@@ -11,21 +12,20 @@ import {
   BookOpen as BookIcon, Plus as PlusIcon, Search as SearchIcon, RefreshCw as RefreshIcon,
   CheckCircle2 as CheckIcon, Clock as ClockIcon, Building2 as BuildingIcon,
   FileText as FileIcon, Eye as EyeIcon, X as XIcon, Inbox as InboxIcon,
-  Loader2 as LoaderIcon, ShieldCheck as ShieldIcon, ChevronRight as ArrowIcon,
-  Layers as LayersIcon, Landmark as LandmarkIcon, LibraryBig as ArchiveIcon,
-  Boxes as BoxesIcon, Copy as CopyIcon, Trash2 as TrashIcon, FolderOpen as FolderIcon,
-  Upload as UploadIcon, FileUp as FileUpIcon, Check as CheckmarkIcon,
+  Loader2 as LoaderIcon, ShieldCheck as ShieldIcon, Landmark as LandmarkIcon,
+  LibraryBig as ArchiveIcon,
+  Boxes as BoxesIcon, Copy as CopyIcon, Trash2 as TrashIcon, FolderOpen as FolderIcon, Calendar as CalendarIcon,
+  Check as CheckmarkIcon,
   LayoutGrid as GridIcon, List as ListIcon, UserCheck as UserCheckIcon,
-  Crown as CrownIcon, User as UserIcon, Paperclip as PaperclipIcon,
-  ChevronLeft as ChevronLeftIcon, ChevronRight as ChevronRightIcon,
-  AlertTriangle as AlertTriangleIcon
+  Crown as CrownIcon, User as UserIcon,
+  AlertTriangle as AlertTriangleIcon,
+  PencilIcon, Download as DownloadIcon, Tag as TagIcon,
+  Settings as SettingsIcon, UploadCloud as UploadCloudIcon, Paperclip as PaperclipIcon
 } from "lucide-react";
+import DocumentContentRenderer from "@/components/docs/DocumentContentRenderer";
 
-interface DbCategory {
-  key: string;
-  name: string;
-  color?: string;
-}
+// KB-V2：知识库自身分类体系（后端 knowledges 接口随列表下发的 categories 字段）
+const KNOWLEDGE_CATEGORIES = ["规约与SOP", "经验总结", "问题记录", "使用心得"];
 
 type CreatorRoleFilter = "ALL" | "OWNER" | "MEMBER" | "MINE";
 type ViewMode = "grid" | "table";
@@ -42,11 +42,99 @@ interface KnowledgeRecord {
   workspaceId: string;
   workspaceName: string;
   workspaceType: "PERSONAL" | "ENTERPRISE";
-  authorRole: "OWNER" | "MEMBER";
-  authorName: string;
-  authorId?: string;
-  fileName?: string;
-  fileSize?: string;
+  // KN-1：真实创建人（后端返回），替代此前伪造的 authorName/authorRole
+  uploaderId: string;
+  uploaderName: string;
+  uploaderRole: "OWNER" | "ADMIN" | "MEMBER";
+  // KN-3：审核状态与驳回理由（真实返回）
+  status: "APPROVED" | "PENDING" | "REJECTED";
+  reviewComment?: string | null;
+  // KB-2：来源组件与标签
+  componentName?: string;
+  componentId?: string;
+  tags?: string[];
+  attachments: Array<{ id: string; title: string; originalName: string; fileSize: number | null; mimeType: string | null }>;
+}
+
+// KB-2：知识卡片来源标注 + 标签 chips（模块内局部组件，非默认导出）
+function KnowledgeSourceTags({ item }: { item: KnowledgeRecord }) {
+  const router = useRouter();
+  const isUuid = (s?: string | null) =>
+    !!s && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s);
+  const taskName =
+    item.sourceTaskName && !isUuid(item.sourceTaskName) && item.sourceTaskName !== "空间研发任务"
+      ? item.sourceTaskName
+      : null;
+  return (
+    <div className="space-y-1.5">
+      {item.componentName ? (
+        <button
+          type="button"
+          onClick={() => router.push(`/workspace/${item.workspaceId}?componentId=${item.componentId}`)}
+          className="inline-flex items-center gap-1 text-[10px] font-bold text-[#2b6cb0] bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded px-1.5 py-0.5 cursor-pointer max-w-full"
+          title="跳转到该知识所在空间，并定位到来源组件"
+        >
+          <BuildingIcon className="w-3 h-3 shrink-0" />
+          <span className="truncate">来源：{item.componentName} 组件执行</span>
+        </button>
+      ) : taskName ? (
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+          <FileIcon className="w-3 h-3 shrink-0" />
+          <span className="truncate">来自任务：{taskName}</span>
+        </span>
+      ) : item.sourceTaskId ? (
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+          <FileIcon className="w-3 h-3 shrink-0" />
+          <span>空间研发任务</span>
+        </span>
+      ) : (
+        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-slate-400">
+          <FileIcon className="w-3 h-3 shrink-0" />
+          <span>手工创建</span>
+        </span>
+      )}
+      {item.tags && item.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {item.tags.map((t, i) => (
+            <span
+              key={i}
+              className="text-[10px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded"
+            >
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// KB-V1：清洗知识卡片摘要——去掉组件执行产生的技术元信息（# 标题、输入共 N 字符、有效行、语言、来源任务、分隔线等），仅保留可读正文前 120 字
+function cleanKnowledgeSummary(content: string | null): string {
+  if (!content) return "";
+  // 组件执行沉淀的条目包含大量执行日志元信息（编号结论、高频关键词、组件契约覆盖等），
+  // 这些是技术过程数据而非知识正文，摘要中需要过滤掉，只保留有实际阅读价值的经验内容。
+  const EXEC_METADATA_RE = /输入共|有效行|语言「|来源任务：|检测到的语言类型|高频关键词|组件契约共要求|未在输入材料中识别到|组件契约|已覆盖\s*\d+\s*个/;
+  return content
+    .split("\n")
+    .map((raw) => raw.trim())
+    .filter((line) => {
+      if (!line) return false;
+      if (line === "---") return false;
+      if (line.startsWith("#")) return false;
+      if (EXEC_METADATA_RE.test(line)) return false;
+      return true;
+    })
+    .map((line) =>
+      line
+        .replace(/^\s*#+\s*/, "")
+        .replace(/^\s*[-*]\s+/, "")
+        .replace(/\*\*/g, "")
+        .trim(),
+    )
+    .filter((line) => line.length > 0)
+    .join(" ")
+    .slice(0, 120);
 }
 
 const OWNER_ROLE_FILTERS: { key: CreatorRoleFilter; label: string; icon: any }[] = [
@@ -62,9 +150,26 @@ export default function KnowledgeLibraryPage() {
 
   const [loading, setLoading] = useState(true);
   const [knowledges, setKnowledges] = useState<KnowledgeRecord[]>([]);
+  const [knowledgeCategories, setKnowledgeCategories] = useState<string[]>([]);
+  // KN-CAT-V2：个人分类（仅创建人可见、可自删）
+  const [myCategories, setMyCategories] = useState<string[]>([]);
+  const [deleteCatConfirm, setDeleteCatConfirm] = useState<string | null>(null);
+  const [catBusy, setCatBusy] = useState(false);
+  const [myCatName, setMyCatName] = useState("");
+  // 新建/编辑弹窗内的「➕ 新建分类」内联输入
+  const [inlineCatCreate, setInlineCatCreate] = useState(false);
+  const [inlineCatName, setInlineCatName] = useState("");
+  // 知识预览视图切换：排版视图（Markdown 渲染）vs 纯文本
+  const [previewMode, setPreviewMode] = useState<'rendered' | 'plain'>('rendered');
+  // KN-CAT：分类管理（仅管理员可见）
+  const [showCatManage, setShowCatManage] = useState(false);
+  const [newCatName, setNewCatName] = useState("");
   const [workspaces, setWorkspaces] = useState<any[]>([]);
-  const [dbCategories, setDbCategories] = useState<DbCategory[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // KB-V3：当前登录用户 ID（从 localStorage 读取，存为 state 以保证响应式）
+  const [currentUserId, setCurrentUserId] = useState<string>("");
+  // KN-CAT-V3：是否平台管理员（决定能否增删系统内置分类；普通用户仅可管理个人分类）
+  const [isPlatformAdmin, setIsPlatformAdmin] = useState<boolean>(false);
 
   // 视图与筛选控制
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -72,6 +177,9 @@ export default function KnowledgeLibraryPage() {
   const [categoryFilter, setCategoryFilter] = useState<string>("ALL");
   const [creatorRoleFilter, setCreatorRoleFilter] = useState<CreatorRoleFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
+  // KB-V4：开始 / 结束时间筛选（按知识创建时间 createdAt 过滤）
+  const [startDate, setStartDate] = useState<string>("");
+  const [endDate, setEndDate] = useState<string>("");
 
   // 分页状态 (卡片每页9条，列表每页10条)
   const [currentPage, setCurrentPage] = useState(1);
@@ -85,39 +193,63 @@ export default function KnowledgeLibraryPage() {
   const [deleteConfirmItem, setDeleteConfirmItem] = useState<KnowledgeRecord | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // 新建资料 Modal
+  // 新建知识 Modal
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [createWorkspaceId, setCreateWorkspaceId] = useState("");
   const [createCategory, setCreateCategory] = useState<string>("");
   const [createTitle, setCreateTitle] = useState("");
   const [createContent, setCreateContent] = useState("");
+  // KB-2：新建/编辑时的标签输入（逗号分隔文本，提交时拆成数组）
+  const [createTags, setCreateTags] = useState("");
   const [isCreating, setIsCreating] = useState(false);
+  // KN-2：编辑模式（复用新建弹窗；后端 update_knowledge，创建人/管理员可改）
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; fileName: string; percent: number } | null>(null);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const attInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 文件上传
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  // 1. 从数据库 componentcategory 表直查分类字典
-  const fetchDbCategories = async () => {
-    try {
-      const res = await fetch("/api/components");
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success && Array.isArray(json.data?.categories)) {
-          const catList: DbCategory[] = json.data.categories;
-          setDbCategories(catList);
-          if (catList.length > 0 && !createCategory) {
-            setCreateCategory(catList[0].key);
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[KnowledgePage] 静默拉取数据库 componentcategory 分类失败", e);
-    }
+  // KN-ATT：附件客户端预校验（与服务端白名单/大小上限一致）
+  const ATT_ALLOWED_EXTS = [
+    "pdf","doc","docx","xls","xlsx","ppt","pptx","csv","txt","md",
+    "png","jpg","jpeg","gif","svg","webp","bmp",
+    "zip","rar","7z","tar","gz","mp4","mp3","wav","json","xml","yaml","yml",
+  ];
+  const formatAttSize = (bytes: number) => {
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+    if (bytes >= 1024) return Math.round(bytes / 1024) + " KB";
+    return bytes + " B";
   };
+  const addPendingFiles = (files: FileList | File[]) => {
+    const incoming = Array.from(files);
+    if (incoming.length === 0) return;
+    let overLimit = false;
+    const errs: string[] = [];
+    const accepted: File[] = [];
+    for (const f of incoming) {
+      const ext = f.name.split(".").pop()?.toLowerCase() || "";
+      if (!ATT_ALLOWED_EXTS.includes(ext)) { errs.push(f.name + "（不支持的格式 ." + ext + "）"); continue; }
+      if (f.size > 20 * 1024 * 1024) { errs.push(f.name + "（超过 20MB 上限）"); continue; }
+      accepted.push(f);
+    }
+    if (accepted.length > 0) {
+      setPendingFiles((prev) => {
+        const seen = new Set(prev.map((p) => p.name + p.size));
+        const deduped = accepted.filter((f) => !seen.has(f.name + f.size));
+        const merged = [...prev, ...deduped];
+        if (merged.length > 5) {
+          overLimit = true;
+          return merged.slice(0, 5);
+        }
+        return merged;
+      });
+    }
+    if (errs.length > 0) toast.error("以下文件未加入：" + errs.join("、"));
+    if (overLimit) toast.error("一个知识最多上传 5 个附件，已截取前 5 个");
+  };
+  const [editingWsId, setEditingWsId] = useState<string>("");
 
-  // 2. 直查数据库全量资料库
+  // 直查数据库全量知识库
   const fetchKnowledges = async () => {
     setLoading(true);
     setLoadError(null);
@@ -133,23 +265,22 @@ export default function KnowledgeLibraryPage() {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      let wsList: any[] = [];
-      if (wsRes.ok) {
-        const wsData = await wsRes.json();
-        if (Array.isArray(wsData.workspaces)) {
-          wsList = wsData.workspaces;
-          setWorkspaces(wsList);
-        }
+      if (!wsRes.ok) {
+        setLoadError(`拉取工作空间列表失败（HTTP ${wsRes.status}）`);
+        return;
       }
+      const wsData = await wsRes.json();
+      const wsList: any[] = Array.isArray(wsData.workspaces) ? wsData.workspaces : [];
+      setWorkspaces(wsList);
       if (wsList.length === 0) {
         setKnowledges([]);
         return;
       }
       setCreateWorkspaceId((prev) => (prev && wsList.some((w) => w.id === prev) ? prev : wsList[0].id));
 
-      const myUserId = getCurrentUserId();
+      let collectedCategories: string[] = [];
 
-      // 并行从 /api/studio?action=knowledges&workspaceId=xxx 直查数据库真实资料
+      // 并行从 /api/studio?action=knowledges&workspaceId=xxx 直查数据库真实知识
       const results = await Promise.allSettled(
         wsList.map(async (ws) => {
           const res = await fetch(`/api/studio?action=knowledges&workspaceId=${ws.id}`, {
@@ -159,35 +290,36 @@ export default function KnowledgeLibraryPage() {
           if (!res.ok) return [];
           const data = await res.json();
           const list = data.data || data.knowledges || [];
+          const kCategories: string[] = Array.isArray(data.categories) ? data.categories : [];
+          if (kCategories.length) collectedCategories = kCategories;
+          // KN-CAT-V2：个人分类（后端按登录用户过滤，仅返回本人创建的）
+          const myCats: string[] = Array.isArray(data.myCategories) ? data.myCategories : [];
+          setMyCategories(myCats);
           return list.map((doc: any) => {
             const contentText = doc.content || "";
-            let extractedFile: { name?: string; size?: string } = {};
-            const fileMatch = contentText.match(/\[附件(知识|资料)文件\]:\s*([^\n(]+)\s*\(([^)]+)\)/);
-            if (fileMatch) {
-              extractedFile = { name: fileMatch[1].trim(), size: fileMatch[2].trim() };
-            } else if (doc.sourceTaskId || doc.title.endsWith(".md") || doc.title.endsWith(".pdf") || doc.title.endsWith(".json")) {
-              extractedFile = { name: doc.title };
-            }
-
-            const isOwner = ws.role === "OWNER" || doc.authorRole === "OWNER" || ws.type === "PERSONAL";
 
             return {
               id: doc.id,
-              title: doc.title || "未命名资料",
+              title: doc.title || "未命名知识",
               content: contentText,
-              category: doc.componentCategory || doc.category || "",
+              category: doc.category || doc.componentCategory || "",
               sourceTaskId: doc.sourceTaskId || null,
               sourceTaskName: doc.sourceTaskName || null,
-              createdAt: new Date(doc.createdAt).getTime() || Date.now(),
-              time: doc.createdAt ? new Date(doc.createdAt).toLocaleString("zh-CN") : "刚刚",
+              status: (doc.status || "APPROVED") as "APPROVED" | "PENDING" | "REJECTED",
+              reviewComment: doc.reviewComment || null,
+              attachments: Array.isArray(doc.attachments) ? doc.attachments : [],
+              createdAt: doc.createdAt ? new Date(doc.createdAt).getTime() : 0,
+              time: doc.createdAt ? new Date(doc.createdAt).toLocaleString("zh-CN") : "—",
               workspaceId: ws.id,
               workspaceName: ws.name,
               workspaceType: ws.type as "PERSONAL" | "ENTERPRISE",
-              authorRole: (isOwner ? "OWNER" : "MEMBER") as "OWNER" | "MEMBER",
-              authorName: doc.authorName || (isOwner ? `${ws.ownerName || "空间所有者"}` : "协同成员"),
-              authorId: doc.authorId || (isOwner ? myUserId : ""),
-              fileName: extractedFile.name,
-              fileSize: extractedFile.size,
+              // KN-1：作者身份真实化（后端返回真实创建人与空间内角色）
+              uploaderId: doc.uploaderId || "",
+              uploaderName: doc.uploaderName || "早期成员",
+              uploaderRole: (doc.uploaderRole || "MEMBER") as "OWNER" | "ADMIN" | "MEMBER",
+              componentName: doc.componentName || "",
+              componentId: doc.componentId || "",
+              tags: Array.isArray(doc.tags) ? (doc.tags as string[]) : [],
             };
           });
         })
@@ -202,81 +334,38 @@ export default function KnowledgeLibraryPage() {
 
       aggregated.sort((a, b) => b.createdAt - a.createdAt);
       setKnowledges(aggregated);
+      if (collectedCategories.length) {
+        setKnowledgeCategories(collectedCategories);
+      }
     } catch (e: any) {
-      setLoadError(e.message || "拉取资料数据失败");
+      const errMsg = e?.message || "拉取知识数据失败";
+      // 已有数据时降级为轻提示：网络抖动 / dev 热更新瞬间的重拉失败，不打断当前列表
+      if (knowledges.length > 0) {
+        toast.warning(`刷新失败（${errMsg}），已保留当前列表，可点击刷新重试`);
+      } else {
+        setLoadError(errMsg);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // 切换空间 / 分类 / 沉淀人筛选时重新拉取真实数据（不再只靠挂载与手动刷新）
   useEffect(() => {
-    fetchDbCategories();
     fetchKnowledges();
+  }, [selectedWorkspaceId, categoryFilter, creatorRoleFilter]);
+
+  // KB-V3：当前用户 ID 在挂载后从 localStorage 读取并存入 state（避免渲染期读 localStorage 导致的非响应式）
+  useEffect(() => {
+    setCurrentUserId(getCurrentUserId());
+    const role = (localStorage.getItem("userRole") || "").toLowerCase();
+    setIsPlatformAdmin(["super_admin", "superadmin", "admin"].includes(role));
   }, []);
 
   // 当筛选或视图发生变化时，自动将页码重置为 1
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedWorkspaceId, categoryFilter, creatorRoleFilter, searchQuery, viewMode]);
-
-  // 文件解析处理
-  const processSelectedFile = (file: File) => {
-    setSelectedFile(file);
-    if (!createTitle.trim()) {
-      const nameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-      setCreateTitle(nameWithoutExt);
-    }
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (["md", "txt", "json", "csv", "js", "ts", "html", "css", "yaml", "yml"].includes(ext || "")) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const buffer = e.target?.result as ArrayBuffer;
-        if (buffer) {
-          let text = "";
-          try {
-            const decoderUtf8 = new TextDecoder("utf-8", { fatal: true });
-            text = decoderUtf8.decode(buffer);
-          } catch (err) {
-            try {
-              const decoderGbk = new TextDecoder("gbk");
-              text = decoderGbk.decode(buffer);
-            } catch (err2) {
-              const decoderLoose = new TextDecoder("utf-8");
-              text = decoderLoose.decode(buffer);
-            }
-          }
-          if (text) {
-            setCreateContent((prev) => (prev ? `${prev}\n\n${text}` : text));
-            toast.success(`已安全解析并读取文件【${file.name}】的内容！`);
-          }
-        }
-      };
-      reader.readAsArrayBuffer(file);
-    } else {
-      toast.success(`已选中文件【${file.name}】！`);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      processSelectedFile(e.target.files[0]);
-    }
-  };
-
-  const handleDropFile = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      processSelectedFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
+  }, [selectedWorkspaceId, categoryFilter, creatorRoleFilter, searchQuery, viewMode, startDate, endDate]);
 
   // 唤起高颜值二段确认 Modal（拒绝原生 confirm）
   const handleDeleteKnowledge = (item: KnowledgeRecord) => {
@@ -294,14 +383,14 @@ export default function KnowledgeLibraryPage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
-        toast.success(`资料【${deleteConfirmItem.title}】已成功删除`);
+        toast.success(`知识【${deleteConfirmItem.title}】已成功删除`);
         setKnowledges((prev) => prev.filter((k) => k.id !== deleteConfirmItem.id));
         setDeleteConfirmItem(null);
       } else {
-        toast.error("删除资料失败");
+        toast.error("删除知识失败");
       }
     } catch {
-      toast.error("网络异常，无法删除资料");
+      toast.error("网络异常，无法删除知识");
     } finally {
       setIsDeleting(false);
     }
@@ -309,17 +398,17 @@ export default function KnowledgeLibraryPage() {
 
   // 一键复制内容
   const handleCopyContent = (text: string) => {
-    navigator.clipboard.writeText(text);
+    navigator.clipboard.writeText(markdownToPlainText(text));
     setCopied(true);
-    toast.success("资料正文已成功复制到剪贴板！");
+    toast.success("知识正文已成功复制到剪贴板！");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // 新建资料提交
+  // 新建知识提交
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!createTitle.trim()) {
-      toast.error("请输入资料标题");
+      toast.error("请输入知识标题");
       return;
     }
     if (!createWorkspaceId) {
@@ -332,35 +421,103 @@ export default function KnowledgeLibraryPage() {
       const token = getAuthToken();
 
       let finalContent = createContent.trim();
-      if (selectedFile) {
-        const fileTag = `[附件资料文件]: ${selectedFile.name} (${(selectedFile.size / 1024).toFixed(1)} KB)`;
-        finalContent = finalContent ? `${finalContent}\n\n${fileTag}` : fileTag;
-      }
 
-      const res = await fetch("/api/studio?action=save_knowledge", {
+      // KB-2：标签解析（逗号/中文逗号分隔；trim；每个超长截断到 20 字；去重；最多 5 个）
+      const finalTags = Array.from(
+        new Set(
+          createTags
+            .split(/[,，]/)
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .map((s) => (s.length > 20 ? s.slice(0, 20) : s)),
+        ),
+      ).slice(0, 5);
+
+      const isEdit = !!editingId;
+      const res = await fetch("/api/studio", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          action: "save_knowledge",
-          workspaceId: createWorkspaceId,
-          title: createTitle.trim(),
-          content: finalContent,
-          category: createCategory || (dbCategories[0]?.key || ""),
-        }),
+        body: JSON.stringify(
+          isEdit
+            ? {
+                action: "update_knowledge",
+                knowledgeId: editingId,
+                title: createTitle.trim(),
+                content: finalContent,
+                category: createCategory || "",
+                tags: finalTags,
+              }
+            : {
+                action: "save_knowledge",
+                workspaceId: createWorkspaceId,
+                title: createTitle.trim(),
+                content: finalContent,
+                category: createCategory || knowledgeCategories[0] || "未分类",
+                tags: finalTags,
+              },
+        ),
       });
 
       const data = await res.json();
-      if (!res.ok && !data.success) throw new Error(data.error || "创建资料失败");
+      if (!res.ok && !data.success) throw new Error(data.error || (isEdit ? "更新失败" : "创建知识失败"));
 
-      toast.success("资料新建成功，已即刻保存生效！");
+      // KN-3：提示语按真实审核状态说话，绝不谎称"已生效"
+      const newStatus = isEdit ? "APPROVED" : (data.data?.status || data.status || "APPROVED");
+
+      // KN-ATT：多文件上传（逐个上传，弹窗保持打开以显示进度）
+      const entryId = isEdit ? editingId : ((data.data && typeof data.data === "object" && data.data.id) || data.data);
+      if (pendingFiles.length > 0 && entryId && typeof entryId === "string") {
+        const targetWsId = isEdit ? editingWsId : createWorkspaceId;
+        for (let fi = 0; fi < pendingFiles.length; fi++) {
+          const f = pendingFiles[fi];
+          setUploadProgress({ current: fi + 1, total: pendingFiles.length, fileName: f.name, percent: 0 });
+          const fd = new FormData();
+          fd.append("file", f);
+          fd.append("knowledgeId", entryId);
+          fd.append("workspaceId", targetWsId);
+          await new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open("POST", "/api/studio?action=upload_knowledge_attachment");
+            xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+            xhr.upload.onprogress = (e) => {
+              if (e.lengthComputable) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                setUploadProgress({ current: fi + 1, total: pendingFiles.length, fileName: f.name, percent: pct });
+              }
+            };
+            xhr.onload = () => {
+              if (xhr.status >= 400) {
+                let msg = "上传失败";
+                try { msg = JSON.parse(xhr.responseText).error || msg; } catch { /* keep default */ }
+                reject(new Error(msg));
+              } else {
+                resolve();
+              }
+            };
+            xhr.onerror = () => reject(new Error("网络异常，上传失败"));
+            xhr.send(fd);
+          }).catch((upErr: Error) => toast.error(`附件「${f.name}」：${upErr.message}`));
+        }
+        setUploadProgress(null);
+      }
+      setPendingFiles([]);
+
+      if (isEdit) {
+        toast.success("知识条目已更新");
+      } else if (newStatus === "PENDING") {
+        toast.info("已提交，等待空间管理员审核通过后对其他成员可见");
+      } else {
+        toast.success("知识条目已发布生效");
+      }
 
       setShowCreateModal(false);
+      setEditingId(null);
       setCreateTitle("");
       setCreateContent("");
-      setSelectedFile(null);
+      setCreateTags("");
       fetchKnowledges();
     } catch (err: any) {
       toast.error(err.message || "创建失败");
@@ -369,26 +526,140 @@ export default function KnowledgeLibraryPage() {
     }
   };
 
-  // 映射分类名称字典
-  const categoryMap = new Map(dbCategories.map((c) => [c.key, c.name]));
-  const myUserId = getCurrentUserId();
+  const myUserId = currentUserId;
+  // KN-3 编辑权限：用户是否在任一空间拥有 OWNER/ADMIN 角色
+  const canManageAny = workspaces.some((w) => w.role === "OWNER" || w.role === "ADMIN");
+
+  // KN-CAT-V2：新建个人分类（所有用户；仅自己可见）
+  const handleCreateMyCategory = async (rawName: string, onDone?: (name: string) => void) => {
+    const name = rawName.trim();
+    if (!name) return;
+    setCatBusy(true);
+    const token = getAuthToken();
+    try {
+      const res = await fetch("/api/studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "create_my_knowledge_category", categoryName: name }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMyCategories(data.data || []);
+        toast.success(data.message || "分类已创建（仅你自己可见）");
+        onDone?.((data.data || []).slice(-1)[0] || name);
+      } else {
+        toast.error(data.error || "创建失败");
+      }
+    } catch {
+      toast.error("网络异常");
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  // KN-CAT-V2：删除个人分类（仅创建人；挂在该分类下的条目回退「未分类」）
+  const confirmExecuteDeleteCategory = async () => {
+    if (!deleteCatConfirm) return;
+    setCatBusy(true);
+    const token = getAuthToken();
+    try {
+      const res = await fetch("/api/studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "delete_my_knowledge_category", categoryName: deleteCatConfirm }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMyCategories(data.data || []);
+        if (categoryFilter === deleteCatConfirm) setCategoryFilter("ALL");
+        toast.success(data.message || "分类已删除");
+        setDeleteCatConfirm(null);
+        fetchKnowledges();
+      } else {
+        toast.error(data.error || "删除失败");
+      }
+    } catch {
+      toast.error("网络异常");
+    } finally {
+      setCatBusy(false);
+    }
+  };
+
+  // KN-CAT-V2：弹窗下拉内联新建确认
+  const confirmInlineCatCreate = async () => {
+    if (!inlineCatName.trim()) return;
+    await handleCreateMyCategory(inlineCatName, (name) => {
+      setCreateCategory(name);
+      setInlineCatCreate(false);
+      setInlineCatName("");
+    });
+  };
+
+  // KN-CAT：添加/删除知识分类（仅管理员）
+  const handleAddCategory = async () => {
+    if (!isPlatformAdmin) return; // 系统内置分类仅平台管理员可增（与后端 403 口径一致）
+    if (!newCatName.trim()) return;
+    const token = getAuthToken();
+    try {
+      const res = await fetch("/api/studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "add_knowledge_category", categoryName: newCatName.trim(), workspaceId: "" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setKnowledgeCategories(data.data);
+        setNewCatName("");
+        toast.success(data.message || "分类已添加");
+      } else {
+        toast.error(data.error || "添加失败");
+      }
+    } catch { toast.error("网络异常"); }
+  };
+
+  const handleRemoveCategory = async (cat: string) => {
+    if (!isPlatformAdmin) return; // 系统内置分类仅平台管理员可删（与后端 403 口径一致）
+    const token = getAuthToken();
+    try {
+      const res = await fetch("/api/studio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ action: "remove_knowledge_category", categoryName: cat, workspaceId: "" }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setKnowledgeCategories(data.data);
+        if (categoryFilter === cat) setCategoryFilter("ALL");
+        toast.success(data.message || "分类已删除");
+      } else {
+        toast.error(data.error || "删除失败");
+      }
+    } catch { toast.error("网络异常"); }
+  };
 
   // 过滤逻辑
   const filtered = knowledges.filter((item) => {
     if (selectedWorkspaceId !== "ALL" && item.workspaceId !== selectedWorkspaceId) return false;
-    if (categoryFilter !== "ALL" && item.category !== categoryFilter) return false;
+    if (categoryFilter === "UNCATEGORIZED") {
+      if (item.category && item.category.trim() !== "") return false;
+    } else if (categoryFilter !== "ALL" && item.category !== categoryFilter) {
+      return false;
+    }
 
-    if (creatorRoleFilter === "OWNER" && item.authorRole !== "OWNER") return false;
-    if (creatorRoleFilter === "MEMBER" && item.authorRole !== "MEMBER") return false;
-    if (creatorRoleFilter === "MINE" && item.authorId !== myUserId && item.authorRole !== "OWNER") return false;
+    if (creatorRoleFilter === "OWNER" && item.uploaderRole !== "OWNER") return false;
+    if (creatorRoleFilter === "MEMBER" && item.uploaderRole === "OWNER") return false;
+    if (creatorRoleFilter === "MINE" && item.uploaderId !== myUserId) return false;
+
+    if (startDate && item.createdAt < new Date(startDate + "T00:00:00").getTime()) return false;
+    if (endDate && item.createdAt > new Date(endDate + "T23:59:59").getTime()) return false;
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       const matchTitle = item.title.toLowerCase().includes(q);
       const matchContent = (item.content || "").toLowerCase().includes(q);
       const matchWs = item.workspaceName.toLowerCase().includes(q);
-      const matchFile = (item.fileName || "").toLowerCase().includes(q);
-      if (!matchTitle && !matchContent && !matchWs && !matchFile) return false;
+      const matchTags = Array.isArray(item.tags) && item.tags.some((t) => t.toLowerCase().includes(q));
+      if (!matchTitle && !matchContent && !matchWs && !matchTags) return false;
     }
     return true;
   });
@@ -402,8 +673,8 @@ export default function KnowledgeLibraryPage() {
 
   // 统计数据
   const totalCount = knowledges.length;
-  const ownerKnowledgeCount = knowledges.filter((k) => k.authorRole === "OWNER").length;
-  const memberKnowledgeCount = knowledges.filter((k) => k.authorRole === "MEMBER").length;
+  const ownerKnowledgeCount = knowledges.filter((k) => k.uploaderRole === "OWNER").length;
+  const memberKnowledgeCount = knowledges.filter((k) => k.uploaderRole !== "OWNER").length;
 
   const wsCountMap = (wsId: string) => knowledges.filter((k) => k.workspaceId === wsId).length;
   const coveredWorkspaceCount = new Set(knowledges.map((k) => k.workspaceId)).size;
@@ -421,23 +692,23 @@ export default function KnowledgeLibraryPage() {
             <div className="space-y-2 max-w-3xl">
               <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#3182ce]/10 text-[#2b6cb0] rounded-full text-xs font-black tracking-wider border border-[#3182ce]/20 uppercase">
                 <BookIcon className="w-3.5 h-3.5 text-[#2b6cb0]" />
-                <span>知阁舟坊 · 团队研发资产沉淀中心</span>
+                <span>知阁·舟坊 · 团队研发知识中心</span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight text-slate-800">
-                资料库中心 <span className="text-xs font-bold text-[#3182ce] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 ml-2">研发资产归档与资料复用</span>
+                知识库 <span className="text-xs font-bold text-[#3182ce] bg-blue-50 px-2.5 py-0.5 rounded-full border border-blue-100 ml-2">团队研发经验沉淀与复用</span>
               </h2>
               <p className="text-xs text-slate-600 leading-relaxed font-medium">
-                集中沉淀与管理全团队在各个工作空间产生的研发资料、架构方案与技术文档。支持按所有者/协同成员视角归档查阅，支持列表与卡片多维度视图切换与动态分页。
+                集中沉淀与管理全团队在各工作空间产生的研发知识、规约与经验总结，支持按分类/创建者/标签多维检索与引用执行。
               </p>
             </div>
 
             <div className="flex items-center gap-3 shrink-0 self-end md:self-auto">
               <button
-                onClick={() => setShowCreateModal(true)}
+                onClick={() => { setPendingFiles([]); setUploadProgress(null); setIsDragOver(false); setShowCreateModal(true); }}
                 className="h-10 px-5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#4299e1] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 border border-blue-400/30"
               >
                 <PlusIcon className="w-4 h-4 stroke-[3]" />
-                <span>新增资料</span>
+                <span>新增知识</span>
               </button>
             </div>
           </div>
@@ -445,16 +716,16 @@ export default function KnowledgeLibraryPage() {
 
         <div className="flex flex-col lg:flex-row gap-6">
           {/* ================= 左侧：空间书架与所属视角导航 ================= */}
-          <aside className="lg:w-64 shrink-0 space-y-4">
+          <aside className="lg:w-60 shrink-0 space-y-4">
             {/* 库房概览 */}
-            <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs p-4.5 space-y-4">
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs p-4 space-y-4">
               <div className="flex items-center gap-2.5">
                 <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#3182ce] to-[#2b6cb0] text-white shadow-md shadow-[#3182ce]/20 flex items-center justify-center shrink-0">
                   <LandmarkIcon className="w-5 h-5" />
                 </div>
                 <div>
-                  <h1 className="text-base font-black text-slate-900 tracking-tight leading-tight">资料库房</h1>
-                  <p className="text-[10px] font-semibold text-slate-400 mt-0.5">团队资料 · 经验沉淀</p>
+                  <h1 className="text-base font-black text-slate-900 tracking-tight leading-tight">知识库</h1>
+                  <p className="text-[10px] font-semibold text-slate-400 mt-0.5">团队知识 · 经验复用</p>
                 </div>
               </div>
 
@@ -462,7 +733,7 @@ export default function KnowledgeLibraryPage() {
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between bg-slate-50 rounded-lg px-3.5 py-2.5 border border-slate-100">
                   <span className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                    <BoxesIcon className="w-4 h-4 text-slate-400" /> 资料总数
+                    <BoxesIcon className="w-4 h-4 text-slate-400" /> 知识总数
                   </span>
                   <span className="text-base font-black font-mono text-slate-900">{loading ? "···" : totalCount}</span>
                 </div>
@@ -482,7 +753,7 @@ export default function KnowledgeLibraryPage() {
 
               <div className="pt-2.5 border-t border-slate-100">
                 <p className="text-[10px] font-medium text-slate-400 leading-relaxed">
-                  各工作空间资料沉淀后立即可用，全团队协同查阅复用。
+                  各工作空间知识沉淀后立即可用，全团队协同查阅复用。
                 </p>
               </div>
             </div>
@@ -490,7 +761,7 @@ export default function KnowledgeLibraryPage() {
             {/* 空间筛选 */}
             <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs p-4 space-y-1.5">
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 pb-1 flex items-center gap-1.5">
-                <FolderIcon className="w-3.5 h-3.5" /> 按空间筛选资料
+                <FolderIcon className="w-3.5 h-3.5" /> 按空间筛选知识
               </p>
 
               <button
@@ -541,9 +812,46 @@ export default function KnowledgeLibraryPage() {
                 已覆盖 {coveredWorkspaceCount} / {workspaces.length || 0} 个空间
               </p>
             </div>
+
+            {/* 时间范围筛选 */}
+            <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs p-4 space-y-2">
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1 pb-1 flex items-center gap-1.5">
+                <CalendarIcon className="w-3.5 h-3.5" /> 按时间筛选
+              </p>
+              <div className="space-y-2">
+                <label className="block">
+                  <span className="text-[10px] font-bold text-slate-500 px-1">开始时间</span>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full mt-0.5 px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-700"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[10px] font-bold text-slate-500 px-1">结束时间</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    min={startDate || undefined}
+                    onChange={(e) => setEndDate(e.target.value)}
+                    className="w-full mt-0.5 px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-700"
+                  />
+                </label>
+              </div>
+              {(startDate || endDate) && (
+                <button
+                  type="button"
+                  onClick={() => { setStartDate(""); setEndDate(""); }}
+                  className="w-full px-3 py-1.5 text-[11px] font-bold text-slate-500 bg-slate-100 hover:bg-slate-200 rounded-xl cursor-pointer transition-colors"
+                >
+                  清除时间筛选
+                </button>
+              )}
+            </div>
           </aside>
 
-          {/* ================= 右侧：资料文档流 ================= */}
+          {/* ================= 右侧：知识文档流 ================= */}
           <div className="flex-1 min-w-0 space-y-4">
             {/* 顶部控制条：搜索 + 所有者/成员所属筛选 + 卡片/列表视图切换 + 动态分类 Tab */}
             <div className="bg-white/90 backdrop-blur-xl border border-slate-200/80 p-4 rounded-2xl shadow-xs space-y-3">
@@ -552,7 +860,7 @@ export default function KnowledgeLibraryPage() {
                   <SearchIcon className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="搜索资料名称、文件、内容或空间..."
+                    placeholder="搜索知识名称、文件、内容或空间..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-9 pr-3 h-9 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all placeholder:text-slate-400"
@@ -560,7 +868,7 @@ export default function KnowledgeLibraryPage() {
                 </div>
 
                 <div className="flex items-center gap-2.5 flex-wrap self-end lg:self-auto">
-                  {/* 1. 按空间所有者 / 空间成员 资料所属筛选 */}
+                  {/* 1. 按空间所有者 / 空间成员 知识所属筛选 */}
                   <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-xs font-bold border border-slate-200/60">
                     {OWNER_ROLE_FILTERS.map((filter) => {
                       const Icon = filter.icon;
@@ -613,14 +921,14 @@ export default function KnowledgeLibraryPage() {
                   <button
                     onClick={fetchKnowledges}
                     className="p-2 text-slate-500 hover:text-[#3182ce] rounded-xl hover:bg-slate-100 transition-all cursor-pointer border border-slate-200/60 bg-white"
-                    title="刷新资料库"
+                    title="刷新知识库"
                   >
                     <RefreshIcon className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
                   </button>
                 </div>
               </div>
 
-              {/* 从数据库 componentcategory 表直查的动态分类 Filter Bar */}
+              {/* KB-V2：知识库自身分类体系（规约与SOP / 经验总结 / 问题记录 / 使用心得 + 未分类） */}
               <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1 border-t border-slate-100">
                 <button
                   onClick={() => setCategoryFilter("ALL")}
@@ -632,19 +940,59 @@ export default function KnowledgeLibraryPage() {
                 >
                   全部分类
                 </button>
-                {dbCategories.map((cat) => (
+                {knowledgeCategories.map((cat) => (
                   <button
-                    key={cat.key}
-                    onClick={() => setCategoryFilter(cat.key)}
+                    key={cat}
+                    onClick={() => setCategoryFilter(cat)}
                     className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
-                      categoryFilter === cat.key
+                      categoryFilter === cat
                         ? "bg-[#3182ce] text-white shadow-xs"
                         : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80"
                     }`}
                   >
-                    {cat.name}
+                    {cat}
                   </button>
                 ))}
+                {myCategories.map((cat) => (
+                  <div
+                    key={cat}
+                    className={`flex items-center gap-1 pl-3 pr-1.5 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                      categoryFilter === cat
+                        ? "bg-[#3182ce] text-white shadow-xs"
+                        : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80"
+                    }`}
+                  >
+                    <span onClick={() => setCategoryFilter(cat)} title="个人分类（仅你自己可见）">{cat}</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDeleteCatConfirm(cat); }}
+                      className={`shrink-0 p-0.5 rounded cursor-pointer ${categoryFilter === cat ? "text-white/70 hover:text-white" : "text-slate-400 hover:text-rose-500"}`}
+                      title="删除此个人分类（分类下知识将归入「未分类」）"
+                    >
+                      <XIcon className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => setCategoryFilter("UNCATEGORIZED")}
+                  className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all whitespace-nowrap cursor-pointer ${
+                    categoryFilter === "UNCATEGORIZED"
+                      ? "bg-[#3182ce] text-white shadow-xs"
+                      : "bg-slate-100/80 text-slate-600 hover:bg-slate-200/80"
+                  }`}
+                >
+                  未分类
+                </button>
+                <button
+                  onClick={() => setShowCatManage(!showCatManage)}
+                  className={`px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all cursor-pointer shrink-0 flex items-center gap-1 ${
+                    showCatManage
+                      ? 'bg-[#3182ce] text-white border-[#2b6cb0]'
+                      : 'bg-blue-50 text-[#2b6cb0] border-blue-200 hover:bg-blue-100'
+                  }`}
+                  title={isPlatformAdmin ? '管理知识分类（系统内置 + 我的个人分类）' : '管理我的个人分类（仅你自己可见）'}
+                >
+                  <SettingsIcon className='w-3.5 h-3.5' /> 分类管理
+                </button>
               </div>
             </div>
 
@@ -669,27 +1017,27 @@ export default function KnowledgeLibraryPage() {
                 <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                   <BookIcon className="w-7 h-7 text-[#3182ce]" />
                 </div>
-                <p className="text-sm font-black text-slate-800">资料库房暂无沉淀的团队资料</p>
+                <p className="text-sm font-black text-slate-800">知识库房暂无沉淀的团队知识</p>
                 <p className="text-xs text-slate-400 font-medium max-w-sm mx-auto leading-relaxed">
-                  你可以手动录入或上传本地文件资料，沉淀下来的经验与资料全团队随时可查、可复用。
+                  你可以手动录入或上传本地文件知识，沉淀下来的经验与知识全团队随时可查、可复用。
                 </p>
                 <button
-                  onClick={() => setShowCreateModal(true)}
+                  onClick={() => { setPendingFiles([]); setUploadProgress(null); setIsDragOver(false); setShowCreateModal(true); }}
                   className="mt-2 px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] hover:from-[#4299e1] hover:to-[#2b6cb0] text-white text-xs font-black rounded-xl shadow-md cursor-pointer inline-flex items-center gap-1.5"
                 >
-                  <PlusIcon className="w-4 h-4" /> 录入第一条资料
+                  <PlusIcon className="w-4 h-4" /> 录入第一条知识
                 </button>
               </div>
             )}
 
-            {/* 资料文档列表/卡片流 */}
+            {/* 知识文档列表/卡片流 */}
             {!loading && totalCount > 0 && (
               <div className="space-y-4">
                 {filtered.length === 0 ? (
                   <div className="bg-white/90 backdrop-blur-xl rounded-2xl border border-slate-200/80 shadow-xs py-12 text-center">
                     <div className="flex flex-col items-center gap-2">
                       <SearchIcon className="w-7 h-7 text-slate-300" />
-                      <p className="text-xs font-bold text-slate-400">未找到符合条件的资料记录</p>
+                      <p className="text-xs font-bold text-slate-400">未找到符合条件的知识记录</p>
                     </div>
                   </div>
                 ) : (
@@ -697,7 +1045,7 @@ export default function KnowledgeLibraryPage() {
                     <div className="flex items-center justify-between px-1 pb-1">
                       <p className="text-[11px] font-bold text-slate-400 flex items-center gap-1.5">
                         <ArchiveIcon className="w-3.5 h-3.5" />
-                        当前视角下共 {filtered.length} 篇资料文档 (当前页展示 {paginatedItems.length} 项)
+                        当前视角下共 {filtered.length} 篇知识文档 (当前页展示 {paginatedItems.length} 项)
                       </p>
                     </div>
 
@@ -705,7 +1053,7 @@ export default function KnowledgeLibraryPage() {
                     {viewMode === "grid" && (
                       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                         {paginatedItems.map((item) => {
-                          const displayCatName = categoryMap.get(item.category || "") || item.category || "研发资料";
+                          const displayCatName = item.category || "未分类";
                           return (
                             <article
                               key={item.id}
@@ -730,21 +1078,10 @@ export default function KnowledgeLibraryPage() {
                                 </div>
 
                                 <p className="text-xs text-slate-500 font-medium leading-relaxed line-clamp-2 min-h-[2.5rem]">
-                                  {item.content || "该资料暂无正文内容。"}
+                                  {cleanKnowledgeSummary(item.content) || "该知识暂无正文内容。"}
                                 </p>
 
-                                {/* 上传的文件附件信息 */}
-                                {item.fileName && (
-                                  <div className="bg-slate-50 border border-slate-200/70 p-2 rounded-xl flex items-center justify-between text-[11px] font-mono text-slate-700">
-                                    <span className="flex items-center gap-1.5 truncate max-w-[200px]" title={item.fileName}>
-                                      <PaperclipIcon className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
-                                      <span className="truncate font-bold">{item.fileName}</span>
-                                    </span>
-                                    {item.fileSize && (
-                                      <span className="text-[10px] text-slate-400 font-semibold shrink-0">{item.fileSize}</span>
-                                    )}
-                                  </div>
-                                )}
+                                <KnowledgeSourceTags item={item} />
 
                                 <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between gap-2 mt-auto">
                                   <div className="flex items-center gap-1.5 min-w-0">
@@ -756,48 +1093,94 @@ export default function KnowledgeLibraryPage() {
                                       <span className="truncate max-w-[90px]">{item.workspaceName}</span>
                                     </button>
                                     <span className="text-[10px] text-slate-400 font-medium inline-flex items-center gap-1 shrink-0 bg-slate-100 px-1.5 py-0.5 rounded">
-                                      🏷️ {displayCatName}
+                                      <TagIcon className="w-3 h-3" />
+                                      {displayCatName}
                                     </span>
+                                    {item.attachments && item.attachments.length > 0 && (
+                                      <span
+                                        className="text-[10px] text-[#2b6cb0] font-bold inline-flex items-center gap-0.5 shrink-0 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100"
+                                        title={"附件：" + item.attachments.map((a: { originalName: string }) => a.originalName).join("、")}
+                                      >
+                                        <PaperclipIcon className="w-3 h-3" />
+                                        {item.attachments.length}
+                                      </span>
+                                    )}
                                   </div>
 
                                   {/* 空间所有者 / 空间成员 所属 Role Badge */}
-                                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
-                                    item.authorRole === "OWNER"
+                                  {item.status === "PENDING" && (
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200 shrink-0">待审核</span>
+                                  )}
+                                  {item.status === "REJECTED" && (
+                                    <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-50 text-rose-600 border border-rose-200 shrink-0" title={item.reviewComment || "未通过审核"}>已驳回</span>
+                                  )}
+<span className={`text-[10px] font-black px-2 py-0.5 rounded-full border shrink-0 flex items-center gap-1 ${
+                                    item.uploaderRole === "OWNER"
                                       ? "text-[#3182ce] bg-blue-50 border-blue-200"
                                       : "text-purple-700 bg-purple-50 border-purple-200"
                                   }`}>
-                                    {item.authorRole === "OWNER" ? <CrownIcon className="w-3 h-3" /> : <UserIcon className="w-3 h-3" />}
-                                    <span>{item.authorRole === "OWNER" ? "所有者沉淀" : "成员沉淀"}</span>
+                                    {item.uploaderRole === "OWNER" ? <CrownIcon className="w-3 h-3" /> : <UserIcon className="w-3 h-3" />}
+                                    <span>{item.uploaderRole === "OWNER" ? "所有者沉淀" : item.uploaderName || "成员沉淀"}</span>
                                   </span>
                                 </div>
 
-                                <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100/60">
-                                  <span className="text-[10px] text-slate-400 font-mono">{item.time}</span>
-                                  <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="pt-1 border-t border-slate-100/60">
+                                  <div className="flex items-center justify-between gap-2 pt-1.5">
+                                    <span className="text-[10px] text-slate-400 font-mono">{item.time}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 pt-2 flex-wrap">
                                     <button
                                       type="button"
                                       onClick={() => handleCopyContent(item.content || item.title)}
-                                      className="p-1 text-slate-400 hover:text-[#3182ce] rounded-lg transition-colors cursor-pointer"
-                                      title="复制资料正文"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
+                                      title="复制知识正文"
                                     >
-                                      <CopyIcon className="w-3.5 h-3.5" />
+                                      <CopyIcon className="w-3.5 h-3.5" /> 复制
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingId(item.id);
+                                        setEditingWsId(item.workspaceId);
+                                        setCreateWorkspaceId(item.workspaceId);
+                                        setCreateTitle(item.title);
+                                        setCreateContent(item.content || "");
+                                        setCreateCategory(item.category || knowledgeCategories[0] || "");
+                                        setCreateTags((item.tags || []).join(","));
+                                        setPendingFiles([]); setUploadProgress(null); setIsDragOver(false); setShowCreateModal(true);;
+                                      }}
+                                      disabled={item.uploaderId !== myUserId && !canManageAny}
+                                      title={item.uploaderId === myUserId || canManageAny ? "编辑此条目" : "仅创建人或空间管理员可编辑"}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-blue-50 text-[#2b6cb0] border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                      <PencilIcon className="w-3.5 h-3.5" /> 编辑
                                     </button>
 
                                     <button
                                       type="button"
                                       onClick={() => handleDeleteKnowledge(item)}
-                                      className="p-1 text-slate-400 hover:text-red-500 rounded-lg transition-colors cursor-pointer"
-                                      title="删除资料"
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
+                                      title="删除知识"
                                     >
-                                      <TrashIcon className="w-3.5 h-3.5" />
+                                      <TrashIcon className="w-3.5 h-3.5" /> 删除
                                     </button>
 
                                     <button
                                       type="button"
-                                      onClick={() => { setPreviewItem(item); setShowPreviewModal(false); setTimeout(() => setShowPreviewModal(true), 10); }}
-                                      className="px-3 py-1 bg-slate-100 hover:bg-[#3182ce] hover:text-white text-slate-700 text-[10px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                                      onClick={() => { setPreviewItem(item); setShowPreviewModal(true); }}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
+                                      title="阅览知识正文"
                                     >
                                       <EyeIcon className="w-3.5 h-3.5" /> 阅览
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => router.push(`/workspace/${item.workspaceId}?componentId=&knowledgeId=${item.id}`)}
+                                      className="inline-flex items-center gap-1 px-3 py-1.5 text-[11px] font-bold rounded-lg bg-[#3182ce] text-white border border-[#2b6cb0] hover:bg-[#2b6cb0] transition-colors cursor-pointer shadow-xs"
+                                      title="跳转到该知识所在空间的工作台，带入本知识作为执行材料（到目标空间自行选择组件）"
+                                    >
+                                      <BookIcon className="w-3.5 h-3.5" /> 带入执行
                                     </button>
                                   </div>
                                 </div>
@@ -815,36 +1198,43 @@ export default function KnowledgeLibraryPage() {
                           <table className="w-full text-left border-collapse min-w-[760px]">
                             <thead>
                               <tr className="bg-slate-50/90 border-b border-slate-200/80 text-[11px] font-black text-slate-500 uppercase tracking-wider h-11">
-                                <th className="py-3 pl-5 pr-3 whitespace-nowrap min-w-[180px]">资料标题</th>
-                                <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">资料所属</th>
+                                <th className="py-3 pl-5 pr-3 whitespace-nowrap min-w-[180px]">知识标题</th>
+                                <th className="py-3 px-3 whitespace-nowrap min-w-[160px]">来源 / 标签</th>
+                                <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">知识所属</th>
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[130px]">所属空间</th>
-                                <th className="py-3 px-3 whitespace-nowrap min-w-[140px]">关联文件附件</th>
+
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[110px]">分类</th>
                                 <th className="py-3 px-3 whitespace-nowrap min-w-[120px]">创建时间</th>
-                                <th className="py-3 pl-3 pr-6 whitespace-nowrap text-right min-w-[130px]">操作</th>
+                                <th className="py-3 pl-3 pr-6 whitespace-nowrap text-right min-w-[180px] sticky right-0 z-20 bg-slate-50 border-l border-slate-200/80 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)]">操作</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                               {paginatedItems.map((item) => {
-                                const displayCatName = categoryMap.get(item.category || "") || item.category || "研发资料";
+                                const displayCatName = item.category || "未分类";
                                 return (
-                                  <tr key={item.id} className="hover:bg-blue-50/40 transition-colors h-14">
-                                    <td className="py-3 pl-5 pr-3 font-extrabold text-slate-900 whitespace-nowrap">
-                                      <div className="flex items-center gap-2 max-w-[200px]">
+                                  <tr key={item.id} className="group hover:bg-blue-50/40 transition-colors h-14">
+                                    <td className="py-3 pl-5 pr-3 font-extrabold text-slate-900">
+                                      <div className="flex items-center gap-2 max-w-[260px]">
                                         <div className="w-7 h-7 rounded-lg bg-blue-50 text-[#3182ce] flex items-center justify-center shrink-0 border border-blue-100/80">
                                           <FileIcon className="w-3.5 h-3.5" />
                                         </div>
-                                        <span className="truncate" title={item.title}>{item.title}</span>
+                                        <div className="min-w-0">
+                                          <span className="truncate block" title={item.title}>{item.title}</span>
+                                          <p className="text-[11px] text-slate-400 truncate mt-0.5">{cleanKnowledgeSummary(item.content) || "—"}</p>
+                                        </div>
                                       </div>
+                                    </td>
+                                    <td className="py-3 px-3 align-top">
+                                      <KnowledgeSourceTags item={item} />
                                     </td>
                                     <td className="py-3 px-3 whitespace-nowrap">
                                       <span className={`inline-flex items-center gap-1.5 text-[11px] font-black px-2.5 py-1 rounded-lg border whitespace-nowrap ${
-                                        item.authorRole === "OWNER"
+                                        item.uploaderRole === "OWNER"
                                           ? "text-[#3182ce] bg-blue-50/80 border-blue-200"
                                           : "text-purple-700 bg-purple-50/80 border-purple-200"
                                       }`}>
-                                        {item.authorRole === "OWNER" ? <CrownIcon className="w-3 h-3" /> : <UserIcon className="w-3 h-3" />}
-                                        <span>{item.authorRole === "OWNER" ? "所有者" : "成员"}</span>
+                                        {item.uploaderRole === "OWNER" ? <CrownIcon className="w-3 h-3" /> : <UserIcon className="w-3 h-3" />}
+                                        <span>{item.uploaderRole === "OWNER" ? "所有者" : "成员"}</span>
                                       </span>
                                     </td>
                                     <td className="py-3 px-3 whitespace-nowrap">
@@ -857,46 +1247,75 @@ export default function KnowledgeLibraryPage() {
                                         <span className="truncate">{item.workspaceName}</span>
                                       </button>
                                     </td>
-                                    <td className="py-3 px-3 font-mono text-xs whitespace-nowrap">
-                                      {item.fileName ? (
-                                        <span className="inline-flex items-center gap-1.5 text-[#3182ce] bg-blue-50/90 px-2 py-1 rounded-lg border border-blue-200/80 font-bold max-w-[140px] truncate whitespace-nowrap" title={item.fileName}>
-                                          <PaperclipIcon className="w-3.5 h-3.5 shrink-0 text-[#3182ce]" />
-                                          <span className="truncate">{item.fileName}</span>
-                                        </span>
-                                      ) : (
-                                        <span className="text-slate-400 text-[11px] font-medium font-sans">无附件</span>
-                                      )}
-                                    </td>
+
                                     <td className="py-3 px-3 text-xs whitespace-nowrap">
-                                      <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-lg font-extrabold whitespace-nowrap border border-slate-200/60 inline-block">
-                                        {displayCatName}
-                                      </span>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="bg-slate-100 text-slate-700 px-2 py-1 rounded-lg font-extrabold whitespace-nowrap border border-slate-200/60 inline-block inline-flex items-center gap-1">
+                                          <TagIcon className="w-3 h-3" />
+                                          {displayCatName}
+                                        </span>
+                                        {item.attachments && item.attachments.length > 0 && (
+                                          <span
+                                            className="text-[11px] text-[#2b6cb0] font-bold inline-flex items-center gap-0.5 bg-blue-50 px-1.5 py-1 rounded border border-blue-100"
+                                            title={"附件：" + item.attachments.map((a: { originalName: string }) => a.originalName).join("、")}
+                                          >
+                                            <PaperclipIcon className="w-3 h-3" />
+                                            {item.attachments.length}
+                                          </span>
+                                        )}
+                                      </div>
                                     </td>
                                     <td className="py-3 px-3 font-mono text-[11px] text-slate-400 whitespace-nowrap">{item.time}</td>
-                                    <td className="py-3 pl-3 pr-6 text-right whitespace-nowrap">
+                                    <td className="py-3 pl-3 pr-6 text-right whitespace-nowrap sticky right-0 z-10 bg-white group-hover:bg-blue-50/40 border-l border-slate-200 shadow-[-6px_0_10px_-4px_rgba(0,0,0,0.05)]">
                                       <div className="flex items-center justify-end gap-1.5 shrink-0">
                                         <button
                                           type="button"
                                           onClick={() => handleCopyContent(item.content || item.title)}
-                                          className="p-1.5 text-slate-400 hover:text-[#3182ce] hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors cursor-pointer"
                                           title="复制正文"
                                         >
-                                          <CopyIcon className="w-4 h-4" />
+                                          <CopyIcon className="w-3.5 h-3.5" /> 复制
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setEditingId(item.id);
+                                            setEditingWsId(item.workspaceId);
+                                            setCreateWorkspaceId(item.workspaceId);
+                                            setCreateTitle(item.title);
+                                            setCreateContent(item.content || "");
+                                            setCreateCategory(item.category || knowledgeCategories[0] || "");
+                                            setCreateTags((item.tags || []).join(","));
+                                            setPendingFiles([]); setUploadProgress(null); setIsDragOver(false); setShowCreateModal(true);;
+                                          }}
+                                          disabled={item.uploaderId !== myUserId && !canManageAny}
+                                          title={item.uploaderId === myUserId || canManageAny ? "编辑此条目" : "仅创建人或空间管理员可编辑"}
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg bg-blue-50 text-[#2b6cb0] border border-blue-200 hover:bg-blue-100 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                        >
+                                          <PencilIcon className="w-3.5 h-3.5" /> 编辑
                                         </button>
                                         <button
                                           type="button"
                                           onClick={() => handleDeleteKnowledge(item)}
-                                          className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                                          title="删除资料"
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-500 hover:text-white transition-colors cursor-pointer"
+                                          title="删除知识"
                                         >
-                                          <TrashIcon className="w-4 h-4" />
+                                          <TrashIcon className="w-3.5 h-3.5" /> 删除
                                         </button>
                                         <button
                                           type="button"
-                                          onClick={() => { setPreviewItem(item); setShowPreviewModal(false); setTimeout(() => setShowPreviewModal(true), 10); }}
-                                          className="px-2.5 py-1 bg-slate-100 hover:bg-[#3182ce] hover:text-white text-slate-700 text-xs font-bold rounded-lg transition-all cursor-pointer inline-flex items-center gap-1 shrink-0"
+                                          onClick={() => { setPreviewItem(item); setShowPreviewModal(true); }}
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-200 hover:bg-emerald-500 hover:text-white transition-colors cursor-pointer"
                                         >
                                           <EyeIcon className="w-3.5 h-3.5" /> 阅览
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => router.push(`/workspace/${item.workspaceId}?componentId=&knowledgeId=${item.id}`)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-bold rounded-lg bg-[#3182ce] text-white border border-[#2b6cb0] hover:bg-[#2b6cb0] transition-colors cursor-pointer shadow-xs"
+                                          title="跳转到该知识所在空间的工作台，带入本知识作为执行材料（到目标空间自行选择组件）"
+                                        >
+                                          <BookIcon className="w-3.5 h-3.5" /> 带入执行
                                         </button>
                                       </div>
                                     </td>
@@ -916,7 +1335,7 @@ export default function KnowledgeLibraryPage() {
                         totalItems={filtered.length}
                         pageSize={pageSize}
                         onPageChange={(page) => setCurrentPage(page)}
-                        itemLabel="条资料"
+                        itemLabel="条知识"
                       />
                     )}
                   </>
@@ -952,13 +1371,13 @@ export default function KnowledgeLibraryPage() {
                 <TrashIcon className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="text-base font-black text-slate-900">确认删除资料</h3>
-                <p className="text-xs text-slate-400 font-medium">此操作将永久移除该条团队沉淀资料，不可恢复。</p>
+                <h3 className="text-base font-black text-slate-900">删除知识条目</h3>
+                <p className="text-xs text-slate-400 font-medium">此操作将永久移除该条团队沉淀知识，不可恢复。</p>
               </div>
             </div>
 
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-xs text-slate-700 font-medium">
-              确定要删除资料 <span className="font-extrabold text-slate-900">【{deleteConfirmItem.title}】</span> 吗？
+              确定要删除知识 <span className="font-extrabold text-slate-900">【{deleteConfirmItem.title}】</span> 吗？
             </div>
 
             <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-100">
@@ -989,14 +1408,14 @@ export default function KnowledgeLibraryPage() {
         </div>
       )}
 
-      {/* 新建资料 Modal */}
+      {/* 新建知识 Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
           <form onSubmit={handleCreate} className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 text-left space-y-4 relative max-h-[90vh] overflow-y-auto no-scrollbar flex flex-col justify-between">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
               <div className="flex items-center gap-2">
                 <BookIcon className="w-5 h-5 text-[#3182ce]" />
-                <h3 className="text-base font-black text-slate-900">新增资料</h3>
+                <h3 className="text-base font-black text-slate-900">新增知识</h3>
               </div>
               <button
                 type="button"
@@ -1008,6 +1427,141 @@ export default function KnowledgeLibraryPage() {
             </div>
 
             <div className="space-y-4 my-auto">
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">知识标题 <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={createTitle}
+                  onChange={(e) => setCreateTitle(e.target.value)}
+                  placeholder="例如：微服务 API 规范"
+                  className="w-full p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">知识分类 <span className="text-red-500">*</span></label>
+                  <select
+                    value={createCategory}
+                    onChange={(e) => {
+                      if (e.target.value === "__CREATE_NEW__") {
+                        setInlineCatCreate(true);
+                        setInlineCatName("");
+                      } else {
+                        setInlineCatCreate(false);
+                        setCreateCategory(e.target.value);
+                      }
+                    }}
+                    className="w-full px-3 py-2 text-xs border border-slate-200 rounded-lg bg-white focus:outline-none focus:border-[#3182ce] font-medium cursor-pointer"
+                  >
+                    {createCategory && !knowledgeCategories.includes(createCategory) && !myCategories.includes(createCategory) && (
+                      <option value={createCategory}>{createCategory}（当前）</option>
+                    )}
+                    {knowledgeCategories.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                    {myCategories.map((c) => (
+                      <option key={c} value={c}>{c}（我的）</option>
+                    ))}
+                    <option value="未分类">未分类</option>
+                    <option value="__CREATE_NEW__">➕ 新建分类…</option>
+                  </select>
+                  {inlineCatCreate && (
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        value={inlineCatName}
+                        onChange={(e) => setInlineCatName(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); confirmInlineCatCreate(); } }}
+                        maxLength={30}
+                        placeholder="输入新分类名（1~30 字，仅你自己可见）"
+                        autoFocus
+                        className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182ce] font-medium"
+                      />
+                      <button
+                        type="button"
+                        onClick={confirmInlineCatCreate}
+                        disabled={!inlineCatName.trim() || catBusy}
+                        className="px-3 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-lg cursor-pointer disabled:opacity-50 shrink-0"
+                      >
+                        {catBusy ? "创建中…" : "创建"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setInlineCatCreate(false); setInlineCatName(""); }}
+                        className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold rounded-lg cursor-pointer shrink-0"
+                      >
+                        取消
+                      </button>
+                    </div>
+                  )}
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">知识正文 (支持 Markdown)</label>
+                <textarea
+                  value={createContent}
+                  onChange={(e) => setCreateContent(e.target.value)}
+                  placeholder="填写知识正文，可以是经验总结、架构方案或技术文档。"
+                  className="w-full h-32 p-2.5 text-xs font-mono font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400 resize-none leading-relaxed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">附件（可选，最多 5 个，单个不超过 20MB）</label>
+                <div
+                  onClick={() => attInputRef.current?.click()}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+                  onDragLeave={() => setIsDragOver(false)}
+                  onDrop={(e) => { e.preventDefault(); setIsDragOver(false); addPendingFiles(e.dataTransfer.files); }}
+                  className={
+                    "flex flex-col items-center justify-center gap-1 py-5 px-4 border-2 border-dashed rounded-xl cursor-pointer transition-colors " +
+                    (isDragOver
+                      ? "border-[#3182ce] bg-blue-50"
+                      : "border-slate-200 bg-slate-50 hover:border-[#3182ce]/60 hover:bg-blue-50/40")
+                  }
+                >
+                  <UploadCloudIcon className="w-6 h-6 text-slate-400" />
+                  <p className="text-xs font-bold text-slate-600">点击选择或拖拽文件到此处上传</p>
+                  <p className="text-[11px] text-slate-400">支持文档、图片、压缩包、音视频等常见格式（pdf / docx / xlsx / pptx / png / zip 等）</p>
+                  <input
+                    ref={attInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => { addPendingFiles(e.target.files || []); e.target.value = ""; }}
+                  />
+                </div>
+                {pendingFiles.length > 0 && (
+                  <ul className="mt-2 space-y-1.5">
+                    {pendingFiles.map((f, idx) => (
+                      <li key={f.name + "-" + idx} className="flex items-center gap-2 px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg">
+                        <FileIcon className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="text-xs font-bold text-slate-700 truncate flex-1" title={f.name}>{f.name}</span>
+                        <span className="text-[11px] text-slate-400 shrink-0">{formatAttSize(f.size)}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPendingFiles((prev) => prev.filter((_, i) => i !== idx))}
+                          className="shrink-0 p-0.5 text-slate-400 hover:text-rose-500 cursor-pointer"
+                          title="移除此文件"
+                        >
+                          <XIcon className="w-3.5 h-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {uploadProgress && (
+                  <div className="mt-2 px-2.5 py-2 bg-blue-50 border border-blue-100 rounded-lg">
+                    <p className="text-[11px] font-bold text-blue-700 truncate">
+                      正在保存附件（{uploadProgress.current}/{uploadProgress.total}）：{uploadProgress.fileName}
+                    </p>
+                    <div className="h-1.5 mt-1.5 bg-blue-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-[#3182ce] rounded-full transition-all" style={{ width: uploadProgress.percent + "%" }} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-xs font-extrabold text-slate-700 mb-1">保存到哪个工作空间 <span className="text-red-500">*</span></label>
                 <select
@@ -1023,101 +1577,14 @@ export default function KnowledgeLibraryPage() {
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">资料分类 <span className="text-red-500">*</span></label>
-                  <select
-                    value={createCategory || (dbCategories[0]?.key || "")}
-                    onChange={(e) => setCreateCategory(e.target.value)}
-                    className="w-full p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none"
-                  >
-                    {dbCategories.map((cat) => (
-                      <option key={cat.key} value={cat.key}>
-                        {cat.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-extrabold text-slate-700 mb-1">资料标题 <span className="text-red-500">*</span></label>
-                  <input
-                    type="text"
-                    value={createTitle}
-                    onChange={(e) => setCreateTitle(e.target.value)}
-                    placeholder="例如：微服务 API 规范"
-                    className="w-full p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400"
-                  />
-                </div>
-              </div>
-
-              {/* 上传资料文件组件区域 */}
               <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">
-                  上传资料附件文档 (可选，自动提取内容)
-                </label>
-                {selectedFile ? (
-                  <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-xl flex items-center justify-between gap-3 animate-in fade-in">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-[#3182ce] text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-                        <FileUpIcon className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0 text-left">
-                        <p className="text-xs font-extrabold text-slate-800 truncate" title={selectedFile.name}>{selectedFile.name}</p>
-                        <p className="text-[10px] text-slate-400 font-mono font-medium">{(selectedFile.size / 1024).toFixed(1)} KB</p>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveFile}
-                      className="px-2 py-1 text-[10px] font-bold text-red-600 bg-white hover:bg-red-50 rounded-lg border border-red-200 transition-colors cursor-pointer shrink-0"
-                    >
-                      更换/移除
-                    </button>
-                  </div>
-                ) : (
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                    onDragLeave={() => setIsDragging(false)}
-                    onDrop={handleDropFile}
-                    className={`border-2 border-dashed rounded-xl p-3.5 text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? "border-[#3182ce] bg-blue-50/60 scale-[1.01]"
-                        : "border-slate-200 bg-slate-50/70 hover:bg-white hover:border-[#3182ce]/50"
-                    }`}
-                  >
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept=".md,.txt,.pdf,.doc,.docx,.json,.csv"
-                      onChange={handleFileChange}
-                      className="hidden"
-                    />
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-blue-100/70 text-[#3182ce] flex items-center justify-center shrink-0">
-                        <UploadIcon className="w-4 h-4" />
-                      </div>
-                      <div className="text-left min-w-0">
-                        <p className="text-xs font-bold text-slate-700 leading-tight">
-                          点击选择本地文件，或拖拽文件至此处
-                        </p>
-                        <p className="text-[10px] text-slate-400 font-medium leading-none mt-0.5">
-                          支持 .md, .txt, .pdf, .docx, .json 格式自动读取
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-extrabold text-slate-700 mb-1">资料正文 (支持 Markdown)</label>
-                <textarea
-                  value={createContent}
-                  onChange={(e) => setCreateContent(e.target.value)}
-                  placeholder="填写资料正文，可以是经验总结、架构方案或技术文档。"
-                  className="w-full h-32 p-2.5 text-xs font-mono font-medium bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400 resize-none leading-relaxed"
+                <label className="block text-xs font-extrabold text-slate-700 mb-1">标签（可选，逗号分隔，最多 5 个，每个 1~20 字）</label>
+                <input
+                  type="text"
+                  value={createTags}
+                  onChange={(e) => setCreateTags(e.target.value)}
+                  placeholder="例如：标书解析,话术,避坑"
+                  className="w-full p-2.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none placeholder:text-slate-400"
                 />
               </div>
             </div>
@@ -1140,7 +1607,7 @@ export default function KnowledgeLibraryPage() {
                     <LoaderIcon className="w-3.5 h-3.5 animate-spin" /> 保存中...
                   </span>
                 ) : (
-                  "保存资料"
+                  "保存知识"
                 )}
               </button>
             </div>
@@ -1151,69 +1618,315 @@ export default function KnowledgeLibraryPage() {
       {/* 阅览 Modal */}
       {showPreviewModal && previewItem && (
         <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in">
-          <div className="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-2xl border border-slate-200 text-left space-y-4 relative">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2 min-w-0">
-                <BookIcon className="w-5 h-5 text-[#3182ce] shrink-0" />
-                <h3 className="text-base font-black text-slate-900 truncate" title={previewItem.title}>
-                  {previewItem.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowPreviewModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer shrink-0"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                previewItem.authorRole === "OWNER" ? "text-[#3182ce] bg-blue-50 border-blue-200" : "text-purple-700 bg-purple-50 border-purple-200"
-              }`}>
-                {previewItem.authorRole === "OWNER" ? "所有者沉淀" : "成员沉淀"}
-              </span>
-              <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
-                <BuildingIcon className="w-3.5 h-3.5" /> {previewItem.workspaceName}
-              </span>
-              <span className="text-[11px] font-bold text-slate-400 font-mono">
-                {previewItem.time}
-              </span>
-            </div>
-
-            {previewItem.fileName && (
-              <div className="p-3 bg-blue-50/80 border border-blue-200/80 rounded-xl flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <PaperclipIcon className="w-4 h-4 text-[#3182ce]" />
-                  <span className="text-xs font-bold text-slate-800">{previewItem.fileName}</span>
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-slate-200 text-left relative">
+            {/* 顶部固定区：标题 + 元信息 + 视图切换 */}
+            <div className="sticky top-0 z-10 bg-white px-6 pt-6 pb-3 border-b border-slate-100 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 min-w-0">
+                  <BookIcon className="w-5 h-5 text-[#3182ce] shrink-0" />
+                  <h3 className="text-base font-black text-slate-900 truncate" title={previewItem.title}>
+                    {previewItem.title}
+                  </h3>
                 </div>
-                {previewItem.fileSize && <span className="text-xs font-mono text-slate-400">{previewItem.fileSize}</span>}
+                <button
+                  onClick={() => setShowPreviewModal(false)}
+                  className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer shrink-0"
+                >
+                  <XIcon className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 inline-flex items-center gap-1">
+                  <TagIcon className="w-3 h-3" /> {previewItem.category || "未分类"}
+                </span>
+                {previewItem.attachments && previewItem.attachments.length > 0 && (
+                  <span
+                    className="text-[10px] font-black px-2 py-0.5 rounded-full bg-blue-50 text-[#2b6cb0] border border-blue-200 inline-flex items-center gap-1"
+                    title={(previewItem.attachments.map((a) => a.originalName)).join("\n")}
+                  >
+                    <PaperclipIcon className="w-3 h-3" /> {previewItem.attachments.length} 个附件
+                  </span>
+                )}
+              </div>
+
+              {/* 视图切换：滑动指示器分段控件 */}
+              <div className="flex items-center justify-between gap-2">
+                <div className="inline-flex bg-slate-200/70 rounded-full p-0.5 relative select-none">
+                  <div
+                    className={`absolute top-0.5 bottom-0.5 w-[76px] bg-white rounded-full shadow-sm transition-transform duration-200 ${
+                      previewMode === "plain" ? "translate-x-[76px]" : "translate-x-0"
+                    }`}
+                  />
+                  <button
+                    onClick={() => setPreviewMode("rendered")}
+                    className={`relative z-10 px-4 py-1 text-[11px] font-bold rounded-full transition-colors duration-200 cursor-pointer w-[76px] text-center ${
+                      previewMode === "rendered" ? "text-[#3182ce]" : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    排版视图
+                  </button>
+                  <button
+                    onClick={() => setPreviewMode("plain")}
+                    className={`relative z-10 px-4 py-1 text-[11px] font-bold rounded-full transition-colors duration-200 cursor-pointer w-[76px] text-center ${
+                      previewMode === "plain" ? "text-[#3182ce]" : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    纯文本
+                  </button>
+                </div>
+                <span className="text-[10px] text-slate-300 font-medium">共 {previewItem.content?.length || 0} 字</span>
+              </div>
+            </div>
+
+            {/* 中间可滚动区：正文 */}
+            <div className="px-6 py-4">
+              <div className="border border-slate-200/70 rounded-xl bg-slate-50">
+                {previewMode === "rendered" ? (
+                  <DocumentContentRenderer
+                    content={previewItem.content || ""}
+                    title={previewItem.title}
+                    category={previewItem.category || ""}
+                  />
+                ) : (
+                  <pre className="p-4 text-xs text-slate-700 whitespace-pre-wrap break-words font-sans leading-relaxed">{markdownToPlainText(previewItem.content || "") || "（无内容）"}</pre>
+                )}
+              </div>
+            </div>
+
+            {/* 知识附件列表（可下载） */}
+            {previewItem.attachments && previewItem.attachments.length > 0 && (
+              <div className="px-6 py-2 border-t border-slate-100 bg-slate-50/50">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">📎 知识附件</p>
+                {previewItem.attachments.map((att) => (
+                  <div key={att.id} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-slate-100/60 transition-colors">
+                    <span className="text-xs font-bold text-slate-600 truncate max-w-[300px]">{att.originalName}</span>
+                    <a
+                      href={`/api/workspace/assets/${att.id}/file`}
+                      download={att.originalName}
+                      className="text-[11px] font-bold text-[#3182ce] hover:underline cursor-pointer shrink-0"
+                    >
+                      下载 ({att.fileSize ? (att.fileSize / 1024).toFixed(1) + " KB" : "—"})
+                    </a>
+                  </div>
+                ))}
               </div>
             )}
 
-            <div className="bg-slate-50 p-4 rounded-xl text-xs font-mono leading-relaxed text-slate-700 max-h-96 overflow-y-auto border border-slate-200/70 whitespace-pre-wrap">
-              {previewItem.content || "该资料暂无正文内容。"}
+            {/* 其他信息：归属与沉淀者（按标题→分类→正文→附件→其他的信息层级排在附件之后） */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-slate-50/50">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">其他信息</p>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                  previewItem.uploaderRole === "OWNER" ? "text-[#3182ce] bg-blue-50 border-blue-200" : "text-purple-700 bg-purple-50 border-purple-200"
+                }`}>
+                  {previewItem.uploaderRole === "OWNER" ? "所有者沉淀" : "成员沉淀"}
+                </span>
+                <span className="text-[11px] font-bold text-slate-400 flex items-center gap-1">
+                  <BuildingIcon className="w-3.5 h-3.5" /> {previewItem.workspaceName}
+                </span>
+                <span className="text-[11px] font-bold text-slate-400 font-mono">
+                  {previewItem.time}
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+            {/* 底部固定区：操作按钮 */}
+            <div className="sticky bottom-0 z-10 bg-white px-6 pt-3 pb-6 border-t border-slate-100">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <button
+                  onClick={() => router.push(`/workspace/${previewItem.workspaceId}?componentId=&knowledgeId=${previewItem.id}`)}
+                  className="px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5 shadow-sm"
+                  title="跳转到该知识所在空间的工作台，带入本知识作为执行材料（到目标空间自行选择组件）"
+                >
+                  <BookIcon className="w-3.5 h-3.5" /> 带入执行
+                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => handleCopyContent(previewItem.content || previewItem.title)}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
+                  >
+                    {copied ? <CheckmarkIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
+                    <span>{copied ? "已复制正文" : "复制知识正文"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      try {
+                        await exportDocumentAsWord(previewItem.title, previewItem.content || "");
+                        toast.success(`知识《${previewItem.title}》已导出为 Word 文档 (.docx)`);
+                      } catch {
+                        toast.error("导出 Word 文档时发生异常");
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
+                    title="导出为可编辑 Word 文档 (.docx)"
+                  >
+                    <FileIcon className="w-3.5 h-3.5 text-slate-500" /> 导出 Word
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      try {
+                        exportDocumentAsMarkdown(previewItem.title, previewItem.content || "");
+                        toast.success(`知识《${previewItem.title}》已导出为 Markdown 文件`);
+                      } catch {
+                        toast.error("导出 Markdown 文件时发生异常");
+                      }
+                    }}
+                    className="px-2.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all border border-slate-200 cursor-pointer shadow-2xs"
+                    title="导出为 Markdown 文件"
+                  >
+                    <DownloadIcon className="w-3.5 h-3.5 text-slate-500" /> 导出 MD
+                  </button>
+                  <button
+                    onClick={() => setShowPreviewModal(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
+                  >
+                    关闭
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── KN-CAT-V2：删除个人分类确认弹窗 ── */}
+      {deleteCatConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setDeleteCatConfirm(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-sm p-6 space-y-4 text-left shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-black text-slate-800">删除个人分类「{deleteCatConfirm}」？</h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              删除后该分类将从你的分类列表中移除，<strong className="text-slate-700">挂在该分类下的知识条目会自动归入「未分类」</strong>，条目本身不会被删除。此操作仅影响你自己创建的分类。
+            </p>
+            <div className="flex items-center justify-end gap-2">
               <button
-                onClick={() => handleCopyContent(previewItem.content || previewItem.title)}
-                className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#3182ce] text-xs font-bold rounded-xl cursor-pointer flex items-center gap-1.5"
-              >
-                {copied ? <CheckmarkIcon className="w-3.5 h-3.5" /> : <CopyIcon className="w-3.5 h-3.5" />}
-                <span>{copied ? "已复制正文" : "复制资料正文"}</span>
-              </button>
-              <button
-                onClick={() => setShowPreviewModal(false)}
+                onClick={() => setDeleteCatConfirm(null)}
                 className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl cursor-pointer"
               >
-                关闭
+                取消
+              </button>
+              <button
+                onClick={confirmExecuteDeleteCategory}
+                disabled={catBusy}
+                className="px-4 py-2 bg-rose-500 hover:bg-rose-600 text-white text-xs font-black rounded-xl cursor-pointer disabled:opacity-50"
+              >
+                {catBusy ? "删除中…" : "确认删除"}
               </button>
             </div>
           </div>
         </div>
       )}
 
+      {/* ── 分类管理弹窗（所有用户；管理员含系统内置分区，普通用户仅我的个人分类） ── */}
+      {showCatManage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" onClick={() => setShowCatManage(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-5 text-left shadow-2xl max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-slate-800">管理知识分类</h3>
+              <button onClick={() => setShowCatManage(false)} className="text-slate-400 hover:text-slate-600 text-lg font-bold cursor-pointer">×</button>
+            </div>
+
+            {/* 分区一：系统内置分类（仅管理员可见可管理） */}
+            {isPlatformAdmin && (
+              <div className="space-y-3">
+                <div>
+                  <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                    <ShieldIcon className="w-3.5 h-3.5 text-[#3182ce]" /> 系统内置分类
+                    <span className="text-[10px] font-bold text-slate-400 font-normal">全员可见 · 普通用户不可删改</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-400 mt-0.5">添加或删除系统分类。分类下仍有知识条目时不可删除。</p>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddCategory(); }}
+                    placeholder="输入新系统分类名（1~30 字）"
+                    maxLength={30}
+                    className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182ce] font-medium"
+                  />
+                  <button
+                    onClick={handleAddCategory}
+                    disabled={!newCatName.trim()}
+                    className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    添加
+                  </button>
+                </div>
+                <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                  {knowledgeCategories.map((cat) => (
+                    <div key={cat} className="flex items-center justify-between px-3 py-2 rounded-lg bg-slate-50 border border-slate-100">
+                      <span className="text-xs font-bold text-slate-700">{cat}</span>
+                      <button
+                        onClick={() => handleRemoveCategory(cat)}
+                        disabled={knowledgeCategories.length <= 1}
+                        className="text-[11px] text-rose-500 hover:text-rose-700 font-bold transition-colors cursor-pointer disabled:opacity-30"
+                        title={knowledgeCategories.length <= 1 ? "至少保留一个分类" : "删除此系统分类"}
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 分区二：我的个人分类（所有用户；仅自己可见、可自删） */}
+            <div className={"space-y-3 " + (canManageAny ? "pt-4 border-t border-slate-100" : "")}>
+              <div>
+                <h4 className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                  <UserIcon className="w-3.5 h-3.5 text-purple-600" /> 我的个人分类
+                  <span className="text-[10px] font-bold text-slate-400 font-normal">仅你自己可见 · 可随时删除</span>
+                </h4>
+                <p className="text-[11px] text-slate-400 mt-0.5">删除后挂在该分类下的知识条目会自动归入「未分类」。</p>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={myCatName}
+                  onChange={(e) => setMyCatName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && myCatName.trim()) {
+                      handleCreateMyCategory(myCatName, () => setMyCatName(""));
+                    }
+                  }}
+                  placeholder="输入新个人分类名（1~30 字）"
+                  maxLength={30}
+                  className="flex-1 px-3 py-2 text-xs border border-slate-200 rounded-lg focus:outline-none focus:border-[#3182ce] font-medium"
+                />
+                <button
+                  onClick={() => handleCreateMyCategory(myCatName, () => setMyCatName(""))}
+                  disabled={!myCatName.trim() || catBusy}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white text-xs font-black rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  {catBusy ? "创建中…" : "创建"}
+                </button>
+              </div>
+              <div className="space-y-1.5 max-h-44 overflow-y-auto">
+                {myCategories.length === 0 ? (
+                  <p className="text-[11px] text-slate-400 text-center py-3">你还没有创建个人分类</p>
+                ) : (
+                  myCategories.map((cat) => (
+                    <div key={cat} className="flex items-center justify-between px-3 py-2 rounded-lg bg-purple-50/50 border border-purple-100">
+                      <span className="text-xs font-bold text-slate-700">{cat}</span>
+                      <button
+                        onClick={() => setDeleteCatConfirm(cat)}
+                        className="text-[11px] text-rose-500 hover:text-rose-700 font-bold transition-colors cursor-pointer"
+                        title="删除此个人分类（分类下知识将归入「未分类」）"
+                      >
+                        删除
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <Footer />
     </div>
   );

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
 
 /**
  * 获取用户配额信息
@@ -40,6 +41,18 @@ export async function GET(request: NextRequest) {
         },
       },
     });
+
+    // 跨自然月维护（读余额前触发）：本人个人空间的注册福利按月发放（幂等）+ 成员用量清零。
+    // 否则免登录会话跨月后：定时清算先清零上月福利，而发放只挂在登录/空间接口，
+    // 组件大厅会先读到过期清零后的 0 余额而误报「算力不足」。
+    const personalWs = workspaces.find((ws) => ws.type === "PERSONAL" && ws.ownerId === userId);
+    if (personalWs) {
+      try {
+        await checkAndResetQuotaCycle(prisma, personalWs.id, userId);
+      } catch (e) {
+        console.warn("[workspace-hub/quota] 个人空间月度维护失败(非致命):", e);
+      }
+    }
 
     // 配额一律按 workspacequota.workspaceId 正向查询。
     // ⚠️ 严禁使用 include: { workspacequota: true }——该关系走 workspace.workspacequotaId 外键，

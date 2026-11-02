@@ -26,9 +26,17 @@ export async function register() {
 
   const run = async () => {
     try {
-      const { expireExpiredGrants } = await import("@/lib/credit-service");
+      const [{ expireExpiredGrants }, { remindExpiringGrants }] = await Promise.all([
+        import("@/lib/credit-service"),
+        import("@/lib/points-notifications"),
+      ]);
       const cleared = await expireExpiredGrants({});
       console.log(`[points-expire] 每日到期清算完成，清零 ${cleared} 算力点`);
+      // 到期前 7 天预告（内部 6 天防重，不会每日重复打扰）
+      const reminded = await remindExpiringGrants();
+      if (reminded > 0) {
+        console.log(`[points-expire] 到期预告提醒已发送给 ${reminded} 位用户`);
+      }
     } catch (e) {
       console.error("[points-expire] 每日到期清算失败:", e);
     }
@@ -112,4 +120,22 @@ export async function register() {
     await cleanupRechargeOrders();
     setInterval(cleanupRechargeOrders, DAY_MS);
   }, 120 * 1000);
+
+  // 算力点流水超期清理：每日删除创建时间超过 3 年的流水（数据保留策略，与对公工单清理同口径）。
+  // 首跑延后 150s（避开启动高峰与其他清算），之后每 24h 一次；与 /api/cron/point-ledger-cleanup 互为冗余。
+  const cleanupPointLedger = async () => {
+    try {
+      const { cleanupExpiredPointLedger } = await import("@/lib/point-ledger-cleanup");
+      const res = await cleanupExpiredPointLedger();
+      if (res.deletedCount > 0) {
+        console.log(`[point-ledger-cleanup] 超期流水清理：已删除 ${res.deletedCount} 条超过 3 年的算力点流水`);
+      }
+    } catch (e) {
+      console.error("[point-ledger-cleanup] 算力流水超期清理失败:", e);
+    }
+  };
+  setTimeout(async () => {
+    await cleanupPointLedger();
+    setInterval(cleanupPointLedger, DAY_MS);
+  }, 150 * 1000);
 }

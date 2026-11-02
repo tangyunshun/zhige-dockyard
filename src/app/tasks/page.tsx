@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
+import { normalizeTaskStatus } from "@/lib/task-status";
 import { mergeTaskDetailIntoListItem } from "@/lib/task-detail-merge";
 import { useAppContext } from "@/contexts/AppContext";
 import AvatarDropdown from "@/components/AvatarDropdown";
@@ -119,14 +120,7 @@ export interface TaskExecutionView {
   isRealExecution?: boolean;
 }
 
-// 服务端状态归一化：completed/pending 等变体状态统一映射，避免误判
-const normalizeTaskStatus = (raw?: string): TaskStatus => {
-  const s = (raw || "").toUpperCase();
-  if (["SUCCESS", "COMPLETED", "DONE", "SUCCEEDED"].includes(s)) return "SUCCESS";
-  if (["FAILED", "ERROR", "CANCELLED", "CANCELED", "TIMEOUT", "REJECTED"].includes(s)) return "FAILED";
-  if (["RUNNING", "PENDING", "QUEUED", "PROCESSING", "READY"].includes(s)) return "RUNNING";
-  return "UNKNOWN";
-};
+// 状态归一使用共享真源 src/lib/task-status.ts（任务中心与工作台同口径）
 
 /** 执行状态展示：缺失元数据不得显示为“模拟执行” */
 function taskExecLabel(t: UserTaskRecord): { text: string; cls: string; title: string } {
@@ -144,6 +138,7 @@ function taskExecLabel(t: UserTaskRecord): { text: string; cls: string; title: s
 const STATUS_META: Record<TaskStatus, { label: string; cls: string; dot?: string }> = {
   SUCCESS: { label: "成功", cls: "text-emerald-600 bg-emerald-50 border-emerald-200" },
   RUNNING: { label: "进行中", cls: "text-amber-600 bg-amber-50 border-amber-200", dot: "bg-amber-500 animate-pulse" },
+  // 超过执行租约（10 分钟）仍在 RUNNING 的任务，打开任务中心时后端会自动转失败并退款
   FAILED: { label: "失败", cls: "text-red-600 bg-red-50 border-red-200" },
   UNKNOWN: { label: "未知", cls: "text-slate-500 bg-slate-100 border-slate-200" },
 };
@@ -276,6 +271,15 @@ export default function PersonalTasksManagementPage() {
 
   // 分页控制 (明细列表每页 10 条，看板各模块每页 5 条)
   const [currentPage, setCurrentPage] = useState(1);
+  // 服务端驱动：总条数、统计与"只看我的"开关（TASK-1/2）
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverStats, setServerStats] = useState({ success: 0, failed: 0, running: 0, unknown: 0, pointsSum: 0, realSuccess: 0 });
+  const [scopeMine, setScopeMine] = useState(false);
+  const [kanbanSuccess, setKanbanSuccess] = useState<UserTaskRecord[]>([]);
+  const [kanbanRunning, setKanbanRunning] = useState<UserTaskRecord[]>([]);
+  const [kanbanFailed, setKanbanFailed] = useState<UserTaskRecord[]>([]);
+  const [kanbanTotals, setKanbanTotals] = useState({ success: 0, running: 0, failed: 0 });
+  const totalPages = Math.ceil(serverTotal / 10) || 1;
   const [successPage, setSuccessPage] = useState(1);
   const [runningPage, setRunningPage] = useState(1);
   const [failedPage, setFailedPage] = useState(1);
@@ -303,13 +307,13 @@ export default function PersonalTasksManagementPage() {
     const dbName = t.componentName && t.componentName !== t.type ? t.componentName : undefined;
     const record = {
       id: t.id ?? "",
-      name: t.name ? String(t.name) : `任务 #${String(t.id ?? "").substring(0, 6)}`,
+      name: t.name ? String(t.name) : "未命名任务",
       componentId: t.type ?? "",
       componentName: cMeta?.name || dbName || (typeof t.componentName === "string" ? t.componentName : "") || (t.type ?? ""),
       // 列表严禁读取完整 config：只消费后端统一安全字段 execution.estimatedPoints（算力点）
       pointsCost: typeof t.execution?.estimatedPoints === "number" ? t.execution.estimatedPoints : 0,
       status: normalizeTaskStatus(typeof t.status === "string" ? t.status : undefined),
-      time: t.createdAt ? new Date(t.createdAt).toLocaleString("zh-CN", { hour12: false }) : "近期执行",
+      time: t.createdAt ? new Date(t.createdAt).toLocaleString("zh-CN", { hour12: false }) : "—",
       createdAt: t.createdAt ? new Date(t.createdAt).getTime() : 0,
       workspaceId: ws.id,
       workspaceName: ws.name ?? "",
@@ -340,21 +344,8 @@ export default function PersonalTasksManagementPage() {
     return record as unknown as UserTaskRecord;
   };
 
-  // 按空间拉取任务（后端逐空间校验成员身份）
-  const fetchTasksForWorkspace = async (ws: WorkspaceMeta): Promise<UserTaskRecord[]> => {
-    const token = getAuthToken();
-    const res = await fetch(`/api/studio?action=tasks&workspaceId=${encodeURIComponent(ws.id)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (!data?.success || !Array.isArray(data.data)) return [];
-    return (data.data as RawTaskResponse[]).map((t) => formatTask(t, ws));
-  };
-
-  // 加载全部空间并聚合任务档案 (优先调用服务端 /api/tasks 聚合接口，失败时降级逐空间拉取)
-  const fetchUserTasks = async () => {
+  // 服务端驱动加载：筛选/分页/范围全部下推到 /api/tasks（TASK-1 真分页，禁止前端全量切片）
+  const loadTasks = async () => {
     setLoading(true);
     setLoadError(null);
     try {
@@ -364,66 +355,106 @@ export default function PersonalTasksManagementPage() {
         return;
       }
 
-      // 1. 获取空间列表（下拉菜单与新建任务弹窗用）
+      // 空间列表（下拉菜单与新建任务弹窗用）
       const wsRes = await fetch("/api/workspace/list", {
         headers: { Authorization: `Bearer ${token}` },
         credentials: "include",
       });
-      let wsList: WorkspaceMeta[] = [];
+      if (wsRes.status === 401) {
+        toast.error("登录已过期，请重新登录");
+        router.push("/auth/login");
+        return;
+      }
       if (wsRes.ok) {
         const wsData = await wsRes.json();
         if (Array.isArray(wsData.workspaces)) {
-          wsList = wsData.workspaces as WorkspaceMeta[];
+          setWorkspaces(wsData.workspaces as WorkspaceMeta[]);
         }
       }
-      setWorkspaces(wsList);
 
-      // 2. 优先尝试服务端一次性聚合接口 GET /api/tasks
-      try {
-        const tasksRes = await fetch("/api/tasks", {
-          headers: { Authorization: `Bearer ${token}` },
-          credentials: "include",
-        });
+      const params = new URLSearchParams({
+        page: String(currentPage),
+        pageSize: "10",
+      });
+      if (statusFilter !== "ALL") params.set("status", statusFilter);
+      if (selectedWorkspaceId !== "ALL") params.set("workspaceId", selectedWorkspaceId);
+      if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+      if (scopeMine) params.set("scope", "mine");
 
-        if (tasksRes.ok) {
-          const tasksData = await tasksRes.json();
-          if (tasksData?.success && Array.isArray(tasksData.data)) {
-            const formattedAll = (tasksData.data as RawTaskResponse[]).map((t) =>
-              formatTask(t, { id: String(t.workspaceId ?? ""), name: typeof t.workspaceName === "string" ? t.workspaceName : undefined, type: typeof t.workspaceType === "string" ? t.workspaceType : undefined })
-            );
-            formattedAll.sort((a: UserTaskRecord, b: UserTaskRecord) => b.createdAt - a.createdAt);
-            setTasks(formattedAll);
-            setLoading(false);
-            return;
-          }
-        }
-      } catch (aggErr) {
-        console.warn("[fetchUserTasks] /api/tasks 接口调用失败，自动降级为逐空间数据拉取:", aggErr);
-      }
-
-      // 3. 服务端聚合不可用时的降级处理：逐空间拉取
-      if (wsList.length === 0) {
-        setTasks([]);
+      const tasksRes = await fetch(`/api/tasks?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
+      });
+      if (tasksRes.status === 401) {
+        toast.error("登录已过期，请重新登录");
+        router.push("/auth/login");
         return;
       }
-      const settled = await Promise.allSettled(wsList.map((ws) => fetchTasksForWorkspace(ws)));
-      const all: UserTaskRecord[] = [];
-      settled.forEach((r) => {
-        if (r.status === "fulfilled") all.push(...r.value);
-      });
-      all.sort((a, b) => b.createdAt - a.createdAt);
-      setTasks(all);
-    } catch (err) {
+      const tasksData = await tasksRes.json();
+      if (!tasksRes.ok || !tasksData?.success) {
+        throw new Error(tasksData?.error || "获取任务列表失败");
+      }
+      const payload = tasksData.data || {};
+      const rows: RawTaskResponse[] = Array.isArray(payload.tasks) ? payload.tasks : [];
+      const formatted = rows.map((t) =>
+        formatTask(t, {
+          id: String(t.workspaceId ?? ""),
+          name: typeof t.workspaceName === "string" ? t.workspaceName : undefined,
+          type: typeof t.workspaceType === "string" ? t.workspaceType : undefined,
+        }),
+      );
+      formatted.sort((a: UserTaskRecord, b: UserTaskRecord) => b.createdAt - a.createdAt);
+      setTasks(formatted);
+      setServerTotal(typeof payload.total === "number" ? payload.total : formatted.length);
+      if (payload.stats && typeof payload.stats === "object") {
+        setServerStats({
+          success: payload.stats.success || 0,
+          failed: payload.stats.failed || 0,
+          running: payload.stats.running || 0,
+          unknown: payload.stats.unknown || 0,
+          pointsSum: payload.stats.pointsSum || 0,
+          realSuccess: payload.stats.realSuccess || 0,
+        });
+      }
+      const tp = Math.ceil((typeof payload.total === "number" ? payload.total : 0) / 10) || 1;
+      if (currentPage > tp) setCurrentPage(1);
+    } catch (err: any) {
       console.error("[TasksManagementPage] Error loading tasks:", err);
-      setLoadError("加载任务列表失败，请稍后重试");
+      setLoadError(err?.message || "加载任务列表失败，请稍后重试");
     } finally {
       setLoading(false);
     }
   };
 
+  // 看板三列独立查询（每列各查各的状态，真分页）
+  const loadKanbanColumn = async (status: "SUCCESS" | "RUNNING" | "FAILED") => {
+    const token = getAuthToken();
+    const params = new URLSearchParams({ page: "1", pageSize: "5", status });
+    if (selectedWorkspaceId !== "ALL") params.set("workspaceId", selectedWorkspaceId);
+    if (searchQuery.trim()) params.set("keyword", searchQuery.trim());
+    if (scopeMine) params.set("scope", "mine");
+    const res = await fetch(`/api/tasks?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (!res.ok) return { items: [] as UserTaskRecord[], total: 0 };
+    const j = await res.json();
+    const rows: RawTaskResponse[] = j?.data?.tasks || [];
+    const items = rows.map((t) =>
+      formatTask(t, {
+        id: String(t.workspaceId ?? ""),
+        name: typeof t.workspaceName === "string" ? t.workspaceName : undefined,
+        type: typeof t.workspaceType === "string" ? t.workspaceType : undefined,
+      }),
+    );
+    return { items, total: typeof j?.data?.total === "number" ? j.data.total : items.length };
+  };
+
+  // 筛选/分页/范围变化 → 重新拉取（服务端驱动）
   useEffect(() => {
-    fetchUserTasks();
-  }, []);
+    loadTasks();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, selectedWorkspaceId, currentPage, scopeMine, searchQuery]);
 
 
   // 新建任务：引导前往组件工坊由标准合同与调度器正规执行，隔离生产页面对直接 simulate 的暴露
@@ -508,38 +539,23 @@ export default function PersonalTasksManagementPage() {
     setPreviewErrorMsg(null);
   };
 
-  // 多维过滤
-  const filteredTasks = tasks.filter((t) => {
-    const matchesWs = selectedWorkspaceId === "ALL" || t.workspaceId === selectedWorkspaceId;
-    const matchesStatus = statusFilter === "ALL" || t.status === statusFilter;
-    const q = searchQuery.trim().toLowerCase();
-    const matchesQuery = !q ||
-      t.name.toLowerCase().includes(q) ||
-      t.componentName.toLowerCase().includes(q) ||
-      t.workspaceName.toLowerCase().includes(q);
-    return matchesWs && matchesStatus && matchesQuery;
-  });
+  // 服务端已完成筛选/分页：当前页数据直接使用（TASK-1）
+  const paginatedTasks = tasks;
+  const safeCurrentPage = currentPage;
 
-  // 分页计算: 每页显示 10 条数据
-  const pageSize = 10;
-  const totalPages = Math.ceil(filteredTasks.length / pageSize) || 1;
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = (safeCurrentPage - 1) * pageSize;
-  const paginatedTasks = filteredTasks.slice(startIndex, startIndex + pageSize);
+  // 统计（服务端聚合，跟随当前筛选；点数=实际结算值优先，缺失回退预估）
+  const totalPoints = serverStats.pointsSum;
+  const realSuccessCount = serverStats.realSuccess;
+  const enterpriseCount = workspaces.filter((w) => w.type === "ENTERPRISE").length;
+  const personalCount = workspaces.filter((w) => w.type === "PERSONAL").length;
 
-  // 统计
-  const successTasks = filteredTasks.filter((t) => t.status === "SUCCESS");
-  const runningTasks = filteredTasks.filter((t) => t.status === "RUNNING");
-  const failedTasks = filteredTasks.filter((t) => t.status === "FAILED" || t.status === "UNKNOWN");
-  // 真实模型成功任务统计（排查隔离 SIMULATED，绝不把模拟执行计入真实模型统计）
-  const realSuccessCount = tasks.filter(
-    (t) => t.status === "SUCCESS" && t.execution?.isRealExecution === true,
-  ).length;
-  const totalPoints = tasks.reduce((sum, t) => sum + (t.pointsCost || 0), 0);
+  // 看板三列数据（独立服务端查询，各列显示最近 50 条；计数为服务端真实总数）
+  const successTasks = kanbanSuccess;
+  const runningTasks = kanbanRunning;
+  const failedTasks = kanbanFailed;
 
-  // 看板模块独立分页 (每页 5 条)
+  // 看板列内分页（数据源 = 服务端各状态最近 50 条；列头计数为服务端真实总数）
   const kanbanPageSize = 5;
-
   const totalSuccessPages = Math.ceil(successTasks.length / kanbanPageSize) || 1;
   const safeSuccessPage = Math.min(successPage, totalSuccessPages);
   const successStart = (safeSuccessPage - 1) * kanbanPageSize;
@@ -554,8 +570,6 @@ export default function PersonalTasksManagementPage() {
   const safeFailedPage = Math.min(failedPage, totalFailedPages);
   const failedStart = (safeFailedPage - 1) * kanbanPageSize;
   const paginatedFailedTasks = failedTasks.slice(failedStart, failedStart + kanbanPageSize);
-  const enterpriseCount = tasks.filter((t) => t.workspaceType === "ENTERPRISE").length;
-  const personalCount = tasks.filter((t) => t.workspaceType === "PERSONAL").length;
 
   // 保存任务成果到知识库
   const handleSaveToKnowledge = async (task: UserTaskRecord) => {
@@ -794,6 +808,7 @@ export default function PersonalTasksManagementPage() {
                 { key: "SUCCESS", label: "成功", dotCls: "bg-emerald-500" },
                 { key: "RUNNING", label: "进行中", dotCls: "bg-amber-500" },
                 { key: "FAILED", label: "失败", dotCls: "bg-red-500" },
+                { key: "UNKNOWN", label: "未知", dotCls: "bg-slate-400" },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -812,7 +827,18 @@ export default function PersonalTasksManagementPage() {
             </div>
           )}
           <button
-            onClick={fetchUserTasks}
+            onClick={() => { setScopeMine(!scopeMine); setCurrentPage(1); }}
+            className={`px-3 h-8 rounded-xl text-xs font-bold transition-all cursor-pointer shrink-0 border ${
+              scopeMine
+                ? "bg-[#3182ce] text-white border-[#3182ce]"
+                : "bg-white text-slate-500 border-slate-200 hover:border-[#3182ce]/50"
+            }`}
+            title="仅显示我发起的任务"
+          >
+            只看我的
+          </button>
+          <button
+onClick={loadTasks}
             className="p-2 text-slate-500 hover:text-[#3182ce] rounded-xl hover:bg-slate-100 transition-all cursor-pointer shrink-0 self-end md:self-auto"
             title="刷新任务列表"
           >
@@ -827,7 +853,7 @@ export default function PersonalTasksManagementPage() {
               <AlertIcon className="w-4 h-4" /> {loadError}
             </span>
             <button
-              onClick={fetchUserTasks}
+              onClick={loadTasks}
               className="px-3 py-1.5 text-xs font-black text-white bg-red-600 hover:bg-red-700 rounded-lg cursor-pointer"
             >
               重新加载
@@ -866,12 +892,12 @@ export default function PersonalTasksManagementPage() {
                     <th className="py-3.5 px-3">使用组件</th>
                     <th className="py-3.5 px-3">点数消耗</th>
                     <th className="py-3.5 px-3">运行状态</th>
-                    <th className="py-3.5 px-3">完成时间</th>
+                    <th className="py-3.5 px-3">创建时间</th>
                     <th className="py-3.5 px-4 text-right">操作</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-600">
-                  {filteredTasks.length === 0 ? (
+                  {serverTotal === 0 && tasks.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-12 text-center">
                         <div className="flex flex-col items-center gap-2">
@@ -1043,8 +1069,8 @@ export default function PersonalTasksManagementPage() {
         {!loading && tasks.length > 0 && viewMode === "table" && (
           <Pagination
             currentPage={safeCurrentPage}
-            totalItems={filteredTasks.length}
-            pageSize={pageSize}
+            totalItems={serverTotal}
+            pageSize={10}
             onPageChange={(page) => setCurrentPage(page)}
             itemLabel="条任务"
           />
@@ -1060,7 +1086,7 @@ export default function PersonalTasksManagementPage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
                   <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5 tracking-tight">
                     <CheckIcon className="w-4 h-4 text-emerald-600" />
-                    已完成任务 ({successTasks.length})
+                    已完成任务 ({kanbanTotals.success})
                   </h3>
                 </div>
                 <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2.5 py-0.5 rounded-full border border-emerald-200/80">
@@ -1142,7 +1168,7 @@ export default function PersonalTasksManagementPage() {
                 <div className="pt-3 border-t border-slate-100 mt-auto shrink-0">
                   <Pagination
                     currentPage={safeSuccessPage}
-                    totalItems={successTasks.length}
+                    totalItems={kanbanTotals.success}
                     pageSize={kanbanPageSize}
                     onPageChange={(page) => setSuccessPage(page)}
                     compact={true}
@@ -1157,7 +1183,7 @@ export default function PersonalTasksManagementPage() {
                 <div className="flex items-center gap-2">
                   <LoaderIcon className="w-4 h-4 text-[#3182ce] animate-spin" />
                   <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5 tracking-tight">
-                    正在处理中 ({runningTasks.length})
+                    正在处理中 ({kanbanTotals.running})
                   </h3>
                 </div>
                 <span className="text-[10px] font-bold bg-blue-50 text-[#3182ce] px-2.5 py-0.5 rounded-full border border-blue-200/80">
@@ -1204,7 +1230,7 @@ export default function PersonalTasksManagementPage() {
                 <div className="pt-3 border-t border-slate-100 mt-auto shrink-0">
                   <Pagination
                     currentPage={safeRunningPage}
-                    totalItems={runningTasks.length}
+                    totalItems={kanbanTotals.running}
                     pageSize={kanbanPageSize}
                     onPageChange={(page) => setRunningPage(page)}
                     compact={true}
@@ -1220,7 +1246,7 @@ export default function PersonalTasksManagementPage() {
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
                   <h3 className="text-xs font-black text-slate-900 flex items-center gap-1.5 tracking-tight">
                     <AlertIcon className="w-4 h-4 text-rose-600" />
-                    运行失败 ({failedTasks.length})
+                    运行失败 ({kanbanTotals.failed})
                   </h3>
                 </div>
                 <span className="text-[10px] font-bold bg-rose-50 text-rose-700 px-2.5 py-0.5 rounded-full border border-rose-200/80">
@@ -1272,10 +1298,10 @@ export default function PersonalTasksManagementPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => router.push(`/workspace/${t.workspaceId}`)}
+                          onClick={() => router.push(`/workspace/${t.workspaceId}?componentId=${t.componentId}&retryTaskId=${t.id}`)}
                           className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] cursor-pointer shadow-2xs transition-colors"
                         >
-                          前往空间重试
+                          重新执行（需重新提交材料）
                         </button>
                       </div>
                     </div>
@@ -1288,7 +1314,7 @@ export default function PersonalTasksManagementPage() {
                 <div className="pt-3 border-t border-slate-100 mt-auto shrink-0">
                   <Pagination
                     currentPage={safeFailedPage}
-                    totalItems={failedTasks.length}
+                    totalItems={kanbanTotals.failed}
                     pageSize={kanbanPageSize}
                     onPageChange={(page) => setFailedPage(page)}
                     compact={true}

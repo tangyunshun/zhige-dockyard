@@ -168,6 +168,16 @@ export default function LegalDocumentPage({
     loadDocument();
   }, [loadDocument]);
 
+  // 真实浏览量上报（去重由服务端处理）：法务页加载成功后上报一次，替代此前 GET 内的无条件自增
+  useEffect(() => {
+    if (!doc?.id) return;
+    fetch("/api/documents/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: doc.id }),
+    }).catch(() => {});
+  }, [doc]);
+
   // 检测登录状态：仅用于直接访问页面时的返回兜底
   useEffect(() => {
     fetch("/api/auth/me")

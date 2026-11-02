@@ -130,7 +130,7 @@ export default function AdminRechargeAccountPage() {
             {[
               { label: "户名", value: current.companyName },
               { label: "开户银行", value: current.bankName },
-              { label: "银行账号", value: current.accountNumber || current.bankAccount },
+              { label: "银行账号", value: current.bankAccount },
             ].map((f) => (
               <div key={f.label} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80">
                 <div className="flex items-center justify-between gap-2">

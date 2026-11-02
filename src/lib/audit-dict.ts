@@ -158,6 +158,7 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   "post:delete": "删除官方岗位",
   "post:usage_remove": "解除岗位装配",
   "post:submission": "提交岗位审核",
+  "post:submission:delete": "删除岗位审核提交",
   "post:member_assign": "分配岗位成员",
   "post:member_remove": "移除岗位成员",
   "stage:create": "创建流程阶段",

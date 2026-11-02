@@ -39,6 +39,7 @@ import {
   Quote,
   Scale,
   MessagesSquare,
+  Tags,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useLogout";
 import { UserInfo } from "@/contexts/UserContext";
@@ -60,18 +61,21 @@ interface AdminMenuItem {
 }
 
 /**
- * 后台侧边栏分组顺序（按管理员的日常作业动线递进）：
- * 概览 → 用户与风控 → 空间与组织 → 内容与组件 → 消息与通知
- * → 财务与订单 → 模型与 AI → 系统运维 → 权限与安全 → 扩展模块
+ * 后台侧边栏分组（按页面实际职能归类，便于管理员按场景快速定位）：
+ * 概览 → 用户与风控 → 咨询与申请 → 空间管理 → 组件管理 → 知识库管理
+ * → 内容与公告 → 财务与订单 → 模型管理 → 平台配置 → 系统运维 → 权限与安全 → 扩展模块
  */
 const ADMIN_NAV_GROUP_ORDER = [
   "概览",
   "用户与风控",
-  "空间与组织",
-  "内容与组件",
-  "消息与通知",
+  "咨询与申请",
+  "空间管理",
+  "组件管理",
+  "知识库管理",
+  "内容与公告",
   "财务与订单",
-  "模型与 AI",
+  "模型管理",
+  "平台配置",
   "系统运维",
   "权限与安全",
   "扩展模块",
@@ -106,7 +110,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "演示申请",
     href: "/admin/demo-requests",
     description: "查看并跟进用户提交的演示申请线索",
-    group: "用户与风控",
+    group: "咨询与申请",
     requiredPermission: "user:update",
   },
   {
@@ -114,7 +118,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "空间模型策略",
     href: "/admin/workspaces/model-policy",
     description: "按工作空间配置默认模型与可用模型白名单",
-    group: "空间与组织",
+    group: "空间管理",
     // 与接口鉴权对齐：system:manage / model:read / model:manage 任一即可查看（写入由接口额外校验）
     requiredPermissions: ["system:manage", "model:read", "model:manage"],
   },
@@ -123,7 +127,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "工作空间管理",
     href: "/admin/workspaces",
     description: "工作空间审查与资源配额",
-    group: "空间与组织",
+    group: "空间管理",
     requiredPermission: "workspace:read",
   },
   {
@@ -131,7 +135,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "空间成员活动",
     href: "/admin/tenants",
     description: "按企业空间透视每位成员的执行、组件与操作明细",
-    group: "空间与组织",
+    group: "空间管理",
     superAdminOnly: true,
   },
   {
@@ -139,7 +143,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "空间套餐管理",
     href: "/admin/workspace/plans",
     description: "配置企业空间套餐价格与配额",
-    group: "空间与组织",
+    group: "空间管理",
     requiredPermission: "workspace_plan:read",
   },
   {
@@ -147,7 +151,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "岗位管理",
     href: "/admin/posts",
     description: "平台官方标准岗位库与一键分发",
-    group: "空间与组织",
+    group: "平台配置",
     requiredPermission: "post:read",
   },
   {
@@ -155,15 +159,23 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "组件管理",
     href: "/admin/components",
     description: "功能组件上架与下架控制",
-    group: "内容与组件",
+    group: "组件管理",
     requiredPermission: "component:read",
   },
+
   {
+    icon: Tags,
+    label: "知识分类管理",
+    href: "/admin/knowledge-categories",
+    description: "知识库分类总览：系统内置与用户自建",
+    group: "知识库管理",
+    requiredPermission: "document:read",
+  },  {
     icon: FileCode,
     label: "组件合同",
     href: "/admin/components/contracts",
     description: "组件执行合同：输入约束、执行计划、模型能力与计费策略（不可变版本）",
-    group: "内容与组件",
+    group: "组件管理",
     requiredPermission: "component:read",
   },
   {
@@ -171,7 +183,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "组件阶段管理",
     href: "/admin/content",
     description: "维护平台组件的阶段大纲",
-    group: "内容与组件",
+    group: "组件管理",
     requiredPermission: "content:read",
   },
   {
@@ -179,7 +191,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "用户评价",
     href: "/admin/testimonials",
     description: "维护首页用户评价与每周轮换",
-    group: "内容与组件",
+    group: "内容与公告",
     requiredPermission: "user_reviews:read",
   },
   {
@@ -187,7 +199,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "文档管理",
     href: "/admin/documents",
     description: "平台使用手册与用户指南",
-    group: "内容与组件",
+    group: "内容与公告",
     requiredPermission: "document:read",
   },
   {
@@ -195,7 +207,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "通知公告",
     href: "/admin/notifications",
     description: "全局系统广播及运维通知",
-    group: "消息与通知",
+    group: "内容与公告",
     requiredPermission: "announcement:read",
   },
   {
@@ -282,7 +294,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "模型注册表",
     href: "/admin/models",
     description: "AI 模型供应商与模型部署：价格、能力、启用状态与平台默认模型",
-    group: "模型与 AI",
+    group: "模型管理",
     // 可读名单与接口鉴权完全对齐：持有任一模型相关权限即可进入（接口侧同样强制校验，前端隐藏不构成安全边界）
     requiredPermissions: ["system:manage", "model:read", "model:manage"],
   },
@@ -290,8 +302,8 @@ const adminMenuItems: AdminMenuItem[] = [
     icon: Boxes,
     label: "平台默认配置",
     href: "/admin/platform-defaults",
-    description: "新空间默认可用的模型池，以及新空间自动赠送的体验额度",
-    group: "模型与 AI",
+    description: "新空间默认可用的模型池、体验额度，以及注册福利规则",
+    group: "平台配置",
     requiredPermissions: ["system:manage", "model:read", "model:manage"],
   },
   {
@@ -299,7 +311,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "额度提升审批",
     href: "/admin/quota-apply",
     description: "审批用户提交的算力点提升申请",
-    group: "财务与订单",
+    group: "咨询与申请",
     requiredPermissions: ["system:manage", "billing:manage", "billing:read"],
   },
   {
@@ -307,7 +319,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "定制咨询处理",
     href: "/admin/upgrade-applications",
     description: "查看并跟进用户在定价页提交的定制版方案咨询",
-    group: "财务与订单",
+    group: "咨询与申请",
     requiredPermissions: ["system:manage"],
   },
   {
@@ -323,7 +335,7 @@ const adminMenuItems: AdminMenuItem[] = [
     label: "系统设置",
     href: "/admin/settings",
     description: "全局配置、第三方集成与安全",
-    group: "权限与安全",
+    group: "平台配置",
     superAdminOnly: true,
   },
   {

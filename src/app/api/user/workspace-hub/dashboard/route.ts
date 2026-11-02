@@ -4,6 +4,7 @@ import { validateUser, isAdminRole, normalizeUserRole } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { getMembershipTokenLimit } from "@/lib/quota-token";
 import { serverCacheGet, serverCacheSet } from "@/lib/serverCache";
+import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -302,6 +303,19 @@ export async function GET(request: NextRequest) {
       select: { id: true },
     });
     const publishedComponentIdSet = new Set(publishedCatalogRows.map(c => c.id));
+
+    // 跨自然月维护（读余额前触发）：本人个人空间的注册福利按月发放（幂等）。
+    // 免登录会话跨月时若不在此触发，中枢页会先读到过期清零后的 0 余额而误报「算力不足」。
+    const personalWs = Array.from(workspaceMap.values()).find(
+      (ws) => ws.type === "PERSONAL" && ws.role === "OWNER"
+    );
+    if (personalWs) {
+      try {
+        await checkAndResetQuotaCycle(prisma, personalWs.id, userId);
+      } catch (e) {
+        console.warn("[workspace-hub/dashboard] 个人空间月度维护失败(非致命):", e);
+      }
+    }
 
     // 批量拉取所有关联空间的真实配额数据，供空间卡片与全局算力资产统筹
     const workspaceIdList = Array.from(workspaceMap.keys());

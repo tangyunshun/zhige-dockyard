@@ -2,14 +2,21 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { addNotification } from "@/lib/notifications-store";
 import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
+import { loadRegisterGiftConfig } from "@/lib/register-gift-config";
+import {
+  notifyGrantsExpired,
+  notifyRegisterGiftGranted,
+  type ExpiredGrantNotice,
+} from "@/lib/points-notifications";
 
 /**
  * 算力点统一账务服务（全系统唯一入口）
  *
  * 账户模型（三级归属，均通过 pointgrant 分桶承载）：
  *   - WALLET        用户钱包：用户在线充值/退款所得，跨空间通用（个人空间、企业空间均可消费）
- *   - PERSONAL_GIFT 个人空间专属：新用户注册福利（注册当月起连续 3 个自然月，每月 100 点，
- *                    当月有效、月底清零），仅可在该用户的个人空间消费
+ *   - PERSONAL_GIFT 个人空间专属：新用户注册福利（注册当月起连续 N 个自然月每月发放；
+ *                    每月点数 / 月数 / 是否月底清零由后台配置 platform.registerGift.* 决定），
+ *                    仅可在该用户的个人空间消费
  *   - WORKSPACE     空间共享池：线下充值/人工入账所得（购买所得），仅空间成员可消费
  *
  * 消耗规则（分桶 FIFO）：按「到期时间最早优先，无到期日的最后」逐桶扣减，
@@ -19,14 +26,19 @@ import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
  * 为其账户级汇总快照；所有变动在同一事务内完成，并写入 pointledger 流水（含余额快照）。
  */
 
-/** 新用户注册福利：每月赠送算力点数 */
-export const NEW_USER_GIFT_POINTS = 100;
-/** 注册福利发放月数：注册当月起连续 3 个自然月（第 4 个月起永久停发，用完自费充值） */
-export const REGISTER_GIFT_MONTHS = 3;
 /** 到期提醒提前天数 */
 export const EXPIRE_REMIND_DAYS = 7;
 /** 无限额度标记值 */
 export const UNLIMITED_BALANCE = -1;
+
+// 注册福利配置已拆至独立叶子模块（notifications-store 也需要读取，避免循环依赖），
+// 此处再导出保持既有引用兼容。
+export {
+  NEW_USER_GIFT_POINTS,
+  REGISTER_GIFT_MONTHS,
+  REGISTER_GIFT_KEYS,
+} from "@/lib/register-gift-config";
+export type { RegisterGiftConfig } from "@/lib/register-gift-config";
 /** 真实模型失败退款幂等键前缀（按「任务ID:来源分桶序号」生成唯一键，防止重复退款） */
 export const REFUND_MODEL_FAILURE_PREFIX = "REFUND_MODEL_FAILURE";
 
@@ -439,12 +451,14 @@ export async function consumePoints(params: ConsumeParams): Promise<ConsumeResul
     if (reconstructed) return reconstructed;
   }
 
+  let expiredCleared: ExpiredGrantNotice[] = [];
   try {
-    return await prisma.$transaction(async (tx) => {
+    // 显式标注返回类型：保持回调内对象字面量的字面量类型（kind 等）被上下文类型收窄
+    const result: ConsumeResult = await prisma.$transaction(async (tx) => {
     const now = new Date();
 
     // 1. 先清掉已到期的分桶，避免过期点被继续消耗
-    await expireGrantsInTx(tx, params.userId, params.workspaceId);
+    expiredCleared = (await expireGrantsInTx(tx, params.userId, params.workspaceId)).cleared;
 
     // 2. 无限额度空间：不扣减，仅记录用量流水
     const quota = await tx.workspacequota.findUnique({
@@ -522,6 +536,13 @@ export async function consumePoints(params: ConsumeParams): Promise<ConsumeResul
         ...deductRes,
       };
     });
+    // 事务已提交：本次扣点前顺带清零的过期分桶，向受影响用户推送通知（非致命）
+    if (expiredCleared.length > 0) {
+      await notifyGrantsExpired(expiredCleared).catch((e) =>
+        console.warn("[算力到期] 清零通知发送失败(非致命):", e)
+      );
+    }
+    return result;
   } catch (e) {
     // 并发相同幂等请求：唯一约束冲突（P2002）时从流水还原并返回，避免重复扣费
     if (params.idempotencyKey && (e as { code?: string })?.code === "P2002") {
@@ -1581,12 +1602,12 @@ export async function transferPoints(params: TransferPointsParams): Promise<Tran
   });
 }
 
-/** 事务内到期清算：把已过期仍有剩余的桶清零并写出账流水 */
+/** 事务内到期清算：把已过期仍有剩余的桶清零并写出账流水；返回清零总量与明细（供事务提交后发通知） */
 async function expireGrantsInTx(
   tx: Prisma.TransactionClient,
   userId?: string | null,
   workspaceId?: string | null,
-): Promise<number> {
+): Promise<{ total: number; cleared: ExpiredGrantNotice[] }> {
   const now = new Date();
   const orConditions: Prisma.pointgrantWhereInput[] = [];
   if (userId) orConditions.push({ scope: "WALLET", userId });
@@ -1604,6 +1625,7 @@ async function expireGrantsInTx(
   });
 
   let total = 0;
+  const cleared: ExpiredGrantNotice[] = [];
   for (const grant of expired) {
     const remain = Number(grant.remaining);
     if (remain <= 0) continue;
@@ -1655,28 +1677,43 @@ async function expireGrantsInTx(
       },
     });
 
+    cleared.push({
+      userId: grant.userId ?? null,
+      scope: grant.scope,
+      workspaceId: grant.workspaceId ?? null,
+      points: remain,
+      expiresAt: grant.expiresAt,
+    });
     total += remain;
   }
-  return total;
+  return { total, cleared };
 }
 
-/** 对外：清理已到期的算力分桶，返回被清零的点数 */
+/** 对外：清理已到期的算力分桶，返回被清零的点数（事务提交后向受影响用户推送清零通知） */
 export async function expireExpiredGrants(opts?: {
   userId?: string | null;
   workspaceId?: string | null;
 }): Promise<number> {
   if (!opts?.userId && !opts?.workspaceId) {
     // 全局清算（定时任务/管理端触发）
-    return prisma.$transaction((tx) => expireGrantsInTx(tx, null, null), {
+    const { total, cleared } = await prisma.$transaction((tx) => expireGrantsInTx(tx, null, null), {
       // 网络盘/慢文件系统下清算可能超过默认 5s，放宽事务超时（P2028）
       timeout: 60000,
       maxWait: 10000,
     });
+    await notifyGrantsExpired(cleared).catch((e) =>
+      console.warn("[算力到期] 清零通知发送失败(非致命):", e)
+    );
+    return total;
   }
-  return prisma.$transaction(
+  const { total, cleared } = await prisma.$transaction(
     (tx) => expireGrantsInTx(tx, opts?.userId ?? null, opts?.workspaceId ?? null),
     { timeout: 60000, maxWait: 10000 },
   );
+  await notifyGrantsExpired(cleared).catch((e) =>
+    console.warn("[算力到期] 清零通知发送失败(非致命):", e)
+  );
+  return total;
 }
 
 export interface BalanceSummary {
@@ -1766,11 +1803,12 @@ export async function getBalanceSummary(
 }
 
 /**
- * 注册福利发放：注册当月起连续 REGISTER_GIFT_MONTHS(=3) 个自然月，每月发放
- * NEW_USER_GIFT_POINTS(=100) 点至个人空间专属桶（PERSONAL_GIFT）。
- * - 当月有效：每笔到期时间为下月 1 日 0 点，当月未用完自动清零，不跨月累计；
+ * 注册福利发放：注册当月起连续 N（后台配置 platform.registerGift.months，默认 3）个自然月，
+ * 每月发放 P 点（后台配置 platform.registerGift.points，默认 100）至个人空间专属桶（PERSONAL_GIFT）。
+ * - 有效期由后台配置 clearOnMonthEnd 决定：true = 当月有效（到期为下月 1 日 0 点，月底未用完自动清零，
+ *   不跨月累计）；false = 发放后长期有效不清零；
  * - 按月幂等：idempotencyKey = GIFT_REGISTER:{userId}:{yyyy-MM}，同月重复调用自动跳过；
- * - 超窗停发：注册当月（含）之后的第 4 个自然月起不再发放，用尽请自行充值。
+ * - 超窗停发：超出配置月数后不再发放，用尽请自行充值；管理员可随时在后台关闭整个福利。
  */
 export async function grantNewUserGift(params: {
   userId: string;
@@ -1791,36 +1829,59 @@ export async function grantNewUserGift(params: {
   });
   if (!user) return skippedResult;
 
+  // 规则来自后台配置（平台默认配置页），未配置时回退历史口径
+  const config = await loadRegisterGiftConfig();
+  if (!config.enabled || config.points <= 0 || config.months < 1) {
+    // 管理员关闭注册福利或配置无效：停发
+    return skippedResult;
+  }
+
   const now = new Date();
   // 注册月与当前月按「自然月序号」比较
   const regMonth = user.createdAt.getFullYear() * 12 + user.createdAt.getMonth();
   const curMonth = now.getFullYear() * 12 + now.getMonth();
-  const monthIndex = curMonth - regMonth; // 0=注册当月, 1=第 2 个月, 2=第 3 个月
-  if (monthIndex < 0 || monthIndex >= REGISTER_GIFT_MONTHS) {
-    // 注册前（数据异常）或注册满 3 个月后：永久停发
+  const monthIndex = curMonth - regMonth; // 0=注册当月, 1=第 2 个月, 2=第 3 个月…
+  if (monthIndex < 0 || monthIndex >= config.months) {
+    // 注册前（数据异常）或超出赠送月数：停发
     return skippedResult;
   }
 
   const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  // 当月福利月底清零：到期 = 次月 1 日 0 点整
-  const expiresAt = new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0);
+  // 月底清零模式：到期 = 次月 1 日 0 点整；长期有效模式：不设到期
+  const expiresAt = config.clearOnMonthEnd
+    ? new Date(now.getFullYear(), now.getMonth() + 1, 1, 0, 0, 0, 0)
+    : null;
 
-  return grantPoints({
+  const result = await grantPoints({
     scope: "PERSONAL_GIFT",
     userId: params.userId,
     workspaceId: params.workspaceId,
-    points: NEW_USER_GIFT_POINTS,
+    points: config.points,
     sourceType: "GIFT_REGISTER",
     type: "GIFT_REGISTER",
-    title: `注册福利 ${NEW_USER_GIFT_POINTS} 算力点（第 ${monthIndex + 1}/${REGISTER_GIFT_MONTHS} 个月）`,
+    title: `注册福利 ${config.points} 算力点（第 ${monthIndex + 1}/${config.months} 个月）`,
     expiresAt,
     workspaceType: "PERSONAL",
     workspaceName: params.workspaceName ?? null,
     userEmail: params.userEmail ?? null,
     paymentMethod: "SYSTEM",
-    remark: `注册福利：注册当月起连续 ${REGISTER_GIFT_MONTHS} 个月每月赠送 ${NEW_USER_GIFT_POINTS} 点，当月有效、月底未用完自动清零，仅限个人空间使用；第 ${REGISTER_GIFT_MONTHS} 个月结束后不再赠送，用完请自行充值`,
+    remark: `注册福利：注册当月起连续 ${config.months} 个月每月赠送 ${config.points} 点，${
+      config.clearOnMonthEnd ? "当月有效、月底未用完自动清零" : "发放后长期有效不清零"
+    }，仅限个人空间使用；赠送期结束后不再赠送，用完请自行充值`,
     idempotencyKey: `GIFT_REGISTER:${params.userId}:${ym}`,
   });
+
+  // 发放成功即推送站内通知（注册 / 登录 / 空间读配额等所有路径统一在此覆盖，避免漏报）
+  if (!result.skipped) {
+    await notifyRegisterGiftGranted({
+      userId: params.userId,
+      points: config.points,
+      monthIndex,
+      months: config.months,
+      clearOnMonthEnd: config.clearOnMonthEnd,
+    }).catch((e) => console.warn("[注册福利] 到账通知发送失败(非致命):", e));
+  }
+  return result;
 }
 
 /**

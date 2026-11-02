@@ -16,11 +16,15 @@
  *   npx tsx --tsconfig tsconfig.json scripts/expire-points-cron.ts
  */
 import { expireExpiredGrants } from "@/lib/credit-service";
+import { remindExpiringGrants } from "@/lib/points-notifications";
 
 async function main() {
   console.log("[expire-points-cron] 开始全局算力分桶到期清算...");
   const cleared = await expireExpiredGrants({});
   console.log(`[expire-points-cron] 完成，共清零 ${cleared} 算力点`);
+  // 到期前 7 天预告（内部 6 天防重）
+  const reminded = await remindExpiringGrants();
+  console.log(`[expire-points-cron] 到期预告提醒已发送给 ${reminded} 位用户`);
 }
 
 main()

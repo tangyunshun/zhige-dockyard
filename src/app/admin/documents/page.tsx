@@ -45,10 +45,14 @@ import {
   Loader2,
   Pencil,
   Lock,
+  Shield
 } from "lucide-react";
+import DocumentContentRenderer from "@/components/docs/DocumentContentRenderer";
 
 interface Document {
   id: string;
+  helpfulVotes?: number;
+  notHelpfulVotes?: number;
   title: string;
   content: string;
   category: string;
@@ -60,6 +64,7 @@ interface Document {
   isPublished: boolean;
   sortOrder: number;
   viewCount: number;
+  visibility?: string;
   user: {
     id: string;
     name: string | null;
@@ -89,6 +94,7 @@ interface DocumentFormData {
   relatedLinkPath: string;
   isPublished: boolean;
   sortOrder: number;
+  visibility: string;
 }
 
 interface SystemDocumentHistoryItem {
@@ -138,9 +144,9 @@ const CATEGORY_LABELS: Record<string, string> = {
 };
 
 // 数据库动态自定义分类运行时缓存（确保列表Badge、弹窗、快照等所有联动处100%展示中文名称）
-export const DYNAMIC_CATEGORY_CACHE = new Map<string, string>();
+const DYNAMIC_CATEGORY_CACHE = new Map<string, string>();
 
-export function getCategoryLabel(category: string | null | undefined): string {
+function getCategoryLabel(category: string | null | undefined): string {
   if (!category) return "综合知识文档";
   const raw = String(category).trim();
   // 1. 优先从数据库动态分类缓存匹配
@@ -174,7 +180,7 @@ const CATEGORY_ICONS: Record<string, any> = {
   "terms-of-service": FileText,
 };
 
-export function getCategoryIcon(category: string | null | undefined): any {
+function getCategoryIcon(category: string | null | undefined): any {
   if (!category) return FileText;
   const raw = String(category).trim();
   if (CATEGORY_ICONS[raw]) return CATEGORY_ICONS[raw];
@@ -247,6 +253,7 @@ export default function AdminDocumentsPage() {
     codeSample: "",
     relatedLinkLabel: "",
     relatedLinkPath: "",
+    visibility: "PUBLIC",
     isPublished: false,
     sortOrder: 0,
     errors: {},
@@ -941,6 +948,7 @@ export default function AdminDocumentsPage() {
       relatedLinkLabel: "",
       relatedLinkPath: "",
       isPublished: true,
+      visibility: "PUBLIC",
       sortOrder:
         documents.length > 0
           ? Math.max(...documents.map((d) => d.sortOrder || 0)) + 1
@@ -968,6 +976,7 @@ export default function AdminDocumentsPage() {
       relatedLinkLabel: related.label,
       relatedLinkPath: related.path,
       isPublished: doc.isPublished,
+      visibility: doc.visibility || "PUBLIC",
       sortOrder: doc.sortOrder ?? 0,
       errors: {},
     });
@@ -1069,6 +1078,7 @@ export default function AdminDocumentsPage() {
                 })
               : undefined,
           isPublished: finalPublished,
+          visibility: formData.visibility,
           sortOrder: Number(formData.sortOrder) || 0,
         }),
       });
@@ -1615,7 +1625,7 @@ export default function AdminDocumentsPage() {
                     <th className="py-3 px-5 whitespace-nowrap">文档分类</th>
                     <th className="py-3 px-5 whitespace-nowrap">发布状态</th>
                     <th className="py-3 px-5 whitespace-nowrap">累计浏览</th>
-                    <th className="py-3 px-5 whitespace-nowrap">维护作者</th>
+                    <th className="py-3 px-5 whitespace-nowrap">用户反馈</th>
                     <th className="py-3 px-5 whitespace-nowrap">更新时间</th>
                     <th className="sticky right-0 bg-slate-50/95 backdrop-blur-xs z-20 py-3 px-5 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-200">
                       业务操作
@@ -1723,11 +1733,11 @@ export default function AdminDocumentsPage() {
                           </div>
                         </td>
 
-                        {/* 维护作者 */}
+                        {/* 用户反馈（真实落库票数：有帮助/需改进） */}
                         <td className="py-3.5 px-5 whitespace-nowrap">
-                          <div className="flex items-center gap-1.5 text-slate-600 font-medium">
-                            <User className="w-3.5 h-3.5 text-slate-400" />
-                            <span>{doc.user?.name || doc.user?.email || "系统官方"}</span>
+                          <div className="flex items-center gap-2 text-xs font-bold">
+                            <span className="text-emerald-600" title="有帮助">👍 {doc.helpfulVotes || 0}</span>
+                            <span className="text-slate-400" title="需改进">👎 {doc.notHelpfulVotes || 0}</span>
                           </div>
                         </td>
 
@@ -2579,6 +2589,78 @@ export default function AdminDocumentsPage() {
                     className="w-4 h-4 text-[#3182ce] rounded border-slate-300 focus:ring-[#3182ce] cursor-pointer"
                   />
                 </label>
+
+                {/* 前台访问权限三态：PUBLIC（公开）/ LOGIN_REQUIRED（仅登录）/ ADMIN_ONLY（仅管理员） */}
+                <label className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-slate-50 cursor-pointer transition-colors select-none mt-3">
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold ${
+                        formData.visibility === "LOGIN_REQUIRED"
+                          ? "bg-amber-50 text-amber-600 border border-amber-200"
+                          : formData.visibility === "ADMIN_ONLY"
+                          ? "bg-rose-50 text-rose-600 border border-rose-200"
+                          : "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                      }`}
+                    >
+                      {formData.visibility === "LOGIN_REQUIRED" ? (
+                        <Lock className="w-4 h-4" />
+                      ) : formData.visibility === "ADMIN_ONLY" ? (
+                        <Shield className="w-4 h-4" />
+                      ) : (
+                        <Eye className="w-4 h-4" />
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-800 block">
+                        前台访问权限
+                      </span>
+                      <p className="text-[11px] text-slate-400 font-medium mt-0.5">
+                        {formData.visibility === "LOGIN_REQUIRED"
+                          ? "仅登录用户可见；游客在前台列表不可见该文档"
+                          : formData.visibility === "ADMIN_ONLY"
+                          ? "仅管理员可见；普通用户与游客均不可见"
+                          : "公开发布，所有游客与登录用户均可查阅"}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-500">
+                      {formData.visibility === "LOGIN_REQUIRED" ? "登录可见" : formData.visibility === "ADMIN_ONLY" ? "仅管理员" : "公开"}
+                    </span>
+                    <button
+                      type="button"
+                      title="点击切换：公开 → 登录可见 → 仅管理员 → 公开"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          visibility:
+                            formData.visibility === "PUBLIC"
+                              ? "LOGIN_REQUIRED"
+                              : formData.visibility === "LOGIN_REQUIRED"
+                              ? "ADMIN_ONLY"
+                              : "PUBLIC",
+                        })
+                      }
+                      className={`relative w-11 h-6 rounded-full transition-colors cursor-pointer ${
+                        formData.visibility === "LOGIN_REQUIRED"
+                          ? "bg-amber-500"
+                          : formData.visibility === "ADMIN_ONLY"
+                          ? "bg-rose-500"
+                          : "bg-emerald-500"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
+                          formData.visibility === "PUBLIC"
+                            ? "translate-x-0"
+                            : formData.visibility === "LOGIN_REQUIRED"
+                            ? "translate-x-5"
+                            : "translate-x-[20px]"
+                        }`}
+                      />
+                    </button>
+                  </div>
+                </label>
               </div>
             </div>
 
@@ -2671,7 +2753,7 @@ export default function AdminDocumentsPage() {
                   </div>
                   <div className="flex items-center gap-3 text-[11px] text-blue-100/90 mt-1 font-medium">
                     <span>
-                      作者: {previewDoc.user?.name || previewDoc.user?.email || "系统官方"}
+                      用户反馈: 👍 {previewDoc.helpfulVotes || 0} 有帮助 · 👎 {previewDoc.notHelpfulVotes || 0} 需改进
                     </span>
                     <span>•</span>
                     <span>浏览: {previewDoc.viewCount} 次</span>
@@ -2695,7 +2777,7 @@ export default function AdminDocumentsPage() {
 
             {/* 预览正文区 */}
             <div className="p-6 overflow-y-auto flex-1 bg-white space-y-3">
-              {renderMarkdownContent(previewDoc.content)}
+              <DocumentContentRenderer content={previewDoc.content || ""} title={previewDoc.title} category={previewDoc.category} />
             </div>
 
             {/* 底部操作区 */}
@@ -2925,7 +3007,7 @@ export default function AdminDocumentsPage() {
                                   </span>
                                 </div>
                                 <div className="text-xs text-slate-700 bg-slate-50 p-3.5 rounded-xl border border-slate-100 max-h-60 overflow-y-auto leading-relaxed">
-                                  {renderMarkdownContent(item.content || "")}
+                                  <DocumentContentRenderer content={item.content || ""} title={item.title} category={item.category} />
                                 </div>
                               </div>
                             </div>

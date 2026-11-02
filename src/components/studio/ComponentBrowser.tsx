@@ -87,7 +87,10 @@ const getStageIcon = (id: number, stageConfigs: Record<number, StageConfig>, cla
  * 计算组件的展示属性，全部来自数据库真实统计，无任何派生的模拟数值：
  *  - contract：component_catalog.contract 字段
  *  - calls：component_stats.totalUses（由每次真实执行累加）
- *  - successRate：component_task 中该组件 SUCCESS 任务数 / 总任务数；无任务记录时为 null（不展示数字）
+ *  - successRate：成功率 = SUCCESS / (SUCCESS + FAILED)，即「已终结任务中的成功占比」。
+ *    分母已在后端排除 PENDING / RUNNING（未产生成败）与 CANCELLED（用户主动中止，
+ *    非组件执行质量失败），避免进行中或已取消任务人为拉低成功率；
+ *    无任何终态任务记录时为 null（展示「暂无」，绝不臆造默认成功率）。
  */
 const getComponentExtra = (
   contract?: string | null,
@@ -573,7 +576,6 @@ export default function ComponentBrowser({
         },
         body: JSON.stringify({
           action: "refine-prompt",
-          workspaceId,
           text: raw,
           ...(polishModelChoice !== "auto" ? { deploymentId: polishModelChoice } : {}),
         }),
@@ -582,17 +584,21 @@ export default function ComponentBrowser({
       if (res.ok && data.success && data.data?.text) {
         setSmartPrompt(data.data.text);
         setPromptError(null);
-        const cost = typeof data.data.costPoints === "number" && data.data.costPoints > 0
-          ? `（扣 ${data.data.costPoints} 算力点）`
-          : "";
-        toast.success(data.data.model ? `AI 润色完成（${data.data.model}）${cost}` : `AI 润色完成${cost}`);
+        const consumed = typeof data.data.pointsConsumed === "number" ? data.data.pointsConsumed : 0;
+        let costLabel = "";
+        if (data.data.byok) {
+          costLabel = "（使用你的自带模型，不消耗平台算力点）";
+        } else if (consumed > 0) {
+          costLabel = `（消耗 ${consumed} 算力点）`;
+        }
+        toast.success(data.data.model ? `润色完成（${data.data.model}）${costLabel}` : `润色完成${costLabel}`);
       } else {
         const rawMsg = String(data.error || "AI 润色失败，请稍后重试");
         // 去掉「润色失败（错误码）：」技术前缀，就地展示友好文案
         const friendly = rawMsg.replace(/^润色失败（[A-Z_]+）：/, "");
         setPromptError(friendly);
-        // 后端确认用户级无可用模型：模型选择器同步切换为「无可用模型」态并禁用按钮
-        if (rawMsg.includes("MODEL_DEFAULT_NOT_CONFIGURED") && polishModelOptions) {
+        // 后端确认用户级无可用模型（含旧/新错误码）：模型选择器同步切换为「无可用模型」态并禁用按钮
+        if ((data?.code === "NO_MODEL_AVAILABLE" || rawMsg.includes("MODEL_DEFAULT_NOT_CONFIGURED") || rawMsg.includes("无可用模型")) && polishModelOptions) {
           setPolishModelOptions({ ...polishModelOptions, available: false });
         }
       }
@@ -1679,7 +1685,14 @@ export default function ComponentBrowser({
                                         />
                                       </svg>
                                     </div>
-                                    <div className="flex flex-col">
+                                    <div
+                                      className="flex flex-col"
+                                      title={
+                                        extra.successRate !== null
+                                          ? `基于 ${extra.success} 次成功 / ${extra.total} 次已完成任务（不含进行中与已取消）`
+                                          : "暂无已完成的执行记录，无法计算成功率"
+                                      }
+                                    >
                                       <span className="text-xs text-slate-400 font-bold">成功率</span>
                                       <span className="text-emerald-600 font-black font-mono">
                                         {extra.successRate !== null ? `${extra.successRate.toFixed(1)}%` : "暂无"}

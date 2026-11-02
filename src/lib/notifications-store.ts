@@ -5,6 +5,7 @@
  */
 
 import { prisma } from "@/lib/prisma";
+import { buildRegisterGiftRuleText, loadRegisterGiftConfig } from "@/lib/register-gift-config";
 
 export interface NotificationRecord {
   id: string;
@@ -55,9 +56,15 @@ export async function seedDefaultWelcomeNotifications(userId: string): Promise<v
   });
   if (prefs?.defaultsSeeded) return;
 
-  // 注册福利文案（同步口径：注册当月起连续 3 个自然月，每月 100 点，当月有效月底清零，用尽自费充值）
-  const welcomeContent =
-    "欢迎加入知阁舟坊！注册福利已发放：注册当月起连续 3 个月每月 100 算力点（当月有效、月底清零，仅限个人空间使用）。第 3 个月结束后如需更多算力，请前往充值中心自助充值。";
+  // 注册福利文案：与后台配置同源，管理员调整规则后欢迎语自动跟随（读取失败回退历史口径）
+  let giftRuleText: string;
+  try {
+    giftRuleText = buildRegisterGiftRuleText(await loadRegisterGiftConfig());
+  } catch {
+    giftRuleText =
+      "注册当月起连续 3 个月每月 100 算力点（当月有效、月底清零，仅限个人空间使用）。赠送期结束后如需更多算力，请前往充值中心自助充值。";
+  }
+  const welcomeContent = `欢迎加入知阁舟坊！注册福利已发放：${giftRuleText}`;
 
   // 平滑兼容历史旧文案：若库中存在“100 点免费体验额度/系统已赠送您 100 算力点”，自动修正为新口径
   await prisma.notification.updateMany({

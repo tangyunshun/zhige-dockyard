@@ -80,6 +80,16 @@ export default function LegalDocumentModal({
     }
   }, [isOpen, category, fetchDocument]);
 
+  // 真实浏览量上报（去重由服务端处理）：法务弹窗内容加载成功后上报一次
+  useEffect(() => {
+    if (!doc?.id) return;
+    fetch("/api/documents/view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: doc.id }),
+    }).catch(() => {});
+  }, [doc]);
+
   if (!isOpen || !category) return null;
 
   return (

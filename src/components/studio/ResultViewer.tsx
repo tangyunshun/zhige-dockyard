@@ -4,6 +4,8 @@ import React, { useState, useRef, useEffect } from "react";
 import { Clipboard, FileDown, ChevronDown, BookOpen, Layers, FileSpreadsheet, FileText, Printer } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { describeMimeType } from "@/lib/fileConstraintsFormat";
+import { POINT_RATE_TEXT } from "@/lib/point-rate";
+import { useAppContext } from "@/contexts/AppContext";
 import TaskRatingBar from "@/components/studio/TaskRatingBar";
 
 /** 行内 Markdown 片段渲染：**粗体** / *斜体* / `代码` / [链接](url)，纯 React 元素输出，天然防 XSS */
@@ -337,6 +339,8 @@ export interface ResultViewerTask {
   time?: string;
   /** 详情接口返回的安全成果数据（历史结构可能为字符串/对象）；组件内部统一经 getEnhancedOutputData 收窄，禁止 any */
   outputData?: unknown;
+  /** 知识引用带入执行：被引用条目标题（仅展示用，内容走标准 text 通道） */
+  refKnowledgeTitle?: string | null;
 }
 
 export interface ResultViewerProps {
@@ -346,24 +350,6 @@ export interface ResultViewerProps {
   onSaveToKnowledge?: (task: ResultViewerTask) => void;
   embedded?: boolean; // 为 true 时作为主画布卡片嵌入，为 false 时作为 Modal 弹窗展示
 }
-
-const categoryCNMap: Record<string, string> = {
-  BID_PREP: "商机售前",
-  REQ_DESIGN: "需求与设计",
-  BACKEND_CORE: "后端核心",
-  DATABASE_ENG: "数据库工程",
-  FRONTEND_DEV: "前端与交互",
-  TEST_QA: "测试与质量",
-  DEVOPS: "DevOps构建",
-  SECURITY: "安全合规",
-  PROJ_MGMT: "效能管理",
-  KNOWLEDGE: "知识沉淀",
-  REQUIREMENTS: "需求分析",
-  DATA_BI: "数据工程",
-  DOCUMENTATION: "研报文档",
-  AI_AGENTS: "AI智能算力",
-  COMMON: "通用研发",
-};
 
 function escapeHtml(value: string): string {
   return value
@@ -817,8 +803,15 @@ export function ResultViewer({
   const pointsCost = exec.actualPoints ?? exec.estimatedPoints ?? 0;
 
   const rawCompId = (task.componentId || "").trim().toUpperCase();
-  const displayBadgeTag = categoryCNMap[rawCompId] || (rawCompId.includes("_") ? "" : rawCompId);
-  const displayCompName = task.componentName || categoryCNMap[rawCompId] || task.name;
+  // 分类中文名改由数据库目录解析（AppContext 全局已拉取），废除写死映射表
+  const { componentCatalog, componentCategories } = useAppContext();
+  const dbCategoryName = (() => {
+    const comp = componentCatalog.find((c) => c.id === rawCompId);
+    if (!comp) return "";
+    return componentCategories[comp.category]?.name || "";
+  })();
+  const displayBadgeTag = dbCategoryName || (rawCompId.includes("_") ? "" : rawCompId);
+  const displayCompName = task.componentName || dbCategoryName || task.name;
 
   const copyToClipboard = (text: string) => {
     if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -842,7 +835,8 @@ export function ResultViewer({
     const lines = [
       `# ${task.name} 结构化分析与决策报告`,
       `> 调度组件：${displayBadgeTag ? `[${displayBadgeTag}] ` : ""}${displayCompName}`,
-      `> 执行算力消耗：${pointsCost} 算力点（按管理员配置的固定点数扣费，1 算力点 = ¥0.01）`,
+      `> 执行算力消耗：${pointsCost} 算力点（按管理员配置的固定点数扣费，${POINT_RATE_TEXT}）`,
+      ...(task.refKnowledgeTitle ? [`> 引用知识：《${task.refKnowledgeTitle}》`] : []),
       `> 导出时间：${new Date().toLocaleString("zh-CN")}`,
       `\n## 💡 成果物摘要\n${outputData.summary}`,
     ];
@@ -899,7 +893,7 @@ export function ResultViewer({
         <head><meta charset='utf-8'><title>${task.name}</title></head>
         <body style="font-family: Microsoft YaHei, Arial, sans-serif; padding: 25px; line-height: 1.6;">
           <h2 style="color: #2b6cb0; border-bottom: 2px solid #3182ce; padding-bottom: 8px;">${task.name} - 结构化决策分析报告</h2>
-          <p style="color: #4a5568;"><strong>调度组件：</strong>${displayBadgeTag ? `[${displayBadgeTag}] ` : ""}${displayCompName} &nbsp;|&nbsp; <strong>算力消耗：</strong>${pointsCost} 算力点</p>
+          <p style="color: #4a5568;"><strong>调度组件：</strong>${displayBadgeTag ? `[${displayBadgeTag}] ` : ""}${displayCompName} &nbsp;|&nbsp; <strong>算力消耗：</strong>${pointsCost} 算力点${task.refKnowledgeTitle ? ` &nbsp;|&nbsp; <strong>引用知识：</strong>《${task.refKnowledgeTitle}》` : ""}</p>
           <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 15px 0;"/>
           
           <h3 style="color: #2d3748; background-color: #ebf8ff; padding: 8px 12px; border-left: 4px solid #3182ce;">💡 成果物摘要</h3>
@@ -1064,12 +1058,20 @@ export function ResultViewer({
               {exec.billingMode === "ESTIMATED_COMPATIBILITY" ? (
                 <span
                   className="text-amber-600 font-bold"
-                  title="按预估算力点扣减，未按真实 Token 精确结算（按管理员配置的固定点数扣费，1 算力点 = ¥0.01）"
+                  title={`按预估算力点扣减，未按真实 Token 精确结算（按管理员配置的固定点数扣费，${POINT_RATE_TEXT}）`}
                 >
-                  按预估算力点扣减，未按真实 Token 精确结算（1 算力点 = ¥0.01）
+                  按预估算力点扣减，未按真实 Token 精确结算（{POINT_RATE_TEXT}）
                 </span>
               ) : (
                 <span className="text-slate-400 font-mono">耗时算力: {pointsCost} 算力点</span>
+              )}
+              {task.refKnowledgeTitle && (
+                <>
+                  <span>·</span>
+                  <span className="font-bold text-[#2b6cb0]" title="本次执行带入了空间知识库中的知识条目，其内容已并入执行材料（标准文本通道）">
+                    📚 引用知识：《{task.refKnowledgeTitle}》
+                  </span>
+                </>
               )}
               <span>·</span>
               <span className={`font-bold ${execModeLabel(exec).cls}`} title={execModeLabel(exec).title}>

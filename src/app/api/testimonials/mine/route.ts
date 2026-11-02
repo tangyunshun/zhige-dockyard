@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
       if (seedOrDeleteHistory === 0) {
         const displayName = auth.user.name || "知阁架构师";
-        const userAvatar = auth.user.avatar || null;
+        const userAvatar = null;
         const now = Date.now();
         await prisma.testimonial.createMany({
           data: [
@@ -165,7 +165,7 @@ export async function GET(request: NextRequest) {
       }),
       prisma.componentcategory
         .findMany({
-          where: { enabled: true },
+          where: { isActive: true },
           orderBy: { sortOrder: "asc" },
           select: { key: true, name: true },
         })
@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
 
     const normalizedRows = rows.map((r) => ({
       ...r,
-      avatar: r.avatar || auth.user.avatar || null,
+      avatar: r.avatar || null,
       tags: Array.isArray(r.tags)
         ? (r.tags as unknown[]).map((t) => String(t ?? "").trim()).filter(Boolean)
         : [],
@@ -242,7 +242,7 @@ export async function GET(request: NextRequest) {
       highlightPresets,
       userContext: {
         name: auth.user.name || "",
-        avatar: auth.user.avatar || null,
+        avatar: null,
         email: auth.user.email || "",
         defaultRole:
           auth.user.role === "superadmin" || auth.user.role === "admin"
@@ -356,7 +356,7 @@ export async function PATCH(request: NextRequest) {
         name,
         role: role || null,
         org: org || null,
-        avatar: existing.avatar || auth.user.avatar || null,
+        avatar: existing.avatar || null,
         rating,
         content,
         tags: tags.length > 0 ? tags : [],

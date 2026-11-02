@@ -73,7 +73,7 @@ export default function Footer() {
         links: [
           { label: "核心模块", url: "/capabilities" },
           { label: "组件大全", url: "/market" },
-          { label: "更新日志", url: "/docs" },
+          { label: "更新日志", url: "/releases" },
           { label: "组件广场", url: "/market" },
         ],
       },
@@ -168,7 +168,7 @@ export default function Footer() {
   }, []);
 
   return (
-    <footer className="relative pt-20 pb-10">
+    <footer className="relative pt-10 pb-6">
       <div className="absolute inset-0 bg-gradient-to-br from-[#2b6cb0] via-[#2b6cb0] to-[#1a365d]"></div>
 
       <div
@@ -181,9 +181,9 @@ export default function Footer() {
       ></div>
 
       <div className="relative z-10 max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-12 mb-16">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-8 md:gap-10 mb-8">
           <div className="col-span-2">
-            <div className="flex items-center gap-3 mb-6">
+            <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-white/10 backdrop-blur-sm flex items-center justify-center rounded-xl border border-white/20 overflow-hidden p-1.5">
                 {footerData.logo && footerData.logo !== "/logo.png" ? (
                   <img
@@ -203,7 +203,7 @@ export default function Footer() {
                 <div className="text-xs text-blue-200">{footerData.subTitle}</div>
               </div>
             </div>
-            <p className="text-sm text-blue-100 max-w-xs leading-relaxed mb-8">
+            <p className="text-sm text-blue-100 max-w-xs leading-relaxed mb-4">
               {footerData.slogan}
             </p>
 
@@ -367,7 +367,7 @@ export default function Footer() {
         </div>
 
         {/* 底部版权与备案资质行（右侧预留安全边距，彻底避免与回到顶部悬浮球重合） */}
-        <div className="pt-8 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 md:pr-16">
+        <div className="pt-5 border-t border-white/10 flex flex-col md:flex-row justify-between items-center gap-4 md:pr-16">
           <div className="text-[13px] text-blue-200 text-center md:text-left">
             © 2026 ZhiGe OS
             {footerData.siteName ? ` · ${footerData.siteName}` : ""}
