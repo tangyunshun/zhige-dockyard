@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback, useRef, type ChangeEvent } from "react";
 import { createPortal } from "react-dom";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatDateTime, formatDate } from "@/utils/format";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import type {
   OAuthChannelMeta,
@@ -334,6 +336,7 @@ export default function AdminSettingsPage() {
 
   // 邮件测试模态框状态
   const [showEmailTestModal, setShowEmailTestModal] = useState(false);
+  useEscapeKey(showEmailTestModal, () => setShowEmailTestModal(false));
   const [testEmailAddress, setTestEmailAddress] = useState("");
   const [testEmailAddressError, setTestEmailAddressError] = useState("");
   const [testEmailAddressTouched, setTestEmailAddressTouched] = useState(false);
@@ -377,6 +380,7 @@ export default function AdminSettingsPage() {
 
   // 短信测试模态框状态
   const [showSmsTestModal, setShowSmsTestModal] = useState(false);
+  useEscapeKey(showSmsTestModal, () => setShowSmsTestModal(false));
   const [testSmsPhone, setTestSmsPhone] = useState("");
   const [testSmsPhoneError, setTestSmsPhoneError] = useState("");
   const [testSmsPhoneTouched, setTestSmsPhoneTouched] = useState(false);
@@ -408,6 +412,7 @@ export default function AdminSettingsPage() {
 
   // 添加自定义短信服务商模态框状态
   const [showAddSmsProviderModal, setShowAddSmsProviderModal] = useState(false);
+  useEscapeKey(showAddSmsProviderModal, () => setShowAddSmsProviderModal(false));
   const [newSmsProvider, setNewSmsProvider] = useState({ value: "", label: "" });
   const [addingSmsProvider, setAddingSmsProvider] = useState(false);
 
@@ -3746,7 +3751,7 @@ export default function AdminSettingsPage() {
                       </div>
                       <div className="text-sm font-black text-slate-800 mt-2">
                         {dbStats?.lastBackupTime
-                          ? new Date(dbStats.lastBackupTime).toLocaleString("zh-CN")
+                          ? formatDateTime(new Date(dbStats.lastBackupTime))
                           : "暂无归档记录"}
                       </div>
                       <div className="text-[10px] text-slate-400 mt-1">

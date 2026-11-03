@@ -11,6 +11,8 @@ export interface ConfirmModalProps {
   type?: "info" | "warning" | "danger" | "success";
   confirmText?: string;
   cancelText?: string;
+  /** 高危操作「输入文字确认」：输入值 trim 后与 expect 完全一致才允许确认 */
+  requireText?: { expect: string; hint?: string };
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -22,11 +24,14 @@ export default function ConfirmModal({
   type = "info",
   confirmText = "确定",
   cancelText = "取消",
+  requireText,
   onConfirm,
   onCancel,
 }: ConfirmModalProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [confirmInput, setConfirmInput] = useState("");
+  const [requireTextError, setRequireTextError] = useState<string | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -35,6 +40,8 @@ export default function ConfirmModal({
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
+      setConfirmInput("");
+      setRequireTextError(null);
       document.body.style.overflow = "hidden";
     } else {
       const timer = setTimeout(() => setIsVisible(false), 200);
@@ -42,6 +49,16 @@ export default function ConfirmModal({
       return () => clearTimeout(timer);
     }
   }, [isOpen]);
+
+  // Esc 关闭（仅弹窗打开期间监听）
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, onCancel]);
 
   if (!isVisible && !isOpen) return null;
   if (!mounted || typeof document === "undefined") return null;
@@ -213,6 +230,28 @@ export default function ConfirmModal({
         {/* 正文内容区 */}
         <div className="px-6 py-2 pb-5">
           {renderMessageContent()}
+          {requireText && (
+            <div className="mt-3 space-y-1">
+              <label className="block text-xs font-bold text-slate-700">
+                {requireText.hint || `请输入「${requireText.expect}」以确认执行此操作`}
+                <span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={confirmInput}
+                onChange={(e) => {
+                  setConfirmInput(e.target.value);
+                  setRequireTextError(null);
+                }}
+                placeholder={requireText.expect}
+                maxLength={50}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs text-slate-800 transition-all font-mono"
+              />
+              {requireTextError && (
+                <p className="text-xs text-red-600 font-medium">{requireTextError}</p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 底部操作按钮栏 */}
@@ -227,6 +266,10 @@ export default function ConfirmModal({
           <button
             type="button"
             onClick={() => {
+              if (requireText && confirmInput.trim() !== requireText.expect) {
+                setRequireTextError(`请输入「${requireText.expect}」后才能执行此操作`);
+                return;
+              }
               onConfirm();
               onCancel();
             }}

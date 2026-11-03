@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import { formatPeriodSchedule } from "@/lib/period-schedule-text";
 import {
@@ -198,6 +199,7 @@ export default function WorkspaceModelPolicyPage() {
   const [loadedAllowed, setLoadedAllowed] = useState<string[]>([]);
   const [configured, setConfigured] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // 空间列表分页检索状态（后端分页，不再前端全量拉取，空间数量大时也不卡）
   const [wsPage, setWsPage] = useState(1);
@@ -239,7 +241,7 @@ export default function WorkspaceModelPolicyPage() {
       setDeployments(depRes?.data || []);
       setGlobalMarkupBps(depRes?.globalMarkupBps ?? null);
     } catch (e) {
-      toast.error((e as Error)?.message || "加载模型列表失败");
+      setLoadError((e as Error)?.message || "加载模型列表失败");
     }
   }, [authFetch]);
 
@@ -268,7 +270,7 @@ export default function WorkspaceModelPolicyPage() {
         setSelectedWs((prev) => presetWs || prev || (list[0]?.id ?? ""));
         setSelectedWorkspace((prev) => (presetWs && foundPreset ? foundPreset : prev || (list[0] ?? null)));
       } catch (e) {
-        toast.error((e as Error)?.message || "加载空间列表失败");
+        setLoadError((e as Error)?.message || "加载空间列表失败");
       } finally {
         setWsLoading(false);
       }
@@ -312,7 +314,7 @@ export default function WorkspaceModelPolicyPage() {
       setAllowed(loadedAllowed);
       setLoadedAllowed(loadedAllowed);
     } catch (e) {
-      toast.error((e as Error)?.message || "加载空间模型策略失败");
+      setLoadError((e as Error)?.message || "加载空间模型策略失败，请重试");
     }
   }, [authFetch, selectedWs, toast]);
 

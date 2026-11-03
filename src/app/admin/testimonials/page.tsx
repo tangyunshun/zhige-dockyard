@@ -20,6 +20,9 @@ import {
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskPhone, maskEmail } from "@/utils/format";
 
 interface RotationState {
   mode: "auto" | "manual";
@@ -109,6 +112,8 @@ export default function AdminTestimonialsPage() {
   const toast = useToast();
 
   const [loading, setLoading] = useState(true);
+
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [groupCount, setGroupCount] = useState(5);
   const [state, setState] = useState<RotationState | null>(null);
@@ -117,6 +122,7 @@ export default function AdminTestimonialsPage() {
   const [rows, setRows] = useState<Row[]>([]);
 
   const [showForm, setShowForm] = useState(false);
+  useEscapeKey(showForm, () => setShowForm(false));
   const [form, setForm] = useState<FormState>(emptyForm(1));
   /** 用户真实提交的评价：正文/评分/身份等字段在编辑时锁定（仅可维护头像/分组/排序/状态） */
   const [formLocked, setFormLocked] = useState(false);
@@ -156,17 +162,17 @@ export default function AdminTestimonialsPage() {
         });
         const data = await res.json();
         if (!res.ok || !data?.success) {
-          toast.error(data?.error || "加载用户评价失败");
+          setLoadError(data?.error || "加载用户评价失败");
           return;
         }
+        setLoadError(null);
         setGroupCount(data.groupCount ?? 5);
         setState(data.state ?? null);
         setSummaries(data.summaries ?? []);
         setGroupNo(data.groupNo ?? g);
         setRows(data.testimonials ?? []);
       } catch (error) {
-        console.error("Load testimonials error:", error);
-        toast.error("网络异常，加载用户评价失败");
+        setLoadError("网络异常，加载用户评价失败，请重试");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -614,7 +620,7 @@ export default function AdminTestimonialsPage() {
                       提交人：
                       {row.submitterId
                         ? submitterMap[row.submitterId]?.name ||
-                          submitterMap[row.submitterId]?.email ||
+                          (submitterMap[row.submitterId]?.email ? maskEmail(submitterMap[row.submitterId].email) : row.submitterId) ||
                           row.submitterId
                         : "—"}
                       ｜提交时间：{formatTime(row.submittedAt)}
@@ -728,6 +734,8 @@ export default function AdminTestimonialsPage() {
 
         {loading ? (
           <div className="py-16 text-center text-xs font-bold text-slate-400">加载中...</div>
+        ) : loadError ? (
+          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); load(groupNo, true); }} retrying={loading} />
         ) : rows.length === 0 ? (
           <div className="py-16 text-center">
             <p className="text-xs font-bold text-slate-400">该分组暂无评价</p>

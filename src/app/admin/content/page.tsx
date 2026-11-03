@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatDate } from "@/utils/format";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import {
   Search,
   Plus,
@@ -136,6 +138,15 @@ export default function AdminStagesPage() {
     createDateStart: "",
     createDateEnd: "",
   });
+  // KN-UI：搜索输入本地缓冲 + 300ms 防抖提交（自查清单指令五）
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => (prev.search === searchInput ? prev : { ...prev, search: searchInput }));
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -253,6 +264,9 @@ export default function AdminStagesPage() {
     stage: null,
   });
   const [actionSubmitting, setActionSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // KN-SEC：删除阶段的「输入 DELETE」确认（仅 delete 类型启用）
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
 
   // 加载数据
   const loadStages = async () => {
@@ -305,11 +319,10 @@ export default function AdminStagesPage() {
         }
       } else {
         const error = await res.json();
-        toast.error(error.message || "加载阶段数据失败");
+        setLoadError(error.message || "加载阶段数据失败");
       }
     } catch (error) {
-      console.error("Load stages error:", error);
-      toast.error("网络异常，加载阶段列表失败");
+      setLoadError("网络异常，加载阶段列表失败");
     } finally {
       setLoading(false);
     }
@@ -326,6 +339,7 @@ export default function AdminStagesPage() {
       return;
     }
 
+    setDeleteConfirmText("");
     setActionModal({
       isOpen: true,
       type: "delete",
@@ -569,6 +583,11 @@ export default function AdminStagesPage() {
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 pb-12 font-sans text-left">
+      {loadError && (
+        <div className="px-6 pt-4">
+          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadStages(); }} retrying={loading} />
+        </div>
+      )}
       {/* 顶部标题区 */}
       <div className="pt-6">
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
@@ -700,11 +719,8 @@ export default function AdminStagesPage() {
                 <input
                   type="text"
                   placeholder="搜索阶段分类名称或说明..."
-                  value={filters.search}
-                  onChange={(e) => {
-                    setFilters({ ...filters, search: e.target.value });
-                    setCurrentPage(1);
-                  }}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full h-10 pl-9 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/10 outline-none transition-all"
                 />
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -900,11 +916,7 @@ export default function AdminStagesPage() {
                           {/* 列 5：创建时间 */}
                           <td className="py-3.5 px-5 whitespace-nowrap text-slate-500 font-medium text-xs font-mono">
                             {stage.createdAt ? (
-                              new Date(stage.createdAt).toLocaleDateString("zh-CN", {
-                                year: "numeric",
-                                month: "2-digit",
-                                day: "2-digit",
-                              })
+                              formatDate(new Date(stage.createdAt))
                             ) : (
                               <span className="text-slate-300">—</span>
                             )}
@@ -1742,6 +1754,25 @@ export default function AdminStagesPage() {
 
             {/* 内容区 */}
             <div className="p-6 space-y-4 text-xs bg-slate-50/40">
+              {actionModal.type === "delete" && (
+                <div className="space-y-1">
+                  <label className="block font-bold text-slate-700">
+                    此操作不可恢复，请输入「DELETE」以确认永久删除
+                    <span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={deleteConfirmText}
+                    onChange={(e) => setDeleteConfirmText(e.target.value)}
+                    maxLength={10}
+                    placeholder="DELETE"
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                  />
+                  {deleteConfirmText.trim() !== "DELETE" && deleteConfirmText.length > 0 && (
+                    <p className="text-red-600 font-medium">输入不匹配，请输入 DELETE</p>
+                  )}
+                </div>
+              )}
               {/* 阶段关键信息卡片 */}
               <div className="p-4 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-2">
                 <div className="flex items-center justify-between">
@@ -1835,11 +1866,13 @@ export default function AdminStagesPage() {
                   onClick={() => {
                     if (actionModal.type === "blocked") {
                       setActionModal({ ...actionModal, isOpen: false });
+                    } else if (actionModal.type === "delete" && deleteConfirmText.trim() !== "DELETE") {
+                      return;
                     } else {
                       handleExecuteAction();
                     }
                   }}
-                  disabled={actionSubmitting}
+                  disabled={actionSubmitting || (actionModal.type === "delete" && deleteConfirmText.trim() !== "DELETE")}
                   className={`px-4 h-9 rounded-xl text-xs font-bold text-white shadow-xs inline-flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-50 ${
                     actionModal.type === "delete"
                       ? "bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"

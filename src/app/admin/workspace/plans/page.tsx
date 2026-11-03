@@ -4,6 +4,8 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { formatMoney } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { StatusBadge, ActionButton, RowActions } from "@/components/common";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
@@ -141,6 +143,7 @@ export default function WorkspacePlansAdminPage() {
 
   const [plans, setPlans] = useState<WorkspacePlan[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterPrice, setFilterPrice] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -195,18 +198,23 @@ export default function WorkspacePlansAdminPage() {
       });
       const data = await res.json();
       if (data.success) {
+        setLoadError(null);
         setPlans(data.data || []);
       } else {
-        toastError(data.message || "获取空间套餐失败");
+        setLoadError(data.message || "获取空间套餐失败，请重试");
       }
     } catch (err) {
-      toastError("网络错误，请稍后重试");
+      setLoadError("网络错误，获取空间套餐失败，请重试");
     } finally {
       setLoading(false);
     }
   };
 
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // KN-UI：unmount 清理防抖定时器（自查清单指令五）
+  useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+  }, []);
   const onSearchChange = (value: string) => {
     setSearch(value);
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -404,7 +412,7 @@ export default function WorkspacePlansAdminPage() {
   };
 
   const fmtPrice = (cents: number, purchasable: boolean) =>
-    cents > 0 ? `¥${(cents / 100).toFixed(2)}` : purchasable ? "免费" : "按需报价";
+    cents > 0 ? `¥${formatMoney(cents)}` : purchasable ? "免费" : "按需报价";
   const fmtLimit = (n: number) => (n === -1 ? "无限制" : n.toLocaleString());
 
   return (

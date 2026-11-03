@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Settings, Search, Server, Sliders } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 
 interface UserPreference {
   id: string;
@@ -42,7 +43,8 @@ export default function AdminPreferencesPage() {
   const [preferenceData, setPreferenceData] = useState<PreferenceData | null>(
     null,
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
 
@@ -68,8 +70,9 @@ export default function AdminPreferencesPage() {
 
       const result = await res.json();
       setPreferenceData(result.data);
+      setLoadError(null);
     } catch (error) {
-      console.error("Load preferences error:", error);
+      setLoadError("偏好设置加载失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -182,6 +185,10 @@ export default function AdminPreferencesPage() {
               <div className="w-16 h-16 border-4 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-4"></div>
               <p className="text-slate-600 font-bold">加载偏好设置中...</p>
             </div>
+          </div>
+        ) : loadError ? (
+          <div className="py-8 px-6">
+            <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadPreferences(1); }} retrying={loading} />
           </div>
         ) : preferenceData?.preferences.length === 0 ? (
           <div className="text-center py-20">

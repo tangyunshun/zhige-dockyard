@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback, Fragment } from "react";
+import { useState, useEffect, useCallback, useRef, Fragment } from "react";
 import Link from "next/link";
 import Pagination from "@/components/Pagination";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { OperationLogDetails } from "@/app/admin/components/OperationLogDetails";
 import { getAuthToken } from "@/utils/auth";
+import { maskPhone, maskEmail } from "@/utils/format";
 import { isAdminRole } from "@/lib/role-utils";
 import {
   Search,
@@ -1043,6 +1045,7 @@ export default function OperationLogsPage() {
 
   // 危险操作确认弹窗（单删 / 批量删）
   const [confirm, setConfirm] = useState<null | {
+    // KN-SEC：批量删除审计日志需输入 DELETE 才可执行
     kind: "single" | "batch";
     ids?: string[];
     title: string;
@@ -1051,6 +1054,17 @@ export default function OperationLogsPage() {
 
   // 处理中 / 提示（使用系统标准 Toast）
   const [busy, setBusy] = useState(false);
+  // KN-SEC：删除确认弹窗 Esc 关闭
+  useEffect(() => {
+    if (!confirm) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !busy) setConfirm(null);
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [confirm, busy]);
+  // KN-SEC：删除审计日志「输入 DELETE」确认值
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const { success: showSuccess, error: showError } = useToast();
 
   const buildQuery = useCallback(
@@ -1120,13 +1134,16 @@ export default function OperationLogsPage() {
 
   // 快捷复制详情
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const copiedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current); }, []);
   const handleCopyDetails = (id: string, details: any) => {
     try {
       const safe = sanitizeAuditDetails(details);
       const text = typeof safe === "string" ? safe : JSON.stringify(safe, null, 2);
       navigator.clipboard.writeText(text);
       setCopiedId(id);
-      setTimeout(() => setCopiedId(null), 2000);
+      if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+      copiedTimerRef.current = setTimeout(() => setCopiedId(null), 2000);
     } catch {
       // 忽略复制异常
     }
@@ -1742,8 +1759,8 @@ export default function OperationLogsPage() {
 
         {/* 错误提示（操作审计） */}
         {activeTab === "operation" && error && (
-          <div className="mx-6 mt-4 bg-red-50 border border-red-200 text-red-600 text-sm rounded-xl p-3">
-            {error}
+          <div className="mx-6 mt-4">
+            <LoadErrorBanner message={error} onRetry={() => { setError(""); fetchLogs(); }} retrying={loading} />
           </div>
         )}
 
@@ -1757,7 +1774,8 @@ export default function OperationLogsPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() =>
+                onClick={() => {
+                  setDeleteConfirmText("");
                   setConfirm({
                     kind: "batch",
                     ids: selectedIds,
@@ -1765,8 +1783,8 @@ export default function OperationLogsPage() {
                     message: `即将永久删除选中的 ${selectedIds.length} 条${
                       activeTab === "operation" ? "操作审计日志" : "登录安全历史记录"
                     }，此操作不可恢复。是否继续？`,
-                  })
-                }
+                  });
+                }}
                 disabled={busy}
                 className="flex items-center gap-1.5 bg-red-600 border border-red-600 hover:bg-red-700 text-white text-xs font-bold px-3 h-8 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
               >
@@ -1895,7 +1913,7 @@ export default function OperationLogsPage() {
                               {log.user?.name || "未知用户"}
                             </Link>
                             <div className="text-xs text-slate-500 font-medium truncate">
-                              {log.user?.email || "未留邮箱"}
+                              {maskEmail(log.user?.email) || "未留邮箱"}
                             </div>
                           </div>
                         </div>
@@ -1929,14 +1947,15 @@ export default function OperationLogsPage() {
                             查看
                           </button>
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              setDeleteConfirmText("");
                               setConfirm({
                                 kind: "single",
                                 ids: [log.id],
                                 title: "删除该条审计日志",
                                 message: "即将永久删除这条操作审计日志，此操作不可恢复。是否继续？",
-                              })
-                            }
+                              });
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-all active:scale-95 cursor-pointer bg-red-600 hover:bg-red-700 text-white border border-red-600 shadow-xs"
                           >
                             <Trash2 className="w-3.5 h-3.5 text-white" />
@@ -2055,14 +2074,15 @@ export default function OperationLogsPage() {
                         </td>
                         <td className="px-6 py-4 text-right whitespace-nowrap">
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              setDeleteConfirmText("");
                               setConfirm({
                                 kind: "single",
                                 ids: [history.id],
                                 title: "删除该条登录历史",
                                 message: "即将永久删除这条登录安全历史记录，此操作不可恢复。是否继续？",
-                              })
-                            }
+                              });
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-bold whitespace-nowrap shrink-0 transition-all active:scale-95 cursor-pointer bg-red-600 hover:bg-red-700 text-white border border-red-600 shadow-xs"
                           >
                             <Trash2 className="w-3.5 h-3.5 text-white" />
@@ -2179,7 +2199,7 @@ export default function OperationLogsPage() {
                 <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                   <span className="text-slate-500">
                     账号状态：<span className="font-bold text-emerald-600">{transStatus(detailLog.user?.status || "active")}</span>
-                    {detailLog.user?.phone ? ` · 手机号：${detailLog.user.phone}` : ""}
+                    {detailLog.user?.phone ? ` · 手机号：${maskPhone(detailLog.user.phone)}` : ""}
                   </span>
                   <Link
                     href={`/admin/users?search=${encodeURIComponent(detailLog.user?.email || detailLog.user?.name || detailLog.userId)}`}
@@ -2299,7 +2319,7 @@ export default function OperationLogsPage() {
         </div>
       )}
 
-      {/* 危险操作二次确认弹窗 */}
+      {/* 危险操作二次确认弹窗（输入 DELETE 才可执行；Esc 关闭） */}
       {confirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm" onClick={() => !busy && setConfirm(null)}>
           <div
@@ -2315,6 +2335,23 @@ export default function OperationLogsPage() {
                 <div className="text-xs text-slate-500 mt-1 leading-relaxed">{confirm.message}</div>
               </div>
             </div>
+            <div className="px-6 pb-4 -mt-1">
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                此操作不可恢复，请输入「DELETE」以确认删除
+                <span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                maxLength={10}
+                placeholder="DELETE"
+                className="w-full h-9 px-3 text-xs font-mono border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+              />
+              {deleteConfirmText.trim() !== "DELETE" && deleteConfirmText.length > 0 && (
+                <p className="text-xs text-red-600 mt-1 font-medium">输入不匹配，请输入 DELETE</p>
+              )}
+            </div>
             <div className="px-6 py-4 flex items-center justify-end gap-2">
               <button
                 onClick={() => setConfirm(null)}
@@ -2325,7 +2362,7 @@ export default function OperationLogsPage() {
               </button>
               <button
                 onClick={executeDelete}
-                disabled={busy}
+                disabled={busy || deleteConfirmText.trim() !== "DELETE"}
                 className="px-4 h-9 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
               >
                 {busy && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}

@@ -8,6 +8,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatDate, formatDateTime, formatMoney } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -434,6 +437,7 @@ export default function AdminModelsPage() {
     time: string;
   } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   // 部署行「⋯」更多操作菜单：fixed 定位锚定触发按钮视口坐标，避免被表格 overflow 裁剪
   const [actionMenu, setActionMenu] = useState<{ id: string; top: number; right: number } | null>(null);
@@ -652,6 +656,9 @@ export default function AdminModelsPage() {
   // 控制新增表单折叠与展开，避免直接占满首屏视口
   const [showAddProvider, setShowAddProvider] = useState(false);
   const [showAddDeployment, setShowAddDeployment] = useState(false);
+  // KN-UI：弹窗 Esc 关闭（自查清单指令九）
+  useEscapeKey(showAddProvider, () => setShowAddProvider(false));
+  useEscapeKey(showAddDeployment, () => setShowAddDeployment(false));
   // 价格弹窗内部 Tab（base: 核心定价与加价 | periods: 分时定价策略 | rules: 官方参考与规则）
   const [priceModalTab, setPriceModalTab] = useState<"base" | "periods" | "rules">("base");
   // 部署列表过滤条件
@@ -835,6 +842,7 @@ export default function AdminModelsPage() {
     title: string;
     message: string;
     warnings?: string[];
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
     type?: "danger" | "warning" | "info";
     confirmText?: string;
@@ -1085,12 +1093,13 @@ export default function AdminModelsPage() {
         authFetch("/api/admin/model-deployments/default"),
         authFetch("/api/admin/model-capabilities").catch(() => ({ data: [] })),
       ]);
+      setLoadError(null);
       setProviders(p.data || []);
       setDeployments(d.data || []);
       applyPlatformDefault(def);
       setCapabilityOptions(caps.data || []);
     } catch (e) {
-      toast.error((e as Error)?.message || "加载模型注册表失败");
+      setLoadError((e as Error)?.message || "加载模型注册表失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -1293,7 +1302,7 @@ export default function AdminModelsPage() {
       }
       setDisableModal(null);
       if (res?.scheduled) {
-        toast.success(`已设置定时禁用，将于 ${new Date(res.schedule.effectiveAt).toLocaleString("zh-CN")} 生效`);
+        toast.success(`已设置定时禁用，将于 ${formatDateTime(new Date(res.schedule.effectiveAt))} 生效`);
       } else if (res?.impact) {
         const imp = res.impact;
         toast.success(
@@ -1396,6 +1405,7 @@ export default function AdminModelsPage() {
       warnings: ["注意：若其下仍有关联的模型部署，或正被设为平台默认模型，后端将拒绝删除。"],
       type: "danger",
       confirmText: "确认删除",
+      requireText: { expect: "DELETE", hint: "此操作不可恢复，请输入「DELETE」以确认删除该供应商" },
       onConfirm: async () => {
         setBusy(`p:del:${p.id}`);
         try {
@@ -1473,6 +1483,7 @@ export default function AdminModelsPage() {
       warnings: ["注意：若该模型正被设为平台默认模型或被空间模型策略引用，后端将拒绝删除。"],
       type: "danger",
       confirmText: "确认删除",
+      requireText: { expect: "DELETE", hint: "此操作不可恢复，请输入「DELETE」以确认删除该部署" },
       onConfirm: async () => {
         setBusy(`d:del:${d.id}`);
         try {
@@ -2917,6 +2928,11 @@ export default function AdminModelsPage() {
                       </td>
                     </tr>
                   ))}
+                  {loadError && !providers.length && (
+                    <div className="mb-4">
+                      <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); load(); }} retrying={loading} />
+                    </div>
+                  )}
                   {providers.length === 0 && (
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
@@ -4306,7 +4322,7 @@ export default function AdminModelsPage() {
                             <span>工况沙盘推演（标准工况：70万输入 + 30万输出 = 100万 Token）</span>
                           </span>
                           <span className="text-[10px] text-slate-400 font-mono">
-                            {priceMarkupFilled ? `成本加成 +${(Number(priceForm.markupRateBps || 0) / 100).toFixed(2)}%` : "直接零售定价"}
+                            {priceMarkupFilled ? `成本加成 +${formatMoney(priceForm.markupRateBps || 0)}%` : "直接零售定价"}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -5452,6 +5468,7 @@ export default function AdminModelsPage() {
       {/* 全局二次确认弹窗（对齐全站其它管理页面规范，彻底替换原生 alert/confirm） */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
+        requireText={confirmDialog.requireText}
         title={confirmDialog.title}
         message={confirmDialog.message}
         warnings={confirmDialog.warnings}

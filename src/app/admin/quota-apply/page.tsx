@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import {
   Coins,
@@ -62,6 +64,7 @@ export default function QuotaApplyPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("PENDING");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   // 审批弹窗状态
@@ -78,13 +81,14 @@ export default function QuotaApplyPage() {
     try {
       const res = await authFetch(`/api/admin/quota-apply?status=${encodeURIComponent(status)}&page=${page}&limit=20`);
       if (!res?.success) {
-        toast.error(res?.error || "加载申请列表失败");
+        setLoadError(res?.error || "加载申请列表失败");
         return;
       }
       setRows(res.data || []);
       setTotal(res.pagination?.total ?? 0);
+      setLoadError(null);
     } catch (e) {
-      toast.error((e as Error)?.message || "加载申请列表失败");
+      setLoadError((e as Error)?.message || "加载申请列表失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -96,6 +100,8 @@ export default function QuotaApplyPage() {
 
   const openDialog = (row: ApplyRow, action: "APPROVE" | "REJECT") => {
     setDialog({ open: true, row, action });
+  // KN-UI：审批弹窗 Esc 关闭（自查清单指令九）
+  useEscapeKey(dialog.open, () => setDialog({ ...dialog, open: false }));
     setApprovePoints(String(row.applyPoints));
     setRemark("");
   };
@@ -203,6 +209,10 @@ export default function QuotaApplyPage() {
         {loading ? (
           <div className="flex items-center justify-center py-16">
             <div className="w-10 h-10 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin" />
+          </div>
+        ) : loadError ? (
+          <div className="p-4">
+            <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); void load(); }} retrying={loading} />
           </div>
         ) : rows.length === 0 ? (
           <div className="py-16 text-center">

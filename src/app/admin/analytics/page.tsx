@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { BarChart3, TrendingUp, Users, Activity, RotateCcw } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, formatDate } from "@/utils/format";
 
 interface KpiItem {
   key: string;
@@ -289,7 +290,7 @@ export default function AdminAnalyticsPage() {
                 统计口径：活跃用户按 loginhistory 登录记录去重；组件使用按 componenttask 任务记录计数；环比对比上一等长周期。
                 {data?.generatedAt && (
                   <span className="ml-auto font-mono">
-                    数据生成于 {new Date(data.generatedAt).toLocaleString("zh-CN")}
+                    数据生成于 {formatDateTime(new Date(data.generatedAt))}
                   </span>
                 )}
               </div>

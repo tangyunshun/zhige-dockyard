@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { formatDate, formatMoney, maskEmail, maskPhone } from "@/utils/format";
 import Pagination from "@/components/Pagination";
 import {
   Search,
@@ -81,6 +82,14 @@ export default function AdminMembershipOrdersPage() {
     userId: "",
     levelId: "",
   });
+  // KN-UI：userId 搜索本地缓冲 + 300ms 防抖提交（自查清单指令五）
+  const [userIdInput, setUserIdInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => (prev.userId === userIdInput ? prev : { ...prev, userId: userIdInput }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [userIdInput]);
 
   useEffect(() => {
     loadOrders();
@@ -178,7 +187,7 @@ export default function AdminMembershipOrdersPage() {
             header: "订单金额(元)",
             key: "amount",
             width: 14,
-            formatter: (v: any) => (typeof v === "number" ? (v / 100).toFixed(2) : v ?? 0),
+            formatter: (v: any) => (typeof v === "number" ? formatMoney(v) : v ?? 0),
           },
           {
             header: "币种",
@@ -338,9 +347,9 @@ export default function AdminMembershipOrdersPage() {
                 <input
                   type="text"
                   placeholder="搜索用户 ID / 订单号..."
-                  value={filters.userId}
+                  value={userIdInput}
                   onChange={(e) => {
-                    setFilters({ ...filters, userId: e.target.value });
+                    setUserIdInput(e.target.value);
                     setPagination((prev) => ({ ...prev, page: 1 }));
                   }}
                   className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all bg-white placeholder:text-slate-400 text-slate-700"
@@ -486,7 +495,7 @@ export default function AdminMembershipOrdersPage() {
                                 className="text-xs text-slate-500 font-medium truncate"
                                 title={order.user.email}
                               >
-                                {order.user.email}
+                                {maskEmail(order.user.email)}
                               </div>
                             </div>
                           </div>
@@ -534,7 +543,7 @@ export default function AdminMembershipOrdersPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="font-black text-slate-800 text-lg tracking-tight whitespace-nowrap">
-                            ¥{(order.amount / 100).toFixed(2)}
+                            ¥{formatMoney(order.amount)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -544,7 +553,7 @@ export default function AdminMembershipOrdersPage() {
                           <div className="text-sm text-slate-600 font-medium whitespace-nowrap">
                             <div
                               className="font-bold text-slate-700 whitespace-nowrap"
-                              title={`${new Date(order.startDate).toLocaleDateString("zh-CN")} 至 ${new Date(order.endDate).toLocaleDateString("zh-CN")}`}
+                              title={`${formatDate(new Date(order.startDate))} 至 ${formatDate(new Date(order.endDate))}`}
                             >
                               {new Date(order.startDate).toLocaleDateString(
                                 "zh-CN",

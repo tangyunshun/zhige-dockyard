@@ -5,8 +5,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import ConfirmModal from "@/components/ConfirmModal";
+import { formatDate, formatDateTime, maskEmail } from "@/utils/format";
 import Pagination from "@/components/Pagination";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import {
   Search,
   Plus,
@@ -213,6 +216,7 @@ export default function AdminDocumentsPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [summary, setSummary] = useState<DocumentSummary>({
     totalDocs: 0,
@@ -222,6 +226,7 @@ export default function AdminDocumentsPage() {
     categoryCounts: {},
   });
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEscapeKey(showCreateModal, () => setShowCreateModal(false));
   const [editingDoc, setEditingDoc] = useState<Document | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   const [historyDoc, setHistoryDoc] = useState<Document | null>(null);
@@ -233,6 +238,18 @@ export default function AdminDocumentsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
+
+  // KN-UI：搜索 300ms 防抖（自查清单指令五）
+
+  const [debouncedSearchQuery, setSearchQueryDebounced] = useState(searchQuery);
+
+  useEffect(() => {
+
+    const t = setTimeout(() => setSearchQueryDebounced(searchQuery), 300);
+
+    return () => clearTimeout(t);
+
+  }, [searchQuery]);
   const [filterCategory, setFilterCategory] = useState("");
   const [filterPublished, setFilterPublished] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -609,6 +626,7 @@ export default function AdminDocumentsPage() {
         </div>
       ),
       type: "danger",
+      requireText: { expect: "DELETE", hint: "删除分类不会删除其下文档，但操作不可逆，请输入「DELETE」以确认" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -660,6 +678,7 @@ export default function AdminDocumentsPage() {
     title: string;
     message: string | React.ReactNode;
     type: "info" | "warning" | "danger";
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void;
   }>({
     isOpen: false,
@@ -692,7 +711,7 @@ export default function AdminDocumentsPage() {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: pageSize.toString(),
-        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+        ...(searchQuery.trim() && { search: debouncedSearchQuery.trim() }),
         ...(filterCategory && { category: filterCategory }),
         ...(filterPublished && { isPublished: filterPublished }),
         ...(startDate && { startDate }),
@@ -727,14 +746,14 @@ export default function AdminDocumentsPage() {
         const errorText = await res.text();
         try {
           const error = JSON.parse(errorText);
-          toast.error(error.error || error.message || "加载文档失败");
+          setLoadError(error.error || error.message || "加载文档失败");
         } catch {
           toast.error("加载文档失败");
         }
       }
     } catch (error) {
       console.error("Load documents error:", error);
-      toast.error("加载失败，请检查网络连接");
+      setLoadError("加载失败，请检查网络连接，请重试");
     } finally {
       setLoading(false);
     }
@@ -742,7 +761,7 @@ export default function AdminDocumentsPage() {
 
   useEffect(() => {
     loadDocuments();
-  }, [currentPage, searchQuery, filterCategory, filterPublished, startDate, endDate]);
+  }, [currentPage, debouncedSearchQuery, filterCategory, filterPublished, startDate, endDate]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -895,6 +914,7 @@ export default function AdminDocumentsPage() {
       title: "删除确认",
       message: `文档标题：${doc.title}\n\n此操作不可恢复，删除后将无法找回！\n\n请确认是否继续？`,
       type: "danger",
+      requireText: { expect: "DELETE", hint: "此操作不可恢复，请输入「DELETE」以确认删除该文档" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -2760,9 +2780,9 @@ export default function AdminDocumentsPage() {
                     <span>•</span>
                     <span>
                       更新于:{" "}
-                      {new Date(
+                      {formatDate(new Date(
                         previewDoc.updatedAt || previewDoc.createdAt
-                      ).toLocaleDateString("zh-CN")}
+                      ))}
                     </span>
                   </div>
                 </div>
@@ -2952,12 +2972,10 @@ export default function AdminDocumentsPage() {
                                   : `V${versionNum}.0 修订快照`}
                               </span>
                               <span className="text-xs font-bold text-slate-700">
-                                {new Date(item.createdAt).toLocaleString("zh-CN", {
-                                  hour12: false,
-                                })}
+                                {formatDateTime(new Date(item.createdAt))}
                               </span>
                               <span className="text-[11px] text-slate-500">
-                                操作者：{item.user?.name || item.user?.email || "系统官方"}
+                                操作者：{item.user?.name || (item.user?.email ? maskEmail(item.user.email) : "系统官方")}
                               </span>
                             </div>
 
@@ -3363,6 +3381,7 @@ export default function AdminDocumentsPage() {
         title={confirmModal.title}
         message={confirmModal.message}
         type={confirmModal.type}
+        requireText={confirmModal.requireText}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal({ ...confirmModal, isOpen: false })}
       />

@@ -944,7 +944,6 @@ function PermissionsContent() {
           data.message || (data.added > 0 ? `发现并补录 ${data.added} 个新权限点` : "目录已齐全")
         );
         if (Array.isArray(data.keys) && data.keys.length > 0) {
-          console.log("[权限] 本次补录的权限点：", data.keys);
         }
         await loadData(true);
       } else {

@@ -28,6 +28,9 @@ import {
   Inbox,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import Pagination from "@/components/Pagination";
+import { maskPhone, maskEmail } from "@/utils/format";
 import { describeApiError } from "@/lib/admin-error-presenter";
 
 type ConsultStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "REJECTED";
@@ -88,6 +91,9 @@ function formatTime(value: string): string {
 
 export default function UpgradeApplicationsPage() {
   const [rows, setRows] = useState<ConsultRow[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<{ message: string; troubleshooting?: string[] } | null>(null);
   const [statusFilter, setStatusFilter] = useState<"" | ConsultStatus>("");
@@ -95,6 +101,7 @@ export default function UpgradeApplicationsPage() {
 
   // 处理弹窗
   const [dialogOpen, setDialogOpen] = useState(false);
+  useEscapeKey(dialogOpen, () => setDialogOpen(false));
   const [dialogTarget, setDialogTarget] = useState<{ row: ConsultRow; next: ConsultStatus } | null>(null);
   const [remark, setRemark] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -118,11 +125,13 @@ export default function UpgradeApplicationsPage() {
     try {
       setLoading(true);
       setLoadError(null);
-      const qs = statusFilter ? `?status=${statusFilter}` : "";
+      const qs = `?page=${currentPage}&pageSize=20${statusFilter ? `&status=${statusFilter}` : ""}`;
       const res = await authFetch(`/api/admin/upgrade-applications${qs}`);
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.success) {
         setRows(data.data?.applications || []);
+        setServerTotal(data.data?.total ?? 0);
+        setServerTotalPages(data.data?.totalPages ?? 1);
       } else {
         setLoadError(describeApiError(data, "获取定制咨询列表失败"));
       }
@@ -131,7 +140,7 @@ export default function UpgradeApplicationsPage() {
     } finally {
       setLoading(false);
     }
-  }, [authFetch, statusFilter]);
+  }, [authFetch, statusFilter, currentPage]);
 
   useEffect(() => {
     load();
@@ -257,6 +266,11 @@ export default function UpgradeApplicationsPage() {
         <div className="rounded-2xl border border-slate-200/80 bg-white p-12 flex flex-col items-center justify-center gap-2 text-center">
           <Inbox className="w-8 h-8 text-slate-300" />
           <p className="text-sm font-black text-slate-500">暂无咨询记录</p>
+          {statusFilter && (
+            <button onClick={() => { setStatusFilter(""); setCurrentPage(1); }} className="mt-1 px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold cursor-pointer">
+              查看全部状态
+            </button>
+          )}
           <p className="text-[11px] text-slate-400 font-bold">
             用户在定价页「申请定制方案」提交的咨询会出现在这里
           </p>
@@ -287,7 +301,7 @@ export default function UpgradeApplicationsPage() {
                       </span>
                       <span className="flex items-center gap-1 font-mono">
                         <Phone className="w-3 h-3 text-slate-400" />
-                        {row.contactPhone}
+                        {maskPhone(row.contactPhone)}
                       </span>
                       {row.workspace?.name && (
                         <span className="flex items-center gap-1">
@@ -380,7 +394,7 @@ export default function UpgradeApplicationsPage() {
                 企业：<span className="text-slate-800">{dialogTarget.row.companyName}</span>
               </p>
               <p>
-                联系人：{dialogTarget.row.contactName} · {dialogTarget.row.contactPhone}
+                联系人：{dialogTarget.row.contactName} · {maskPhone(dialogTarget.row.contactPhone)}
               </p>
             </div>
 
@@ -462,6 +476,18 @@ export default function UpgradeApplicationsPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {rows.length > 0 && (
+        <div className="rounded-2xl border border-slate-200/80 bg-white px-4 py-3">
+          <Pagination
+            currentPage={currentPage}
+            totalItems={serverTotal}
+            pageSize={20}
+            onPageChange={(pg) => setCurrentPage(pg)}
+            itemLabel="条咨询"
+          />
         </div>
       )}
     </div>

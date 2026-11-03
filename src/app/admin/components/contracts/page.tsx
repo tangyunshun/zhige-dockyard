@@ -32,6 +32,8 @@ import {
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, formatDate } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import {
   ComponentContract,
   ContractLifecycle,
@@ -414,6 +416,7 @@ export default function ComponentContractsPage() {
     none: number;
   } | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [overviewFilter, setOverviewFilter] = useState<OverviewFilter>("ALL");
   const [overviewListOpen, setOverviewListOpen] = useState(false);
   // 目标组件可搜索下拉、Prompt 全文展开、草稿弹窗内联报错
@@ -504,7 +507,7 @@ export default function ComponentContractsPage() {
           setSelectedComponentId(list[0].id);
         }
       } catch (err) {
-        showToast("error", err instanceof Error ? err.message : "加载组件目录异常");
+        setLoadError(err instanceof Error ? err.message : "加载组件目录异常");
       } finally {
         setLoadingComponents(false);
       }
@@ -525,11 +528,12 @@ export default function ComponentContractsPage() {
         }
         throw new Error(`加载合同总览失败 (${res.status})`);
       }
+      setLoadError(null);
       const json = await res.json();
       setOverviewItems(json.data?.items || []);
       setOverviewSummary(json.data?.summary || null);
     } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "加载合同总览异常");
+      setLoadError(err instanceof Error ? err.message : "加载合同总览异常");
     } finally {
       setLoadingOverview(false);
     }
@@ -1694,7 +1698,7 @@ export default function ComponentContractsPage() {
                     </span>
                     {currentVersionMeta?.publishedAt && (
                       <span className="whitespace-nowrap">
-                        发布时间：{new Date(currentVersionMeta.publishedAt).toLocaleString("zh-CN", { hour12: false })}
+                        发布时间：{formatDateTime(new Date(currentVersionMeta.publishedAt))}
                       </span>
                     )}
                     {currentVersionMeta?.publishedByName && (
@@ -2847,7 +2851,7 @@ export default function ComponentContractsPage() {
             <div className="text-xs text-slate-500 mb-3">
               快照 ID: <span className="font-mono text-slate-800">{snapshotModalData.snapshotId}</span> · 生成时间:{" "}
               {snapshotModalData.snapshotCreatedAt
-                ? new Date(snapshotModalData.snapshotCreatedAt).toLocaleString("zh-CN", { hour12: false })
+                ? formatDateTime(new Date(snapshotModalData.snapshotCreatedAt))
                 : "—"}
             </div>
 

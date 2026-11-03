@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskPhone, maskEmail } from "@/utils/format";
 import { describeApiError } from "@/lib/admin-error-presenter";
 import {
   Building2,
@@ -246,6 +249,7 @@ export default function AdminTenantsPage() {
   const toast = useToast();
   const [data, setData] = useState<TenantData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>("");
 
@@ -265,6 +269,11 @@ export default function AdminTenantsPage() {
   const [actionCategory, setActionCategory] = useState<"ALL" | "TASK" | "WORKSPACE" | "SECURITY">("ALL");
   const [detailLoading, setDetailLoading] = useState(false);
   const detailSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // KN-UI：unmount 清理防抖定时器（自查清单指令五）
+  useEffect(() => () => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (detailSearchTimer.current) clearTimeout(detailSearchTimer.current);
+  }, []);
 
   // 组件详情模态窗（复用系统标准组件详情）
   const [activeComponentModal, setActiveComponentModal] = useState<ComponentItem | null>(null);
@@ -323,7 +332,7 @@ export default function AdminTenantsPage() {
         }
       } catch (e: any) {
         console.error("加载成员数据异常:", e);
-        toast.error(e?.message || "加载企业空间成员失败");
+        setLoadError(e?.message || "加载企业空间成员失败，请重试");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -759,9 +768,9 @@ export default function AdminTenantsPage() {
                             </div>
                             <div
                               className="text-xs text-slate-500 truncate font-mono"
-                              title={m.email}
+                              title={maskEmail(m.email)}
                             >
-                              {m.email}
+                              {maskEmail(m.email)}
                             </div>
                           </div>
                         </div>
@@ -1094,6 +1103,7 @@ function SpaceCombobox({
   onSelect: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  useEscapeKey(open, () => setOpen(false));
   const [keyword, setKeyword] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
 

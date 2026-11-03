@@ -7,6 +7,8 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { formatDate, maskEmail, maskPhone } from "@/utils/format";
 
 interface AdminUser {
   id: string;
@@ -28,6 +30,7 @@ export default function AdministratorsPage() {
   const [catalog, setCatalog] = useState<any[]>([]);
   const [previewAdmin, setPreviewAdmin] = useState<AdminUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"ALL" | "SUPER" | "ADMIN">("ALL");
   const [showModal, setShowModal] = useState(false);
@@ -68,11 +71,12 @@ export default function AdministratorsPage() {
         if (Array.isArray(result.catalog)) {
           setCatalog(result.catalog);
         }
+        setLoadError(null);
       } else {
-        toast.error("加载管理员列表失败");
+        setLoadError("管理员列表加载失败，请重试");
       }
     } catch (e) {
-      toast.error("加载列表异常");
+      setLoadError("管理员列表加载异常，请重试");
     } finally {
       setLoading(false);
     }
@@ -130,10 +134,13 @@ export default function AdministratorsPage() {
     });
   };
 
-  const loadUsers = async () => {
+  // KN-UI：候选用户改为关键字实时搜索（自查清单指令八）——不再硬编码 limit=400
+  const loadUsers = async (keyword?: string) => {
     try {
       const authToken = getAuthToken();
-      const res = await fetch("/api/admin/users?limit=400", {
+      const qs = new URLSearchParams({ limit: "20" });
+      if (keyword && keyword.trim()) qs.set("search", keyword.trim());
+      const res = await fetch(`/api/admin/users?${qs.toString()}`, {
         headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
       });
       if (res.ok) {
@@ -145,9 +152,10 @@ export default function AdministratorsPage() {
           return r !== "SUPER_ADMIN" && r !== "SUPERADMIN" && r !== "ADMIN" && r !== "PLATFORM_ADMIN";
         });
         setUsers(normalUsers);
+        setLoadError(null);
       }
     } catch (e) {
-      console.error("加载系统用户失败", e);
+      setLoadError("系统用户加载失败，请重试");
     }
   };
 
@@ -279,14 +287,13 @@ export default function AdministratorsPage() {
   });
 
   // 候选用户过滤
-  const candidateUsers = users.filter((u) => {
-    const term = candidateSearch.toLowerCase();
-    return (
-      (u.name || "").toLowerCase().includes(term) ||
-      (u.email || "").toLowerCase().includes(term) ||
-      u.id.toLowerCase().includes(term)
-    );
-  });
+  // KN-UI：候选搜索走后端（输入即触发 loadUsers(keyword)，300ms 防抖）
+  useEffect(() => {
+    const t = setTimeout(() => loadUsers(candidateSearch), 300);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [candidateSearch]);
+  const candidateUsers = users;
 
   return (
     <div className="space-y-6 pb-12 font-sans text-left">
@@ -450,6 +457,10 @@ export default function AdministratorsPage() {
             <div className="w-12 h-12 border-4 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin" />
             <span className="text-xs font-bold text-slate-500">正在加载管理员列表...</span>
           </div>
+        ) : loadError ? (
+          <div className="p-4">
+            <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadAdmins(); }} retrying={loading} />
+          </div>
         ) : filteredAdmins.length === 0 ? (
           <div className="min-h-[320px] flex flex-col items-center justify-center p-8 text-center">
             <div className="w-16 h-16 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400 mb-3">
@@ -510,7 +521,7 @@ export default function AdministratorsPage() {
                               </span>
                             )}
                           </div>
-                          <div className="text-xs text-slate-400 font-medium mt-0.5">{admin.email || "未绑定邮箱"}</div>
+                          <div className="text-xs text-slate-400 font-medium mt-0.5">{maskEmail(admin.email) || "未绑定邮箱"}</div>
                         </div>
                       </div>
                     </td>
@@ -747,7 +758,7 @@ export default function AdministratorsPage() {
                                 {u.name || "未命名用户"}
                               </div>
                               <div className="text-[11px] text-slate-400 font-medium truncate">
-                                {u.email || "无邮箱"} · 注册于 {new Date(u.createdAt).toLocaleDateString("zh-CN")}
+                                {maskEmail(u.email) || "无邮箱"} · 注册于 {formatDate(new Date(u.createdAt))}
                               </div>
                             </div>
                           </div>

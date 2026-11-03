@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, formatDate } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { isValidComponentCost } from "@/lib/component-cost";
 import MountComponentsModal from "@/app/admin/content/MountComponentsModal";
 import { YUAN_PER_POINT } from "@/lib/point-rate";
@@ -689,6 +691,7 @@ export default function AdminComponentsPage() {
   const canBatchOperate = canPublish || canDelete;
 
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [components, setComponents] = useState<Component[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   // 阶段内「移动组件」弹窗（从其它阶段批量转移组件到当前阶段）
@@ -741,6 +744,15 @@ export default function AdminComponentsPage() {
     startDate: "",
     endDate: "",
   });
+  // KN-UI：搜索输入本地缓冲 + 300ms 防抖提交（自查清单指令五）
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => (prev.search === searchInput ? prev : { ...prev, search: searchInput }));
+    setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -830,6 +842,7 @@ export default function AdminComponentsPage() {
     title: string;
     message: string;
     type: "danger" | "warning" | "info";
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
@@ -899,6 +912,7 @@ export default function AdminComponentsPage() {
 
       if (res.ok) {
         const data = await res.json();
+        setLoadError(null);
         setComponents(data.data.components || []);
         setTypes(data.data.stages || []);
         setCategories(data.data.categories || []);
@@ -906,11 +920,10 @@ export default function AdminComponentsPage() {
         setTotal(data.data.total || 0);
       } else {
         const error = await res.json();
-        toast.error(error.message || "加载组件失败");
+        setLoadError(error.message || "加载组件失败");
       }
     } catch (error) {
-      console.error("Load components error:", error);
-      toast.error("加载失败");
+      setLoadError("组件列表加载失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -1163,6 +1176,7 @@ export default function AdminComponentsPage() {
       title: "物理删除组件",
       message: "危险警告：该操作将永久性从系统字典库中物理抹除该组件。确定继续？",
       type: "danger",
+      requireText: { expect: id, hint: "此操作不可恢复，请输入该组件编码（如 C01）以确认物理删除" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -1628,11 +1642,8 @@ export default function AdminComponentsPage() {
                   <input
                     type="text"
                     placeholder="搜索组件ID（如 C10）、名称或功能描述..."
-                    value={filters.search}
-                    onChange={(e) => {
-                      setFilters((prev) => ({ ...prev, search: e.target.value }));
-                      setCurrentPage(1);
-                    }}
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
                     className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all bg-white/80"
                   />
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1828,6 +1839,10 @@ export default function AdminComponentsPage() {
               <div className="w-12 h-12 border-4 border-[#3182ce]/30 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-3"></div>
               <p className="text-xs text-slate-500 font-bold">正在从数据库加载真实组件数据...</p>
             </div>
+          </div>
+        ) : loadError ? (
+          <div className="p-4">
+            <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadComponents(); }} retrying={loading} />
           </div>
         ) : components.length === 0 ? (
           <div className="text-center py-16 bg-white/80 rounded-2xl border border-slate-200/60 p-6 space-y-3">
@@ -2089,7 +2104,7 @@ export default function AdminComponentsPage() {
                           </td>
 
                           <td className="py-3.5 px-4 font-mono text-[11px] text-slate-500 whitespace-nowrap">
-                            {new Date(component.createdAt).toLocaleDateString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit" })}
+                            {formatDate(new Date(component.createdAt))}
                           </td>
 
                           <td className="sticky right-0 bg-white/95 group-hover:bg-slate-50/95 backdrop-blur-xs z-10 py-3.5 px-4 text-right whitespace-nowrap shadow-[-8px_0_12px_-4px_rgba(0,0,0,0.06)] border-l border-slate-100 transition-colors">
@@ -2300,7 +2315,7 @@ export default function AdminComponentsPage() {
                     </p>
                     <p className="text-[10px] text-violet-500 mt-1 font-bold">
                       {manualData?.manual?.version || ""}
-                      {manualData?.updatedAt ? ` · 更新于 ${new Date(manualData.updatedAt).toLocaleString("zh-CN")}` : ""}
+                      {manualData?.updatedAt ? ` · 更新于 ${formatDateTime(new Date(manualData.updatedAt))}` : ""}
                     </p>
                   </div>
                   <button
@@ -2440,11 +2455,11 @@ export default function AdminComponentsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">组件创建时间</div>
-                  <div className="text-xs font-mono font-bold text-slate-700">{new Date(detailComp.createdAt).toLocaleString("zh-CN")}</div>
+                  <div className="text-xs font-mono font-bold text-slate-700">{formatDateTime(new Date(detailComp.createdAt))}</div>
                 </div>
                 <div className="p-3 bg-slate-50 border border-slate-200/60 rounded-xl space-y-0.5">
                   <div className="text-[10px] font-bold text-slate-400 uppercase">最近更新维护时间</div>
-                  <div className="text-xs font-mono font-bold text-slate-700">{new Date(detailComp.updatedAt || detailComp.createdAt).toLocaleString("zh-CN")}</div>
+                  <div className="text-xs font-mono font-bold text-slate-700">{formatDateTime(new Date(detailComp.updatedAt || detailComp.createdAt))}</div>
                 </div>
               </div>
 
@@ -2988,6 +3003,7 @@ export default function AdminComponentsPage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
+        requireText={confirmDialog.requireText}
         onConfirm={() => {
           confirmDialog.onConfirm();
           setConfirmDialog({ ...confirmDialog, isOpen: false });

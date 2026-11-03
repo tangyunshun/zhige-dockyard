@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
 import Pagination from "@/components/Pagination";
 import {
   Search,
@@ -77,6 +78,14 @@ export default function AdminMembershipLogsPage() {
     userId: "",
     changeType: "",
   });
+  // KN-UI：userId 搜索本地缓冲 + 300ms 防抖提交（自查清单指令五）
+  const [userIdInput, setUserIdInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => (prev.userId === userIdInput ? prev : { ...prev, userId: userIdInput }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [userIdInput]);
 
   useEffect(() => {
     loadLogs();
@@ -256,9 +265,9 @@ export default function AdminMembershipLogsPage() {
                 <input
                   type="text"
                   placeholder="搜索用户 ID / 用户名 / 变更原因..."
-                  value={filters.userId}
+                  value={userIdInput}
                   onChange={(e) => {
-                    setFilters({ ...filters, userId: e.target.value });
+                    setUserIdInput(e.target.value);
                     setPagination((prev) => ({ ...prev, page: 1 }));
                   }}
                   className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold transition-all bg-white placeholder:text-slate-400 text-slate-700"
@@ -381,7 +390,7 @@ export default function AdminMembershipLogsPage() {
                                     title={log.user.email}
                                   >
                                     <Mail className="w-3 h-3 shrink-0 text-slate-400" />
-                                    <span className="truncate">{log.user.email}</span>
+                                    <span className="truncate">{maskEmail(log.user.email)}</span>
                                   </span>
                                 )}
                                 {log.user?.phone && (
@@ -390,7 +399,7 @@ export default function AdminMembershipLogsPage() {
                                     title={log.user.phone}
                                   >
                                     <Phone className="w-3 h-3 shrink-0 text-slate-400" />
-                                    <span className="truncate">{log.user.phone}</span>
+                                    <span className="truncate">{maskPhone(log.user.phone)}</span>
                                   </span>
                                 )}
                               </div>

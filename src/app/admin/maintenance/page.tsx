@@ -36,6 +36,8 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 
 // 维护计划类型定义
 interface MaintenanceSchedule {
@@ -103,6 +105,7 @@ export default function MaintenancePage() {
 
   // 基础状态
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
   const [maintenanceMessage, setMaintenanceMessage] = useState("");
@@ -116,6 +119,7 @@ export default function MaintenancePage() {
 
   // 弹窗表单状态：登记维护计划
   const [showScheduleModal, setShowScheduleModal] = useState(false);
+  useEscapeKey(showScheduleModal, () => setShowScheduleModal(false));
   const [scheduleForm, setScheduleForm] = useState({
     title: "",
     type: "UPGRADE" as MaintenanceSchedule["type"],
@@ -129,6 +133,7 @@ export default function MaintenancePage() {
 
   // 弹窗表单状态：发布新版本记录
   const [showReleaseModal, setShowReleaseModal] = useState(false);
+  useEscapeKey(showReleaseModal, () => setShowReleaseModal(false));
   const [releaseForm, setReleaseForm] = useState({
     version: "",
     title: "",
@@ -180,6 +185,7 @@ export default function MaintenancePage() {
     title: string;
     message: string;
     type: "danger" | "warning" | "info";
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
@@ -205,14 +211,15 @@ export default function MaintenancePage() {
         setCurrentVersion(data.currentVersion || "v1.0.0");
         setSchedules(data.schedules || []);
         setReleases(data.releases || []);
+        setLoadError(null);
         if (data.updateSettings) {
           setUpdateSettings(data.updateSettings);
         }
       } else {
-        toast.error("获取系统维护状态失败");
+        setLoadError("获取系统维护状态失败");
       }
     } catch {
-      toast.error("网络异常，无法连接系统维护接口");
+      setLoadError("网络异常，无法连接系统维护接口");
     } finally {
       setLoading(false);
     }
@@ -617,6 +624,7 @@ export default function MaintenancePage() {
       type: "danger",
       title: "删除维护计划记录",
       message: `确定要从数据库中删除维护任务「${title}」吗？删除后不可撤销。`,
+      requireText: { expect: "DELETE", hint: "此操作不可撤销，请输入「DELETE」以确认删除" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -783,6 +791,7 @@ export default function MaintenancePage() {
       type: "danger",
       title: "删除发版记录",
       message: `确定要从数据库中删除版本「${version}」的发版记录吗？删除后将不再记录在发版履历中。`,
+      requireText: { expect: "DELETE", hint: "此操作不可撤销，请输入「DELETE」以确认删除" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -863,6 +872,9 @@ export default function MaintenancePage() {
 
   return (
     <div className="space-y-6 pb-12 font-sans text-left">
+      {loadError && (
+        <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadData(); }} retrying={loading} />
+      )}
       {/* 顶部标头导航区（去AI黑话，普通清晰的业务描述） */}
       <div className="bg-white/90 backdrop-blur-xl border border-blue-100 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -2368,6 +2380,7 @@ export default function MaintenancePage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
+        requireText={confirmDialog.requireText}
         confirmText="确认执行"
         cancelText="取消"
         onConfirm={async () => {

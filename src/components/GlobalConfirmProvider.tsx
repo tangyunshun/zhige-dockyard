@@ -9,6 +9,8 @@ export interface ConfirmOptions {
   type?: "info" | "warning" | "danger";
   confirmText?: string;
   cancelText?: string;
+  /** 高危操作「输入文字确认」：输入值 trim 后与 expect 完全一致才允许确认 */
+  requireText?: { expect: string; hint?: string };
 }
 
 type ConfirmState = ConfirmOptions & {
@@ -91,6 +93,7 @@ export function GlobalConfirmProvider({ children }: { children: React.ReactNode 
           type={state.type || "warning"}
           confirmText={state.confirmText || "确定"}
           cancelText={state.cancelText || "取消"}
+          requireText={state.requireText}
           onConfirm={handleConfirm}
           onCancel={handleCancel}
         />

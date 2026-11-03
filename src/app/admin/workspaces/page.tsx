@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useToast } from "@/components/Toast";
 import { onWorkspaceLogoUpdated } from "@/lib/workspace-events";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
 import {
   Filter,
   Building2,
@@ -153,6 +155,7 @@ export default function AdminWorkspacesPage() {
     null,
   );
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
   const [filterComponentCount, setFilterComponentCount] =
@@ -224,18 +227,16 @@ export default function AdminWorkspacesPage() {
       });
 
       if (!res.ok) {
-        // 不显示错误，ActivityMonitor 会处理超时跳转
-        console.error("Load workspaces failed:", res.status);
+        // 401 由 ActivityMonitor 处理超时跳转；其余错误进入错误态
+        if (res.status !== 401) setLoadError(`加载工作空间失败（HTTP ${res.status}）`);
         return;
       }
 
       const result = await res.json();
-      console.log("API 返回的数据:", result.data);
-      console.log("统计数据:", result.data.stats);
-      console.log("总数:", result.data.total);
       setWorkspaceData(result.data);
+      setLoadError(null);
     } catch (error) {
-      console.error("Load workspaces error:", error);
+      setLoadError("网络异常，工作空间数据加载失败");
     } finally {
       setLoading(false);
     }
@@ -1163,7 +1164,13 @@ export default function AdminWorkspacesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {workspaceData?.workspaces.length === 0 ? (
+                  {loadError ? (
+                    <tr>
+                      <td colSpan={canBatchOperate ? 10 : 9} className="px-4 py-6">
+                        <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadWorkspaces(1); }} retrying={loading} />
+                      </td>
+                    </tr>
+                  ) : workspaceData?.workspaces.length === 0 ? (
                     <tr>
                       <td
                         colSpan={canBatchOperate ? 10 : 9}
@@ -1337,7 +1344,7 @@ export default function AdminWorkspacesPage() {
                               </StatusBadge>
                               <span
                                 className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-700 whitespace-nowrap"
-                                title={`【工作空间管控中】\n管控截止：${workspace.disabledUntil ? new Date(workspace.disabledUntil).toLocaleString("zh-CN") : "永久管控"}\n停用原因：${workspace.disabledReason || "未登记"}\n说明：到达截止时间后，系统将自动解除管控恢复正常启用。`}
+                                title={`【工作空间管控中】\n管控截止：${workspace.disabledUntil ? formatDateTime(new Date(workspace.disabledUntil)) : "永久管控"}\n停用原因：${workspace.disabledReason || "未登记"}\n说明：到达截止时间后，系统将自动解除管控恢复正常启用。`}
                               >
                                 {workspace.disabledUntil
                                   ? `停用至 ${new Date(workspace.disabledUntil).getMonth() + 1}月${new Date(workspace.disabledUntil).getDate()}日`
@@ -1673,7 +1680,7 @@ export default function AdminWorkspacesPage() {
                               {member.user.name || "未命名用户"}
                             </div>
                             <div className="text-xs text-slate-500">
-                              {member.user.email || "无邮箱"}
+                              {maskEmail(member.user.email) || "无邮箱"}
                             </div>
                           </div>
                         </div>
@@ -1847,7 +1854,7 @@ export default function AdminWorkspacesPage() {
                     </span>
                     <span>{disablingWorkspace.owner?.name || "空间管理员"}</span>
                     {disablingWorkspace.owner?.email && (
-                      <span className="text-slate-400 font-normal">({disablingWorkspace.owner.email})</span>
+                      <span className="text-slate-400 font-normal">({maskEmail(disablingWorkspace.owner.email)})</span>
                     )}
                   </span>
                 </div>

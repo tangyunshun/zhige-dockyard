@@ -6162,7 +6162,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           userId,
           workspaceId: "",
           action: "KNOWLEDGE_CATEGORY_RENAME",
-          resource: "SYSTEMCONFIG",
+          resource: "systemconfig",
           details: { oldName: oldTrim, newName: newTrim, movedEntries: migrated.count },
         },
       }).catch(() => {});
@@ -6230,7 +6230,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             userId,
             workspaceId: "",
             action: "KNOWLEDGE_CATEGORY_BATCH_DELETE",
-            resource: "SYSTEMCONFIG",
+            resource: "systemconfig",
             details: { names: removed },
           },
         }).catch(() => {});
@@ -6282,7 +6282,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           userId,
           workspaceId: workspaceId || "",
           action: "KNOWLEDGE_CATEGORY_CREATE",
-          resource: "SYSTEMCONFIG",
+          resource: "systemconfig",
           details: { name: trimmed, scope: "personal" },
         },
       }).catch(() => {});
@@ -6315,7 +6315,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           userId,
           workspaceId: workspaceId || "",
           action: "KNOWLEDGE_CATEGORY_DELETE",
-          resource: "SYSTEMCONFIG",
+          resource: "systemconfig",
           details: { name: trimmed, scope: "personal", movedEntries: moved.count },
         },
       }).catch(() => {});

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { formatDate, formatDateTime, formatMoney } from "@/utils/format";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { useToast } from "@/components/Toast";
 import {
@@ -338,6 +339,16 @@ export default function AdminPointsLedgerPage() {
         ) : records.length === 0 ? (
           <div className="p-16 text-center text-xs font-bold text-slate-400">
             <AlertCircle className="w-6 h-6 mx-auto mb-2" /> 暂无流水
+            {typeFilter !== "all" && (
+              <div className="mt-3">
+                <button
+                  onClick={() => setTypeFilter("all")}
+                  className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-xl cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  查看全部流水
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -377,7 +388,7 @@ export default function AdminPointsLedgerPage() {
                           {r.workspaceType === "ENTERPRISE" ? "企业" : r.workspaceType === "PERSONAL" ? "个人" : "钱包"}
                         </td>
                         <td className="px-4 py-3.5 text-slate-500 font-medium whitespace-nowrap">
-                          {new Date(r.createdAt).toLocaleString("zh-CN", { hour12: false })}
+                          {formatDateTime(new Date(r.createdAt))}
                         </td>
                         <td
                           className={`px-4 py-3.5 text-right font-mono font-black whitespace-nowrap ${
@@ -388,7 +399,7 @@ export default function AdminPointsLedgerPage() {
                           {r.points.toLocaleString()}
                         </td>
                         <td className="px-4 py-3.5 text-right font-mono font-bold text-slate-600 whitespace-nowrap">
-                          ¥{(Number(r.amountCents || 0) / 100).toFixed(2)}
+                          ¥{formatMoney(r.amountCents || 0)}
                         </td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-slate-500 font-medium">
                           {!r.operator ||

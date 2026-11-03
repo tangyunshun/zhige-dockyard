@@ -6,6 +6,9 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatMoney } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import {
   Plus,
   Edit,
@@ -91,8 +94,10 @@ export default function AdminMembershipLevelsPage() {
   const router = useRouter();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [levels, setLevels] = useState<MembershipLevel[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEscapeKey(showCreateModal, () => setShowCreateModal(false));
   const [editingLevel, setEditingLevel] = useState<MembershipLevel | null>(
     null,
   );
@@ -126,6 +131,7 @@ export default function AdminMembershipLevelsPage() {
     title: string;
     message: string;
     type: "danger" | "warning" | "info";
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
@@ -155,7 +161,6 @@ export default function AdminMembershipLevelsPage() {
     try {
       const authToken = getAuthToken();
 
-      console.log("Loading levels with authToken:", authToken);
 
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -172,11 +177,10 @@ export default function AdminMembershipLevelsPage() {
         credentials: "include",
       });
 
-      console.log("Response status:", res.status, res.ok);
 
       if (res.ok) {
         const data = await res.json();
-        console.log("Levels data:", data);
+        setLoadError(null);
         setLevels(data.data);
         if (data.pagination) {
           setTotal(Number(data.pagination.total) || 0);
@@ -190,26 +194,10 @@ export default function AdminMembershipLevelsPage() {
           setTotal(Array.isArray(data.data) ? data.data.length : 0);
         }
       } else {
-        const errorText = await res.text();
-        console.error("Load levels error - Status:", res.status);
-        console.error("Load levels error - Text:", errorText);
-        try {
-          const error = JSON.parse(errorText);
-          console.error("Load levels error - Parsed:", error);
-          toast.error(error.message || "加载会员等级失败");
-        } catch {
-          toast.error("加载会员等级失败: " + errorText);
-        }
+        setLoadError("加载会员等级失败，请重试");
       }
     } catch (error) {
-      console.error("Load levels error:", error);
-      if (error instanceof Error) {
-        console.error("Error message:", error.message);
-        console.error("Error stack:", error.stack);
-      }
-      toast.error(
-        "加载失败: " + (error instanceof Error ? error.message : "未知错误"),
-      );
+      setLoadError("加载会员等级失败：" + (error instanceof Error ? error.message : "未知错误"));
     } finally {
       setLoading(false);
     }
@@ -235,6 +223,7 @@ export default function AdminMembershipLevelsPage() {
       title: "删除会员等级",
       message: "确定要删除这个会员等级吗？",
       type: "warning",
+      requireText: { expect: name, hint: "删除等级不影响已订阅用户，但操作不可恢复。请输入等级名称以确认" },
       onConfirm: async () => {
         try {
           const authToken = getAuthToken();
@@ -454,10 +443,6 @@ export default function AdminMembershipLevelsPage() {
       errors.trialDays = "试用天数不能为负数";
     }
 
-    console.log("=== 表单验证结果 ===");
-    console.log("表单数据:", formData);
-    console.log("验证错误:", errors);
-    console.log("错误数量:", Object.keys(errors).length);
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -477,10 +462,6 @@ export default function AdminMembershipLevelsPage() {
     }
 
     // 调试：打印更新信息
-    console.log("=== 提交更新 ===");
-    console.log("editingLevel:", editingLevel);
-    console.log("formData.name:", formData.name);
-    console.log("is editing:", !!editingLevel);
 
     setSubmitting(true);
 
@@ -518,8 +499,6 @@ export default function AdminMembershipLevelsPage() {
       isPopular: formData.isPopular,
     };
 
-    console.log("发送请求:", url, method);
-    console.log("请求体:", requestBody);
 
     try {
       const res = await fetch(url, {
@@ -531,9 +510,6 @@ export default function AdminMembershipLevelsPage() {
         body: JSON.stringify(requestBody),
       });
 
-      console.log("=== API 响应 ===");
-      console.log("状态码:", res.status);
-      console.log("响应 OK:", res.ok);
       
       // 先检查响应状态
       if (!res.ok) {
@@ -559,8 +535,6 @@ export default function AdminMembershipLevelsPage() {
       
       // 成功响应
       const data = await res.json();
-      console.log("响应数据:", data);
-      console.log("✓ 保存成功");
       
       const updatedLevelItem = data.data;
       if (updatedLevelItem) {
@@ -784,10 +758,10 @@ export default function AdminMembershipLevelsPage() {
                     <td className="px-6 py-4 font-mono whitespace-nowrap min-w-[150px] shrink-0">
                       <div className="space-y-0.5 whitespace-nowrap">
                         <div className="font-black text-slate-900 text-xs whitespace-nowrap">
-                          月付: <span className="text-[#3182ce] whitespace-nowrap">¥&nbsp;{(Number(level.priceMonthly) / 100).toFixed(2)}</span>
+                          月付: <span className="text-[#3182ce] whitespace-nowrap">¥&nbsp;{formatMoney(level.priceMonthly)}</span>
                         </div>
                         <div className="text-[11px] text-slate-500 font-bold whitespace-nowrap">
-                          年付: ¥&nbsp;{(Number(level.priceYearly) / 100).toFixed(2)}
+                          年付: ¥&nbsp;{formatMoney(level.priceYearly)}
                         </div>
                         <div className="text-[10px] font-bold whitespace-nowrap text-violet-600">
                           算力包折扣: {formatDiscountLabel(level.tokenPackDiscount) ?? "无"}
@@ -1444,6 +1418,7 @@ export default function AdminMembershipLevelsPage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
+        requireText={confirmDialog.requireText}
         onConfirm={() => {
           confirmDialog.onConfirm();
           setConfirmDialog({ ...confirmDialog, isOpen: false });

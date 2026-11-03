@@ -43,14 +43,29 @@ export async function GET(request: NextRequest) {
     }
     const status = searchParams.get("status");
     const workspaceId = searchParams.get("workspaceId");
+    // KN-UI：服务端分页（自查清单指令八）；export=1 保持全量口径
+    const isExport = searchParams.get("export") === "1";
+    const page = Math.max(1, parseInt(searchParams.get("page") || "1") || 1);
+    const pageSize = Math.min(200, Math.max(1, parseInt(searchParams.get("pageSize") || "50") || 50));
+    const where = {
+      ...(status ? { status } : {}),
+      ...(workspaceId ? { workspaceId } : {}),
+    };
 
-    const orders = await prisma.tokenrechargeorder.findMany({
-      where: {
-        ...(status ? { status } : {}),
-        ...(workspaceId ? { workspaceId } : {}),
-      },
-      take: 200,
-    });
+    const [orders, total, statusGroups, paidAgg] = await Promise.all([
+      prisma.tokenrechargeorder.findMany({
+        where,
+        ...(isExport
+          ? { take: 200 }
+          : { skip: (page - 1) * pageSize, take: pageSize }),
+      } as any),
+      prisma.tokenrechargeorder.count({ where }),
+      prisma.tokenrechargeorder.groupBy({ by: ["status"], _count: { _all: true } }),
+      prisma.tokenrechargeorder.aggregate({
+        where: { status: "PAID" },
+        _sum: { amountCents: true },
+      }),
+    ]);
 
     const applicantIds = Array.from(new Set(orders.map((o) => o.applicantId)));
     const applicants = applicantIds.length
@@ -90,18 +105,27 @@ export async function GET(request: NextRequest) {
       }))
       .sort((a, b) => +new Date(b.createdAt) - +new Date(a.createdAt));
 
+    const countBy = new Map(statusGroups.map((g) => [g.status, g._count._all]));
     const stats = {
-      pending: orders.filter((o) => o.status === "PENDING").length,
-      approved: orders.filter((o) => o.status === "APPROVED").length,
-      paid: orders.filter((o) => o.status === "PAID").length,
-      rejected: orders.filter((o) => o.status === "REJECTED").length,
-      paidAmountCents: orders
-        .filter((o) => o.status === "PAID")
-        .reduce((s, o) => s + Number(o.amountCents || 0), 0),
+      pending: countBy.get("PENDING") || 0,
+      approved: countBy.get("APPROVED") || 0,
+      paid: countBy.get("PAID") || 0,
+      rejected: countBy.get("REJECTED") || 0,
+      paidAmountCents: Number(paidAgg._sum.amountCents || 0),
     };
+    const totalAll = isExport ? list.length : total;
+    const totalPages = Math.ceil(totalAll / pageSize) || 1;
 
     return NextResponse.json(
-      { success: true, orders: list, stats },
+      {
+        success: true,
+        orders: list,
+        stats,
+        total: totalAll,
+        page: isExport ? 1 : page,
+        pageSize: isExport ? list.length : pageSize,
+        totalPages: isExport ? 1 : totalPages,
+      },
       {
         headers: {
           "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",

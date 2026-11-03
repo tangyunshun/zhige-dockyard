@@ -5,6 +5,8 @@ import { isSuperAdminRole, isAdminRole } from "@/lib/role-utils";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import {
   Filter,
   MoreVertical,
@@ -254,8 +256,24 @@ export default function AdminUsersPage() {
   const canSecurityReset = hasPermission("user:security_reset");
 
   const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [revealedUsers, setRevealedUsers] = useState<Set<string>>(new Set());
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const toggleUserReveal = (id: string) => {
+    setRevealedUsers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
   const [searchQuery, setSearchQuery] = useState("");
+  // KN-UI：搜索 300ms 防抖（自查清单指令五）
+  const [debouncedSearchQuery, setSearchQueryDebounced] = useState(searchQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQueryDebounced(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
   const [filterRole, setFilterRole] = useState<string>("all");
   const [filterAccountStatus, setFilterAccountStatus] = useState<string>("all"); // 账号状态
   const [filterLoginStatus, setFilterLoginStatus] = useState<string>("all"); // 登录状态
@@ -370,6 +388,7 @@ export default function AdminUsersPage() {
     title: string;
     message: string;
     type: "danger" | "warning" | "info";
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
@@ -477,7 +496,7 @@ export default function AdminUsersPage() {
     loadUsers(currentPage);
   }, [
     currentPage,
-    searchQuery,
+    debouncedSearchQuery,
     filterRole,
     filterAccountStatus,
     filterLoginStatus,
@@ -530,6 +549,7 @@ export default function AdminUsersPage() {
             ? result
             : [];
       const pagination = result.pagination || {};
+      setLoadError(null);
       setUserData({
         users: userList,
         total: pagination.total ?? userList.length,
@@ -538,8 +558,7 @@ export default function AdminUsersPage() {
         totalPages: pagination.totalPages ?? 1,
       });
     } catch (error) {
-      console.error("Load users error:", error);
-      showToast("加载用户列表失败", "error");
+      setLoadError("用户列表加载失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -1020,6 +1039,7 @@ export default function AdminUsersPage() {
     setShowEditModal(true);
   };
 
+  const statusChangingRef = useRef(false);
   const handleChangeStatus = async (
     userId: string, 
     newStatus: string, 
@@ -1027,6 +1047,8 @@ export default function AdminUsersPage() {
     reason?: string,
     targetRole?: string
   ) => {
+    if (statusChangingRef.current) return; // KN-UI：防连点（自查清单指令九）
+    statusChangingRef.current = true;
     try {
       // 平台安全规则前置拦截：禁止对超级管理员执行封禁、解封或状态限制
       const targetUser =
@@ -1080,8 +1102,9 @@ export default function AdminUsersPage() {
       showToast(`用户状态已${statusText}`, "success");
       loadUsers(currentPage);
     } catch (error: any) {
-      console.warn("Change status rejected or network error:", error);
       showToast(error?.message || "更新状态失败", "error");
+    } finally {
+      statusChangingRef.current = false;
     }
   };
 
@@ -1142,6 +1165,7 @@ export default function AdminUsersPage() {
         title: "彻底清理已注销用户数据",
         message: `确认彻底清理用户「${target.name || target.email || target.id}」的已注销残留数据？该操作不可恢复，将清除其账号及设备、API Key 等残留信息。`,
         type: "danger",
+        requireText: { expect: "DELETE", hint: "此操作不可恢复，请输入「DELETE」以确认彻底清理" },
         onConfirm: () => runSimpleDelete(userId),
       });
       return;
@@ -1532,29 +1556,11 @@ export default function AdminUsersPage() {
     return groups;
   }, [filteredLoginHistories]);
 
+  // KN-SEC：统一走全局 Toast 体系（原 DOM innerHTML 版存在注入风险且定时器不清理，已废弃）
   const showToast = (message: string, type: "success" | "error" | "warning") => {
-    const container = document.getElementById("zg-toast-container");
-    if (!container) return;
-
-    const toast = document.createElement("div");
-    toast.className = `zg-toast ${type === "success" ? "show" : ""}`;
-
-    // 根据设计系统规范，使用正确的颜色和图标
-    const iconColor =
-      type === "success" ? "#10b981" : type === "warning" ? "#f59e0b" : "#ef4444";
-    const icon = type === "success" ? "✓" : type === "warning" ? "!" : "✕";
-
-    toast.innerHTML = `
-      <span style="color: ${iconColor}; font-weight: 700; font-size: 16px; line-height: 1; display: flex; align-items: center;">
-        ${icon}
-      </span>
-      <span style="font-size: 14px; font-weight: 600; color: #0f172a; white-space: nowrap;">${message}</span>
-    `;
-    container.appendChild(toast);
-
-    setTimeout(() => {
-      toast.remove();
-    }, 3000);
+    if (type === "success") toast.success(message);
+    else if (type === "warning") toast.warning(message);
+    else toast.error(message);
   };
 
   // 格式化完整的 YYYY-MM-DD HH:mm:ss 日期时间
@@ -2192,7 +2198,7 @@ export default function AdminUsersPage() {
                               userData?.users?.filter(isSelectableUser) || [];
                             return (
                               selectableUsers.length > 0 &&
-                              selectedUsers.size >= 2 &&
+                              selectedUsers.size > 0 &&
                               selectableUsers.every((u) => selectedUsers.has(u.id))
                             );
                           })()}
@@ -2202,7 +2208,7 @@ export default function AdminUsersPage() {
                               userData?.users?.filter(isSelectableUser) || [];
                             el.indeterminate =
                               !selectAllMatching &&
-                              selectedUsers.size >= 2 &&
+                              selectedUsers.size > 0 &&
                               !selectableUsers.every((u) => selectedUsers.has(u.id));
                           }}
                           onChange={toggleSelectAll}
@@ -2251,7 +2257,13 @@ export default function AdminUsersPage() {
                     className="divide-y divide-slate-100"
                     onClick={() => setShowActionMenu(null)}
                   >
-                    {!userData?.users || userData.users.length === 0 ? (
+                    {loadError ? (
+                      <tr>
+                        <td colSpan={11} className="px-4 py-6">
+                          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadUsers(currentPage); }} retrying={loading} />
+                        </td>
+                      </tr>
+                    ) : !userData?.users || userData.users.length === 0 ? (
                       <tr>
                         <td colSpan={11} className="px-6 py-20 text-center">
                           <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
@@ -2328,12 +2340,14 @@ export default function AdminUsersPage() {
                           </td>
                           <td className="px-6 py-3.5 whitespace-nowrap">
                             {user.phone ? (
-                              <div
-                                className="text-xs text-slate-700 font-medium font-mono"
-                                title={user.phone}
+                              <button
+                                type="button"
+                                className="text-xs text-slate-700 font-medium font-mono cursor-pointer hover:text-[#3182ce] transition-colors text-left"
+                                title={revealedUsers.has(user.id) ? "点击脱敏" : "已脱敏，点击查看完整"}
+                                onClick={() => toggleUserReveal(user.id)}
                               >
-                                {user.phone}
-                              </div>
+                                {revealedUsers.has(user.id) ? user.phone : maskPhone(user.phone)}
+                              </button>
                             ) : (
                               <span className="text-xs text-slate-400">
                                 未设置
@@ -2545,7 +2559,7 @@ export default function AdminUsersPage() {
                       邮箱
                     </label>
                     <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
-                      {editingUser.email || "未设置"}
+                      {editingUser.email ? maskEmail(editingUser.email) : "未设置"}
                     </div>
                   </div>
                   <div>
@@ -2553,7 +2567,7 @@ export default function AdminUsersPage() {
                       手机号
                     </label>
                     <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
-                      {editingUser.phone || "未设置"}
+                      {editingUser.phone ? maskPhone(editingUser.phone) : "未设置"}
                     </div>
                   </div>
                 </div>
@@ -2627,7 +2641,7 @@ export default function AdminUsersPage() {
                       注册时间
                     </label>
                     <div className="text-sm font-semibold text-slate-800 px-3 py-2 bg-white/60 rounded-lg border border-slate-100">
-                      {new Date(editingUser.createdAt).toLocaleString("zh-CN")}
+                      {formatDateTime(new Date(editingUser.createdAt))}
                     </div>
                   </div>
                 </div>
@@ -3091,6 +3105,7 @@ export default function AdminUsersPage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
+        requireText={confirmDialog.requireText}
         onConfirm={() => {
           confirmDialog.onConfirm();
           setConfirmDialog({ ...confirmDialog, isOpen: false });
@@ -3318,7 +3333,7 @@ export default function AdminUsersPage() {
                     {banningUser.name || "匿名用户"}
                   </div>
                   <div className="text-xs text-slate-500 font-mono truncate">
-                    {banningUser.email || "未绑定邮箱"}
+                    {banningUser.email ? maskEmail(banningUser.email) : "未绑定邮箱"}
                   </div>
                 </div>
               </div>
@@ -4180,10 +4195,10 @@ export default function AdminUsersPage() {
                       const isMobile = latest.deviceType ? latest.deviceType === "MOBILE" : parsed.isMobile;
                       const os = latest.osName || parsed.osName;
                       const browser = latest.browserName || parsed.browserName;
-                      const absolute = new Date(latest.loginAt).toLocaleString("zh-CN");
-                      const earliest = new Date(
+                      const absolute = formatDateTime(new Date(latest.loginAt));
+                      const earliest = formatDateTime(new Date(
                         group.items[group.items.length - 1].loginAt,
-                      ).toLocaleString("zh-CN");
+                      ));
 
                       return (
                         <div key={`${group.key}-${gi}`} className="relative pl-7 pb-4 last:pb-0">

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime, formatDate } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import Pagination from "@/components/Pagination";
@@ -108,6 +110,7 @@ export default function AdminTokenSettlementsPage() {
 
   const [records, setRecords] = useState<SettlementRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stats, setStats] = useState<SettlementStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(false);
   // 数据库持久化配置字典：100% 从数据库 system_config 查询返回，拒绝前端代码写死
@@ -148,6 +151,7 @@ export default function AdminTokenSettlementsPage() {
     type: "danger" | "warning" | "info";
     confirmText?: string;
     cancelText?: string;
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({
     isOpen: false,
@@ -231,7 +235,7 @@ export default function AdminTokenSettlementsPage() {
         toast.error(json.error || "获取结算单列表失败");
       }
     } catch {
-      toast.error("网络请求异常，请稍后重试");
+      setLoadError("网络请求异常，请稍后重试");
     } finally {
       setLoading(false);
     }
@@ -501,6 +505,7 @@ export default function AdminTokenSettlementsPage() {
       type: "danger",
       confirmText: "确认批量删除",
       cancelText: "取消",
+      requireText: { expect: "DELETE", hint: `将物理移除关联底表数据且不可恢复，请输入「DELETE」以确认清理 ${selectedTaskIds.length} 条单据` },
       onConfirm: async () => {
         try {
           const token = getAuthToken();
@@ -972,7 +977,7 @@ export default function AdminTokenSettlementsPage() {
 
                       {/* 更新时间（纯时间显示，不混合版本号） */}
                       <td className="py-3 px-4 whitespace-nowrap text-slate-500 font-mono text-xs">
-                        <span>{new Date(r.updatedAt).toLocaleString("zh-CN", { hour12: false })}</span>
+                        <span>{formatDateTime(new Date(r.updatedAt))}</span>
                       </td>
 
                       {/* Sticky 吸附在最右侧的数据行操作列 */}
@@ -1204,11 +1209,11 @@ export default function AdminTokenSettlementsPage() {
                 <Row label="单据版本" value={`第 ${detailRecord.settlementVersion} 版`} mono />
                 <Row
                   label="创建时间"
-                  value={new Date(detailRecord.createdAt).toLocaleString("zh-CN", { hour12: false })}
+                  value={formatDateTime(new Date(detailRecord.createdAt))}
                 />
                 <Row
                   label="更新时间"
-                  value={new Date(detailRecord.updatedAt).toLocaleString("zh-CN", { hour12: false })}
+                  value={formatDateTime(new Date(detailRecord.updatedAt))}
                 />
               </div>
 
@@ -1304,6 +1309,7 @@ export default function AdminTokenSettlementsPage() {
       {/* 弹窗 3：全局二次确认弹窗 (ConfirmDialog) */}
       <ConfirmDialog
         isOpen={confirmDialog.isOpen}
+        requireText={confirmDialog.requireText}
         title={confirmDialog.title}
         message={confirmDialog.message}
         warnings={confirmDialog.warnings}

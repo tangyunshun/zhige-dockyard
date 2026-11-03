@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { formatDate, formatDateTime, formatMoney } from "@/utils/format";
 import { useToast } from "@/components/Toast";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
 import {
@@ -475,13 +476,13 @@ export default function AdminMembershipIndex() {
                         </span>
                       </div>
                       <div className="text-[11px] text-slate-400 mt-0.5">
-                        {new Date(order.createdAt).toLocaleString("zh-CN", { hour12: false })} · {formatPaymentMethod(order.paymentMethod)}
+                        {formatDateTime(new Date(order.createdAt))} · {formatPaymentMethod(order.paymentMethod)}
                       </div>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="font-black text-slate-900">
-                      ¥{(order.amount / 100).toFixed(2)}
+                      ¥{formatMoney(order.amount)}
                     </div>
                     {(() => {
                       const st = formatOrderStatus(order.status);
@@ -563,7 +564,7 @@ export default function AdminMembershipIndex() {
                   </div>
                   <div className="text-right shrink-0">
                     <span className="text-[10px] text-slate-400 font-mono">
-                      {new Date(log.createdAt).toLocaleDateString("zh-CN")}
+                      {formatDate(new Date(log.createdAt))}
                     </span>
                     <div className="text-[11px] text-slate-500 font-medium">
                       操作人: {log.operator?.name || "系统"}

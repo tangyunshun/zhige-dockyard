@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import {
   Cpu,
@@ -81,6 +82,7 @@ export default function PlatformDefaultsPage() {
   const [paidIds, setPaidIds] = useState<string[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [syncToAll, setSyncToAll] = useState(false);
 
@@ -105,6 +107,7 @@ export default function PlatformDefaultsPage() {
         toast.error(res?.error || "加载平台默认配置失败");
         return;
       }
+      setLoadError(null);
       setModels(res.data.models || []);
       setFreeIds(res.data.freeIds || []);
       setPaidIds(res.data.paidIds || []);
@@ -117,7 +120,7 @@ export default function PlatformDefaultsPage() {
         registerGift: res.data.registerGift || DEFAULT_REGISTER_GIFT,
       });
     } catch (e) {
-      toast.error((e as Error)?.message || "加载平台默认配置失败");
+      setLoadError((e as Error)?.message || "加载平台默认配置失败，请刷新重试");
     } finally {
       setLoading(false);
     }
@@ -209,6 +212,11 @@ export default function PlatformDefaultsPage() {
     <div className="space-y-5 pb-8">
       {/* 顶部标题栏 */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+    {loadError && (
+      <div className="mb-4">
+        <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); load(); }} retrying={loading} />
+      </div>
+    )}
         <div>
           <h1 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2.5">
             <span className="w-8.5 h-8.5 rounded-xl bg-blue-50 border border-blue-100/80 text-[#3182ce] flex items-center justify-center font-bold shadow-2xs">

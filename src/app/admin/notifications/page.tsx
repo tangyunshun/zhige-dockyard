@@ -32,6 +32,9 @@ import {
   UserPlus,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { formatDateTime, maskEmail } from "@/utils/format";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -148,9 +151,16 @@ export default function AdminNotificationsPage() {
   const [notificationData, setNotificationData] =
     useState<NotificationData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // 多维筛选条件
   const [searchQuery, setSearchQuery] = useState("");
+  // KN-UI：搜索 300ms 防抖（自查清单指令五）
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(searchQuery);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchQuery(searchQuery), 300);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
   const [filterFrequency, setFilterFrequency] = useState("");
   const [filterEmail, setFilterEmail] = useState("");
   const [filterSystem, setFilterSystem] = useState("");
@@ -159,6 +169,7 @@ export default function AdminNotificationsPage() {
 
   // 模态框状态 1：发布系统通知模态框
   const [showDispatchModal, setShowDispatchModal] = useState(false);
+  useEscapeKey(showDispatchModal, () => setShowDispatchModal(false));
   const [dispatchSubmitting, setDispatchSubmitting] = useState(false);
   const [dispatchForm, setDispatchForm] = useState<{
     targetType: "all" | "role" | "targeted";
@@ -226,6 +237,7 @@ export default function AdminNotificationsPage() {
 
   // 群组成员管理弹窗（对群组内个体进行剔除 / 追加）
   const [showGroupMemberModal, setShowGroupMemberModal] = useState(false);
+  useEscapeKey(showGroupMemberModal, () => setShowGroupMemberModal(false));
   const [managingGroup, setManagingGroup] = useState<{
     id: string;
     name: string;
@@ -307,6 +319,12 @@ export default function AdminNotificationsPage() {
 
   // 历史多维筛选条件
   const [historySearch, setHistorySearch] = useState("");
+  // KN-UI：历史搜索 300ms 防抖
+  const [debouncedHistorySearch, setDebouncedHistorySearch] = useState(historySearch);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedHistorySearch(historySearch), 300);
+    return () => clearTimeout(t);
+  }, [historySearch]);
   const [historyType, setHistoryType] = useState("");
   const [historyReadFilter, setHistoryReadFilter] = useState("");
   const [historyUserSearch, setHistoryUserSearch] = useState("");
@@ -324,7 +342,7 @@ export default function AdminNotificationsPage() {
       const params = new URLSearchParams({
         page: historyPage.toString(),
         limit: historyPageSize.toString(),
-        ...(historySearch.trim() && { search: historySearch.trim() }),
+        ...(debouncedHistorySearch.trim() && { search: debouncedHistorySearch.trim() }),
         ...(historyType && { type: historyType }),
         ...(historyReadFilter && { isRead: historyReadFilter }),
         ...(historyUserSearch.trim() && { userSearch: historyUserSearch.trim() }),
@@ -359,7 +377,7 @@ export default function AdminNotificationsPage() {
       loadHistory();
       setSelectedHistoryIds([]);
     }
-  }, [activeTab, historyPage, historySearch, historyType, historyReadFilter, historyUserSearch]);
+  }, [activeTab, historyPage, debouncedHistorySearch, historyType, historyReadFilter, historyUserSearch]);
 
   const handleResetHistoryFilters = () => {
     setHistorySearch("");
@@ -517,7 +535,7 @@ export default function AdminNotificationsPage() {
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: pageSize.toString(),
-        ...(searchQuery.trim() && { search: searchQuery.trim() }),
+        ...(debouncedSearchQuery.trim() && { search: debouncedSearchQuery.trim() }),
         ...(filterFrequency && { frequency: filterFrequency }),
         ...(filterEmail && { emailNotifications: filterEmail }),
         ...(filterSystem && { systemMessages: filterSystem }),
@@ -532,10 +550,10 @@ export default function AdminNotificationsPage() {
       if (!res.ok) throw new Error("加载通知治理设置失败");
 
       const result = await res.json();
+      setLoadError(null);
       setNotificationData(result.data);
     } catch (error) {
-      console.error("Load notifications error:", error);
-      toast.error("加载通知治理数据失败，请检查网络连接");
+      setLoadError("加载通知治理数据失败，请检查网络连接");
     } finally {
       setLoading(false);
     }
@@ -543,7 +561,7 @@ export default function AdminNotificationsPage() {
 
   useEffect(() => {
     loadNotifications();
-  }, [currentPage, searchQuery, filterFrequency, filterEmail, filterSystem]);
+  }, [currentPage, debouncedSearchQuery, filterFrequency, filterEmail, filterSystem]);
 
   const handleResetFilters = () => {
     setSearchQuery("");
@@ -1767,7 +1785,7 @@ export default function AdminNotificationsPage() {
                                   )}
                                 </div>
                                 <div className="text-[11px] text-slate-400 font-mono mt-0.5 truncate max-w-[180px]">
-                                  {item.user.email || "未绑定邮箱"}
+                                  {maskEmail(item.user.email) || "未绑定邮箱"}
                                 </div>
                               </div>
                             </div>
@@ -1834,9 +1852,9 @@ export default function AdminNotificationsPage() {
                           {/* 最后更新时间 */}
                           <td className="py-3.5 px-5 whitespace-nowrap">
                             <div className="text-[11px] text-slate-500 font-mono">
-                              {new Date(
+                              {formatDateTime(new Date(
                                 item.updatedAt || item.createdAt
-                              ).toLocaleString("zh-CN", { hour12: false })}
+                              ))}
                             </div>
                           </td>
 
@@ -2232,7 +2250,7 @@ export default function AdminNotificationsPage() {
                             {/* 推送时间 */}
                             <td className="py-3.5 px-5 whitespace-nowrap">
                               <div className="text-[11px] text-slate-500 font-mono">
-                                {new Date(item.createdAt).toLocaleString("zh-CN", { hour12: false })}
+                                {formatDateTime(new Date(item.createdAt))}
                               </div>
                             </td>
 
@@ -3465,9 +3483,7 @@ export default function AdminNotificationsPage() {
                         {viewingHistory.isRead ? "用户已查阅" : "用户未查阅"}
                       </span>
                       <span className="text-[11px] font-mono text-slate-500">
-                        {new Date(viewingHistory.createdAt).toLocaleString("zh-CN", {
-                          hour12: false,
-                        })}
+                        {formatDateTime(new Date(viewingHistory.createdAt))}
                       </span>
                     </div>
                   </div>

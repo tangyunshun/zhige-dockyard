@@ -4,7 +4,10 @@ import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Tags, Plus, Trash2, ShieldCheck, Users, Search, RotateCcw, Inbox, FileText, Database, User, Pencil } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatDateTime, formatDate } from "@/utils/format";
 
 // KN-CAT-V5：知识分类管理——标准数据列表 + 新增弹窗 + 编辑/单个删除/批量删除
 // 限制条件：系统分类下仍有知识条目时，删除被拦截；编辑重命名时条目自动迁移到新名称（确认后执行）
@@ -35,6 +38,7 @@ const PAGE_SIZE = 10;
 export default function KnowledgeCategoriesPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [rows, setRows] = useState<CatRow[]>([]);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
@@ -42,15 +46,23 @@ export default function KnowledgeCategoriesPage() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState("");
+  // KN-UI：搜索 300ms 防抖（自查清单指令五）
+  const [debouncedSearchTerm, setSearchTermDebounced] = useState(searchTerm);
+  useEffect(() => {
+    const t = setTimeout(() => setSearchTermDebounced(searchTerm), 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
   const [typeFilter, setTypeFilter] = useState<"ALL" | "system" | "personal">("ALL");
 
   // 新增弹窗
   const [showCreateModal, setShowCreateModal] = useState(false);
+  useEscapeKey(showCreateModal, () => setShowCreateModal(false));
   const [newCatName, setNewCatName] = useState("");
   const [catBusy, setCatBusy] = useState(false);
 
   // 编辑弹窗
   const [editTarget, setEditTarget] = useState<CatRow | null>(null);
+  useEscapeKey(!!editTarget, () => setEditTarget(null));
   const [editName, setEditName] = useState("");
 
   // 单个删除确认弹窗
@@ -74,12 +86,13 @@ export default function KnowledgeCategoriesPage() {
         pageSize: String(PAGE_SIZE),
         type: typeFilter,
       });
-      if (searchTerm.trim()) params.set("search", searchTerm.trim());
+      if (debouncedSearchTerm.trim()) params.set("search", debouncedSearchTerm.trim());
       const res = await fetch(`/api/admin/documents?${params.toString()}`, {
         headers: authHeaders(),
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setLoadError(null);
         setRows(data.rows || []);
         setTotal(data.total || 0);
         setTotalPages(data.totalPages || 1);
@@ -89,10 +102,10 @@ export default function KnowledgeCategoriesPage() {
         setSelectedNames((prev) => prev.filter((n) => pageNames.has(n)));
         if (showToast) toast.success("分类数据已刷新");
       } else {
-        toast.error(data.error || "加载分类数据失败");
+        setLoadError(data.error || "加载分类数据失败");
       }
     } catch {
-      toast.error("网络异常，无法加载分类数据");
+      setLoadError("网络异常，无法加载分类数据");
     } finally {
       setLoading(false);
     }
@@ -228,7 +241,7 @@ export default function KnowledgeCategoriesPage() {
   const formatTime = (v: string | null) => {
     if (!v) return "—";
     try {
-      return new Date(v).toLocaleString("zh-CN", { hour12: false });
+      return formatDateTime(new Date(v));
     } catch {
       return "—";
     }

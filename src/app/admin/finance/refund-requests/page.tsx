@@ -10,6 +10,8 @@
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
 import { useToast } from "@/components/Toast";
 import { formatYuanFromPoints } from "@/lib/point-rate";
 import { Check, X, Search, RefreshCw, Copy, Loader2, AlertTriangle, Inbox, Download } from "lucide-react";
@@ -59,7 +61,7 @@ const TASK_STATUS_LABEL: Record<string, string> = {
   CANCELLED: "已取消",
 };
 
-const fmtTime = (s: string | null) => (s ? new Date(s).toLocaleString("zh-CN") : "—");
+const fmtTime = (s: string | null) => (s ? formatDateTime(new Date(s)) : "—");
 
 export default function AdminRefundRequestsPage() {
   const toast = useToast();
@@ -73,6 +75,7 @@ export default function AdminRefundRequestsPage() {
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
   const [modal, setModal] = useState<{ type: "approve" | "reject"; row: RefundRequestRow } | null>(null);
+  useEscapeKey(!!modal, () => setModal(null));
   const [exporting, setExporting] = useState(false);
   const { hasPermission, isSuperAdmin } = useAdminPermission();
 
@@ -322,6 +325,14 @@ export default function AdminRefundRequestsPage() {
                 ? "当前没有待审批的退款申请"
                 : "暂无退款申请记录"}
           </div>
+          {(keyword || filter !== "ALL") && (
+            <button
+              onClick={() => { setKeyword(""); setFilter("ALL"); }}
+              className="mt-2 px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-xl cursor-pointer inline-flex items-center gap-1.5"
+            >
+              查看全部退款申请
+            </button>
+          )}
         </div>
       ) : (
         <div className="space-y-3">
@@ -348,13 +359,13 @@ export default function AdminRefundRequestsPage() {
 
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
                   <span>
-                    申请人：{r.applicant?.email || r.userId}
+                    申请人：{r.applicant?.email ? maskEmail(r.applicant.email) : r.userId}
                     {r.applicant?.name ? `（${r.applicant.name}）` : ""}
                   </span>
                   {r.workspaceId && <span>空间：{r.workspaceId}</span>}
                   <span>提交：{fmtTime(r.createdAt)}</span>
                   {r.resolvedAt && <span>处理：{fmtTime(r.resolvedAt)}</span>}
-                  {r.admin && <span>审批人：{r.admin.email}</span>}
+                  {r.admin && <span>审批人：{maskEmail(r.admin.email)}</span>}
                 </div>
 
                 <div className="bg-slate-50 border border-slate-100 rounded-lg p-2.5">
@@ -507,7 +518,7 @@ function ResolveModal({
         <div className="text-xs text-slate-500 space-y-1 rounded-lg bg-slate-50 border border-slate-100 p-3">
           <div>组件：{row.componentName || row.componentId || "组件任务"}</div>
           <div>任务：{row.taskName || row.taskId}</div>
-          <div>申请人：{row.applicant?.email || row.userId}</div>
+          <div>申请人：{row.applicant?.email ? maskEmail(row.applicant.email) : row.userId}</div>
           <div className="font-bold text-slate-700">
             退款金额：<span className="text-indigo-700">{row.points} 算力点</span>（{formatYuanFromPoints(row.points)}）
           </div>

@@ -29,6 +29,9 @@ import {
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatDateTime, formatDate } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { useToast } from "@/components/Toast";
 import * as XLSX from "xlsx";
 
@@ -107,6 +110,8 @@ export default function SystemStatusPage() {
   const [data, setData] = useState<SystemStatusData | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
 
   // 单项服务正在测试中的 ID
@@ -117,6 +122,7 @@ export default function SystemStatusPage() {
   // 巡检真实已用耗时（前端只做真实计时，不再假装百分比进度）
   const [inspectionElapsedMs, setInspectionElapsedMs] = useState(0);
   const [inspectionReportModal, setInspectionReportModal] = useState(false);
+  useEscapeKey(inspectionReportModal, () => setInspectionReportModal(false));
   const [lastReportData, setLastReportData] = useState<SystemStatusData | null>(null);
 
   // 获取系统运行健康状态（100% 真实数据库与探针）
@@ -133,12 +139,12 @@ export default function SystemStatusPage() {
         if (res.ok) {
           const json = await res.json();
           setData(json.data);
+          setLoadError(null);
         } else {
-          toast.error("获取系统监控数据失败");
+          setLoadError("获取系统监控数据失败");
         }
       } catch (e) {
-        console.error("获取系统监控状态异常:", e);
-        toast.error("网络连接异常，无法获取系统运行数据");
+        setLoadError("网络连接异常，无法获取系统运行数据");
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -242,6 +248,8 @@ export default function SystemStatusPage() {
       toast.warning("暂无可导出的监控数据");
       return;
     }
+    if (exporting) return; // KN-UI：防连点（自查清单指令九）
+    setExporting(true);
 
     try {
       // 概况表（真实物理指标与健康判定）
@@ -259,7 +267,7 @@ export default function SystemStatusPage() {
         ["全站停机维护状态", data.inMaintenance ? "正在维护中" : "正常开放", "来自系统维护配置"],
         ["近24小时运行风险告警", `${data.recentAlertCount} 项`, "系统操作审计中记录的失败或高危事件数"],
         ["待审核申诉工单", `${data.pendingAppealCount || 0} 项`, "处于待处理状态的账号/空间申诉工单数"],
-        ["采样时间戳", new Date(data.timestamp).toLocaleString("zh-CN"), "本次健康检测真实采样时间"],
+        ["采样时间戳", formatDateTime(new Date(data.timestamp)), "本次健康检测真实采样时间"],
       ];
 
       // 服务探针明细表
@@ -304,14 +312,20 @@ export default function SystemStatusPage() {
       XLSX.writeFile(wb, `知阁舟坊_系统运行健康巡检报告_${dateStr}.xlsx`);
       toast.success("系统健康监测报表已成功生成并下载！");
     } catch (err) {
-      console.error("导出报表失败:", err);
       toast.error("生成 Excel 报表发生异常");
+    } finally {
+      setExporting(false);
     }
   };
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] text-slate-800 pb-12 font-sans text-left">
       <div className="pt-6">
+        {loadError && (
+          <div className="mb-4 mt-4 mx-1">
+            <LoadErrorBanner message={loadError} onRetry={() => fetchStatus(false)} retrying={refreshing} />
+          </div>
+        )}
         {/* 顶部标头 Card（普通通俗的系统语言，彻底消除AI黑话） */}
         <div className="bg-white p-6 rounded-2xl border border-blue-100 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
@@ -365,6 +379,7 @@ export default function SystemStatusPage() {
             <button
               type="button"
               onClick={handleExportExcelReport}
+              disabled={exporting || !data}
               className="h-9 px-3 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer active:scale-95"
               title="导出系统健康报表为 Excel 文件"
             >
@@ -415,7 +430,7 @@ export default function SystemStatusPage() {
             <div>
               <div className="text-xs text-slate-500 font-bold mb-1">系统综合健康度</div>
               <div className="text-2xl font-black font-mono text-emerald-600">
-                {data?.healthScore || 100}{" "}
+                {data?.healthScore ?? "-"}{" "}
                 <span className="text-xs font-normal text-slate-400">/ 100 分</span>
               </div>
               <div className="text-[11px] text-slate-400 font-medium mt-1">
@@ -568,6 +583,13 @@ export default function SystemStatusPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs">
+                {!data?.services?.length && (
+                  <tr>
+                    <td colSpan={7} className="py-10 text-center text-xs font-bold text-slate-400">
+                      {loadError ? "加载失败，无法获取服务探针数据" : "暂无服务探针数据"}
+                    </td>
+                  </tr>
+                )}
                 {data?.services?.map((srv) => {
                   const isTestingThis = testingServiceId === srv.id;
                   return (

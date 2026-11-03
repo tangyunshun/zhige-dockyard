@@ -6,6 +6,8 @@ import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { confirm } from "@/components/GlobalConfirmProvider";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { pointsToYuan, formatYuanFromPoints, POINT_RATE_HINT, POINT_RATE_TEXT, isPriceMatchingRule } from "@/lib/point-rate";
 import { Plus, Edit2, Trash2, ShieldAlert, CheckCircle2, XCircle, ArrowLeft, RefreshCw, X, Coins, ClipboardList, Eye, EyeOff, Ban, Power, Star, Package } from "lucide-react";
 import MembershipNavHeader from "@/components/admin/membership/MembershipNavHeader";
@@ -37,7 +39,9 @@ export default function AdminTokenPacksPage() {
 
   const [packs, setPacks] = useState<TokenPack[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
+  useEscapeKey(showModal, () => setShowModal(false));
   const [editingPack, setEditingPack] = useState<TokenPack | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -82,14 +86,14 @@ export default function AdminTokenPacksPage() {
 
       if (res.ok) {
         const data = await res.json();
+        setLoadError(null);
         setPacks(data.packs || []);
       } else {
-        const err = await res.json();
-        toast.error(err.error || "获取算力包失败");
+        const err = await res.json().catch(() => ({ error: "获取算力包失败" }));
+        setLoadError(err.error || "获取算力包失败");
       }
     } catch (error) {
-      console.error("加载算力包失败:", error);
-      toast.error("网络异常，无法拉取算力包");
+      setLoadError("网络异常，无法拉取算力包，请重试");
     } finally {
       setLoading(false);
     }
@@ -198,10 +202,16 @@ export default function AdminTokenPacksPage() {
     await doToggleActive(pack);
   };
 
+  const [unlisting, setUnlisting] = useState(false);
   const confirmUnlist = async () => {
-    if (!unlistTarget) return;
-    await doToggleActive(unlistTarget);
-    setUnlistTarget(null);
+    if (!unlistTarget || unlisting) return; // KN-UI：防连点（自查清单指令九）
+    setUnlisting(true);
+    try {
+      await doToggleActive(unlistTarget);
+      setUnlistTarget(null);
+    } finally {
+      setUnlisting(false);
+    }
   };
 
   const doToggleActive = async (pack: TokenPack) => {
@@ -688,6 +698,7 @@ export default function AdminTokenPacksPage() {
               <button
                 type="button"
                 onClick={confirmUnlist}
+                disabled={unlisting}
                 className="px-5 py-2 bg-gradient-to-r from-rose-500 to-red-500 hover:from-red-600 hover:to-rose-600 text-white font-black text-xs rounded-xl shadow-md transition-all cursor-pointer active:scale-95"
               >
                 确认下架

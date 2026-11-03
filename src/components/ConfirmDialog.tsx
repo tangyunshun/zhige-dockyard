@@ -28,6 +28,8 @@ interface ConfirmDialogProps {
     value: string;
     onChange: (value: string) => void;
   };
+  /** 高危操作「输入文字确认」：输入值 trim 后与 expect 完全一致才允许确认 */
+  requireText?: { expect: string; hint?: string };
   children?: React.ReactNode;
 }
 
@@ -43,17 +45,22 @@ export function ConfirmDialog({
   cancelText = "取消",
   type = "warning",
   input,
+  requireText,
   appealContext,
   children,
 }: ConfirmDialogProps) {
   const [isVisible, setIsVisible] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
   const [localInputValue, setLocalInputValue] = useState(input?.value || "");
+  const [confirmTextValue, setConfirmTextValue] = useState("");
+  const [requireTextError, setRequireTextError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
       setIsVisible(true);
       setLocalInputValue(input?.value || "");
+      setConfirmTextValue("");
+      setRequireTextError(null);
       document.body.style.overflow = "hidden";
     } else {
       const timer = setTimeout(() => setIsVisible(false), 300);
@@ -61,6 +68,16 @@ export function ConfirmDialog({
       return () => clearTimeout(timer);
     }
   }, [isOpen, input?.value]);
+
+  // Esc 关闭（仅弹窗打开期间监听）
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onCancel();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [isOpen, onCancel]);
 
   if (!isVisible && !isOpen) return null;
 
@@ -313,6 +330,30 @@ export function ConfirmDialog({
           {/* 自定义额外内容 */}
           {children}
 
+          {/* 高危操作「输入文字确认」输入框 */}
+          {requireText && (
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700">
+                {requireText.hint || `请输入「${requireText.expect}」以确认执行此操作`}
+                <span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={confirmTextValue}
+                onChange={(e) => {
+                  setConfirmTextValue(e.target.value);
+                  setRequireTextError(null);
+                }}
+                placeholder={requireText.expect}
+                maxLength={50}
+                className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs text-slate-800 transition-all font-mono"
+              />
+              {requireTextError && (
+                <p className="text-xs text-red-600 mt-0.5 font-medium">{requireTextError}</p>
+              )}
+            </div>
+          )}
+
           {/* 处理意见输入框（可选/必填） */}
           {input && (
             <div className="space-y-1">
@@ -351,6 +392,10 @@ export function ConfirmDialog({
           </button>
           <button
             onClick={async () => {
+              if (requireText && confirmTextValue.trim() !== requireText.expect) {
+                setRequireTextError(`请输入「${requireText.expect}」后才能执行此操作`);
+                return;
+              }
               if (input?.required && !localInputValue.trim()) {
                 setInputError(`${input.label.replace(/\s*[（(].*$/, "")}为必填项`);
                 return;

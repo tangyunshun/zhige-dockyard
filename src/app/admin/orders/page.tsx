@@ -33,6 +33,8 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { formatDateTime, formatMoney, maskEmail, maskPhone } from "@/utils/format";
 import { useToast } from "@/components/Toast";
 import Pagination from "@/components/Pagination";
 
@@ -75,6 +77,7 @@ export default function OrdersPage() {
 
   const [records, setRecords] = useState<BillingRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [serverStats, setServerStats] = useState<{
     totalRevenue: number;
     totalOrders: number;
@@ -122,6 +125,7 @@ export default function OrdersPage() {
 
       if (res.ok) {
         const data = await res.json();
+        setLoadError(null);
         setRecords(data.records || []);
         if (data.stats) {
           setServerStats(data.stats);
@@ -358,7 +362,7 @@ export default function OrdersPage() {
           <div>
             <div className="text-xs text-slate-500 font-bold mb-1">成功交易总额</div>
             <div className="text-2xl font-black font-mono text-[#3182ce]">
-              ¥ {(totalRevenue / 100).toFixed(2)}
+              ¥ {formatMoney(totalRevenue)}
             </div>
           </div>
           <div className="w-10 h-10 rounded-xl bg-blue-50 text-[#3182ce] flex items-center justify-center font-bold text-lg">
@@ -402,6 +406,10 @@ export default function OrdersPage() {
           </div>
         </div>
       </div>
+
+      {loadError && (
+        <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadOrders(); }} retrying={loading} />
+      )}
 
       {/* 搜索与过滤栏 */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs flex flex-col lg:flex-row gap-3 items-stretch lg:items-center justify-between">
@@ -517,6 +525,14 @@ export default function OrdersPage() {
           </div>
           <h3 className="text-base font-bold text-slate-800">暂无符合条件的交易账单记录</h3>
           <p className="text-xs text-slate-500 font-medium mt-1">当前平台尚未产生对应筛选条件的充值或交易订单。</p>
+          {(searchTerm || typeFilter !== "ALL" || statusFilter !== "ALL" || channelFilter !== "ALL") && (
+            <button
+              onClick={() => { setSearchTerm(""); setTypeFilter("ALL"); setStatusFilter("ALL"); setChannelFilter("ALL"); setCurrentPage(1); }}
+              className="mt-4 px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-xl cursor-pointer inline-flex items-center gap-1.5"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> 重置筛选条件
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
@@ -592,7 +608,7 @@ export default function OrdersPage() {
 
                       {/* 金额 */}
                       <td className="py-3.5 px-4 font-mono font-black text-slate-900 text-sm whitespace-nowrap">
-                        ¥ {(r.amount / 100).toFixed(2)}
+                        ¥ {formatMoney(r.amount)}
                       </td>
 
                       {/* 支付方式 */}
@@ -627,7 +643,7 @@ export default function OrdersPage() {
                               {renderMembershipBadge(r.user?.membershipLevel)}
                             </div>
                             <div className="text-[11px] text-slate-400 font-normal truncate max-w-[150px]" title={r.user?.email || "未绑定邮箱"}>
-                              {r.user?.email || "未绑定邮箱"}
+                              {r.user?.email ? maskEmail(r.user.email) : "未绑定邮箱"}
                             </div>
                           </div>
                         </div>
@@ -659,7 +675,7 @@ export default function OrdersPage() {
 
                       {/* 交易时间 */}
                       <td className="py-3.5 px-4 text-slate-500 text-[11px] font-mono whitespace-nowrap">
-                        {new Date(r.createdAt).toLocaleString("zh-CN")}
+                        {formatDateTime(new Date(r.createdAt))}
                       </td>
 
                       {/* 操作 */}
@@ -726,7 +742,7 @@ export default function OrdersPage() {
                 <div>
                   <div className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">交易金额</div>
                   <div className="text-2xl font-black text-[#3182ce] font-mono mt-0.5 flex items-baseline gap-1">
-                    ¥ {(detailRecord.amount / 100).toFixed(2)}
+                    ¥ {formatMoney(detailRecord.amount)}
                     <span className="text-xs text-slate-400 font-normal">CNY</span>
                   </div>
                   {Number(detailRecord.amount) === 0 && (
@@ -786,12 +802,12 @@ export default function OrdersPage() {
                       </div>
                       <div className="text-xs text-slate-500 font-medium truncate flex items-center gap-1 mt-0.5">
                         <Mail className="w-3 h-3 shrink-0 text-slate-400" />
-                        {detailRecord.user?.email || "未绑定邮箱"}
+                        {detailRecord.user?.email ? maskEmail(detailRecord.user.email) : "未绑定邮箱"}
                       </div>
                       {detailRecord.user?.phone && (
                         <div className="text-[11px] text-slate-400 font-medium flex items-center gap-1 mt-0.5">
                           <Phone className="w-3 h-3 shrink-0" />
-                          {detailRecord.user.phone}
+                          {maskPhone(detailRecord.user.phone)}
                         </div>
                       )}
                     </div>
@@ -938,7 +954,7 @@ export default function OrdersPage() {
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>下单创建时间：</span>
                   <span className="font-mono text-slate-800 font-bold">
-                    {new Date(detailRecord.createdAt).toLocaleString("zh-CN")}
+                    {formatDateTime(new Date(detailRecord.createdAt))}
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -976,7 +992,7 @@ export default function OrdersPage() {
             <div className="p-4 px-6 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/60">
               <button
                 onClick={() => {
-                  const summary = `【交易凭证】\n单号：${detailRecord.id}\n项目：${detailRecord.title}\n金额：¥${(detailRecord.amount / 100).toFixed(2)}\n用户：${detailRecord.user?.name || detailRecord.user?.email || detailRecord.userId}\n时间：${new Date(detailRecord.createdAt).toLocaleString("zh-CN")}`;
+                  const summary = `【交易凭证】\n单号：${detailRecord.id}\n项目：${detailRecord.title}\n金额：¥${formatMoney(detailRecord.amount)}\n用户：${detailRecord.user?.name || detailRecord.user?.email || detailRecord.userId}\n时间：${formatDateTime(new Date(detailRecord.createdAt))}`;
                   copyToClipboard(summary, "modal-summary", "订单摘要");
                 }}
                 className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs"

@@ -82,6 +82,10 @@ export const DEFAULT_ACTION_DICT: Record<string, string> = {
   "component:ban": "封禁组件",
   // 知识资产
   KNOWLEDGE_PUBLISH: "知识内容上架发布",
+  KNOWLEDGE_CATEGORY_CREATE: "新增知识分类",
+  KNOWLEDGE_CATEGORY_DELETE: "删除知识分类",
+  KNOWLEDGE_CATEGORY_RENAME: "重命名知识分类",
+  KNOWLEDGE_CATEGORY_BATCH_DELETE: "批量删除知识分类",
   KNOWLEDGE_SUBMIT: "知识内容提交审核",
   KNOWLEDGE_APPROVE: "知识内容审核通过",
   KNOWLEDGE_REJECT: "知识内容审核驳回",
@@ -281,6 +285,9 @@ export const DEFAULT_RESOURCE_DICT: Record<string, string> = {
   MODEL_PRICING: "模型计费价格",
   modelpricingperiod: "模型周期价规则",
   systemconfig: "系统配置",
+  systemdocumentcategory: "系统文档分类",
+  systemdocument: "系统文档",
+  systemdocumentfeedback: "系统文档反馈",
   PLATFORM_PERMISSION_CATALOG: "接口权限目录",
   // 裸业务对象词根兜底（曾作为 resource 直接落库）
   appeal: "申诉工单",
@@ -996,6 +1003,9 @@ function fallbackTranslateAction(action: string): string {
       case "membership": return "会员权益";
       case "backup": return "备份";
       case "knowledge": return "知识资产";
+      case "category": return "分类";
+      case "rename": return "重命名";
+      case "restore": return "恢复";
       case "task": return "生成任务";
       case "component": return "组件";
       case "bind": return "绑定";
@@ -1034,11 +1044,15 @@ function fallbackTranslateAction(action: string): string {
       case "profile": return "个人资料";
       case "refine": return "AI 润色";
       case "prompt": return "提示词";
-      default: return w;
+      default:
+        // KN-UI：未识别的纯英文词根直接剥离，杜绝审计标签漏英文（自查清单用户要求）
+        if (/^[a-z]+$/i.test(w)) return "";
+        return w;
     }
   });
 
   const combined = translatedWords.join("");
+  if (!combined) return prefix || "系统操作";
   return prefix ? `${prefix}: ${combined}` : combined;
 }
 
@@ -1094,6 +1108,15 @@ export function translateResource(resource: string | null | undefined, resourceD
       return `组件 ${clean.toUpperCase()}`;
     }
     if (/^[a-z0-9]+$/i.test(clean) && clean.length > 10) {
+      // KN-UI：先做一次大小写不敏感字典匹配（如 SYSTEMCONFIG → 系统配置），命中即中文化
+      const dictHit = lookupDict(clean, resourceDict);
+      if (dictHit) return dictHit;
+      // KN-UI：驼峰复合词拆根逐段查字典（如 SystemDocumentCategory → 系统文档分类），未识别英文剥离
+      const roots = clean.replace(/([a-z])([A-Z])/g, "$1 $2").split(/\s+/);
+      const rootZh = roots
+        .map((r) => lookupDict(r, resourceDict) || (/^[a-z]+$/i.test(r) ? "" : r))
+        .join("");
+      if (rootZh) return rootZh;
       const shortId = clean.length > 18 ? `${clean.slice(0, 8)}...${clean.slice(-6)}` : clean;
       return `指定业务对象 (${shortId})`;
     }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { formatDate, formatDateTime, formatMoney } from "@/utils/format";
 import {
   Banknote,
   RefreshCw,
@@ -19,6 +20,8 @@ import {
 import { exportToExcel, formatExcelDateTime } from "@/utils/excel-export";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
 import { useExportMaxRows } from "@/lib/use-export-max-rows";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import Pagination from "@/components/Pagination";
 
 interface OrderItem {
   id: string;
@@ -66,11 +69,20 @@ export default function AdminRechargeOrdersPage() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [statusFilter, setStatusFilter] = useState<string>("PENDING");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [serverTotal, setServerTotal] = useState(0);
+  const [serverTotalPages, setServerTotalPages] = useState(1);
   const [selected, setSelected] = useState<OrderItem | null>(null);
   const [reviewNote, setReviewNote] = useState("");
   const [actioning, setActioning] = useState(false);
   const [exporting, setExporting] = useState(false);
+  // 高危操作「确认收款并自动入账」的输入文字确认弹窗
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const [paidConfirmInput, setPaidConfirmInput] = useState("");
   const { hasPermission, isSuperAdmin } = useAdminPermission();
+
+  const paidExpect = selected ? selected.orderNo.slice(-6) : "";
+  useEscapeKey(showPaidConfirm, () => setShowPaidConfirm(false));
 
   const load = useCallback(async () => {
     try {
@@ -79,9 +91,8 @@ export default function AdminRechargeOrdersPage() {
       const token = getAuthToken();
       const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
       // 列表按当前筛选；统计卡始终取全量(ALL)，避免筛选到“待审批”时统计假显示 0
-      const [listRes, statsRes] = await Promise.all([
-        fetch(`/api/admin/recharge-orders?status=${statusFilter}`, { headers, credentials: "include", cache: "no-store" }),
-        fetch(`/api/admin/recharge-orders?status=ALL`, { headers, credentials: "include", cache: "no-store" }),
+      const [listRes] = await Promise.all([
+        fetch(`/api/admin/recharge-orders?status=${statusFilter}&page=${currentPage}&pageSize=50`, { headers, credentials: "include", cache: "no-store" }),
       ]);
       const json = await listRes.json();
       if (!listRes.ok) {
@@ -89,14 +100,15 @@ export default function AdminRechargeOrdersPage() {
         return;
       }
       setOrders(json.orders || []);
-      const statsJson = await statsRes.json().catch(() => null);
-      if (statsRes.ok && statsJson?.stats) setStats(statsJson.stats);
+      setServerTotal(json.total ?? json.orders?.length ?? 0);
+      setServerTotalPages(json.totalPages ?? 1);
+      if (json?.stats) setStats(json.stats);
     } catch (e: any) {
       setError(e?.message || "加载失败");
     } finally {
       setLoading(false);
     }
-  }, [statusFilter]);
+  }, [statusFilter, currentPage]);
 
   const handleExportExcel = useCallback(async () => {
     if (!isSuperAdmin && !hasPermission("billing:export")) {
@@ -129,7 +141,7 @@ export default function AdminRechargeOrdersPage() {
           { header: "空间名称", key: "workspaceName", width: 20 },
           { header: "套餐或包名", key: "packName", width: 22 },
           { header: "点数", key: "points", width: 12 },
-          { header: "实付金额(元)", key: "amountCents", width: 16, formatter: (v: number) => (Number(v || 0) / 100).toFixed(2) },
+          { header: "实付金额(元)", key: "amountCents", width: 16, formatter: (v: number) => formatMoney(v || 0) },
           { header: "支付方式", key: "paymentMethod", width: 16, formatter: (v: string) => PAYMENT_LABEL[v] || v || "-" },
           { header: "状态", key: "status", width: 14, formatter: (v: string) => STATUS_META[v]?.label || v },
           { header: "创建时间", key: "createdAt", width: 22, formatter: formatExcelDateTime },
@@ -260,7 +272,7 @@ export default function AdminRechargeOrdersPage() {
               {t.label}
             </button>
           ))}
-          <span className="ml-auto text-[11px] font-bold text-slate-400">共 {orders.length} 条</span>
+          <span className="ml-auto text-[11px] font-bold text-slate-400">共 {serverTotal} 条</span>
         </div>
 
         {loading ? (
@@ -268,8 +280,17 @@ export default function AdminRechargeOrdersPage() {
             <RefreshCw className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" /> 读取中...
           </div>
         ) : error ? (
-          <div className="p-16 text-center text-xs font-bold text-red-500">
+          <div className="p-10 text-center text-xs font-bold text-red-500">
             <AlertCircle className="w-6 h-6 mx-auto mb-2" /> {error}
+            <div className="mt-3">
+              <button
+                onClick={load}
+                disabled={loading}
+                className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-black text-xs rounded-lg cursor-pointer disabled:opacity-50 inline-flex items-center gap-1.5"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> 重试
+              </button>
+            </div>
           </div>
         ) : orders.length === 0 ? (
           <div className="p-16 text-center text-xs font-bold text-slate-400">
@@ -298,12 +319,12 @@ export default function AdminRechargeOrdersPage() {
                       <span className="font-mono">{o.orderNo}</span>
                       <span>申请人：{o.applicantName || "-"}</span>
                       <span>方式：{PAYMENT_LABEL[o.paymentMethod] || o.paymentMethod}</span>
-                      <span className="text-slate-400">{new Date(o.createdAt).toLocaleString("zh-CN", { hour12: false })}</span>
+                      <span className="text-slate-400">{formatDateTime(new Date(o.createdAt))}</span>
                     </div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-lg font-black font-mono text-[#3182ce]">{o.points.toLocaleString()} 算力点</div>
-                    <div className="text-[10px] font-bold text-slate-400">¥{(Number(o.amountCents) / 100).toFixed(2)}</div>
+                    <div className="text-[10px] font-bold text-slate-400">¥{formatMoney(o.amountCents)}</div>
                   </div>
                 </button>
               );
@@ -328,7 +349,7 @@ export default function AdminRechargeOrdersPage() {
               <Row label="入账范围" value={selected.scope === "WORKSPACE" ? "企业共享池" : "个人钱包"} />
               <Row label="申请人" value={selected.applicantName || "-"} />
               <Row label="充值算力点" value={`${selected.points.toLocaleString()} 算力点`} highlight />
-              <Row label="应付金额" value={`¥${(Number(selected.amountCents) / 100).toFixed(2)}`} />
+              <Row label="应付金额" value={`¥${formatMoney(selected.amountCents)}`} />
               <Row label="付款方式" value={PAYMENT_LABEL[selected.paymentMethod] || selected.paymentMethod} />
               {selected.invoiceTitle && <Row label="发票抬头" value={selected.invoiceTitle} />}
               {selected.taxNo && <Row label="税号" value={selected.taxNo} mono />}
@@ -372,7 +393,10 @@ export default function AdminRechargeOrdersPage() {
             {selected.status === "APPROVED" && (
               <div className="shrink-0 flex justify-end">
                 <button
-                  onClick={() => doAction("CONFIRM_PAID")}
+                  onClick={() => {
+                    setPaidConfirmInput("");
+                    setShowPaidConfirm(true);
+                  }}
                   disabled={actioning}
                   className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black rounded-xl text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
                 >
@@ -380,6 +404,81 @@ export default function AdminRechargeOrdersPage() {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* 分页 */}
+      {orders.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs px-4 py-3">
+          <Pagination
+            currentPage={currentPage}
+            totalItems={serverTotal}
+            pageSize={50}
+            onPageChange={(pg) => setCurrentPage(pg)}
+            itemLabel="条工单"
+          />
+        </div>
+      )}
+
+      {/* 高危确认：输入工单号后 6 位才可执行「确认收款并自动入账」（不可撤销） */}
+      {showPaidConfirm && selected && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-600 ring-4 ring-rose-50/70 flex items-center justify-center shrink-0">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+              <h4 className="text-base font-black text-slate-900">确认收款并自动入账？</h4>
+            </div>
+            <div className="text-xs text-slate-600 font-bold leading-relaxed space-y-1">
+              <p>工单 <span className="font-mono">{selected.orderNo}</span>：{selected.points.toLocaleString()} 算力点 / ¥{formatMoney(selected.amountCents)}</p>
+              <p className="text-rose-600">⚠️ 确认后系统将立即为该空间自动入账，<strong>操作不可撤销</strong>。</p>
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                请输入工单号后 6 位「<span className="font-mono">{paidExpect}</span>」以确认
+                <span className="text-red-500 ml-0.5">*</span>
+              </label>
+              <input
+                type="text"
+                value={paidConfirmInput}
+                onChange={(e) => setPaidConfirmInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && paidConfirmInput.trim() === paidExpect && !actioning) {
+                    setShowPaidConfirm(false);
+                    doAction("CONFIRM_PAID");
+                  }
+                }}
+                maxLength={6}
+                autoFocus
+                placeholder={paidExpect}
+                className="w-full h-10 px-3 text-xs font-mono border border-slate-200 rounded-lg focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={() => setShowPaidConfirm(false)}
+                disabled={actioning}
+                className="px-4 h-9 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold border border-slate-200 rounded-lg cursor-pointer disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  if (paidConfirmInput.trim() !== paidExpect) {
+                    toast.error(`请输入工单号后 6 位「${paidExpect}」后才能执行`);
+                    return;
+                  }
+                  setShowPaidConfirm(false);
+                  doAction("CONFIRM_PAID");
+                }}
+                disabled={actioning}
+                className="px-5 h-9 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg cursor-pointer disabled:opacity-50"
+              >
+                {actioning ? "执行中…" : "确认入账"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskEmail, maskPhone } from "@/utils/format";
 import Pagination from "@/components/Pagination";
 import {
   Search,
@@ -50,7 +52,7 @@ interface Pagination {
 const PAGE_SIZE = 10;
 
 /** 格式化日期时间为 YYYY/MM/DD HH:mm:ss 完整精确时间 */
-const formatDateTime = (dateStr?: string | Date | null) => {
+const formatDateTimeLocal = (dateStr?: string | Date | null) => {
   if (!dateStr) return "-";
   const d = new Date(dateStr);
   if (isNaN(d.getTime())) return "-";
@@ -69,6 +71,7 @@ export default function AdminMembershipUsersPage() {
   const toast = useToast();
   const maxRows = useExportMaxRows();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [users, setUsers] = useState<MemberUser[]>([]);
   const [pagination, setPagination] = useState<Pagination>({
@@ -81,6 +84,15 @@ export default function AdminMembershipUsersPage() {
     membershipLevel: "",
     search: "",
   });
+  // KN-UI：搜索输入本地缓冲 + 300ms 防抖提交（自查清单指令五）
+  const [searchInput, setSearchInput] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setFilters((prev) => (prev.search === searchInput ? prev : { ...prev, search: searchInput }));
+    setPagination((prev) => ({ ...prev, page: 1 }));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
 
   useEffect(() => {
     loadUsers();
@@ -204,14 +216,11 @@ export default function AdminMembershipUsersPage() {
         },
       });
 
-      console.log("=== API 响应 ===");
-      console.log("状态码:", res.status);
 
       const responseData = await res.json();
-      console.log("响应数据:", responseData);
 
       if (res.ok) {
-        console.log("✓ 加载成功");
+        setLoadError(null);
         setUsers(responseData.data.users);
         setPagination(responseData.data.pagination);
       } else {
@@ -223,7 +232,7 @@ export default function AdminMembershipUsersPage() {
         if (responseData.code) {
           console.error("错误代码:", responseData.code);
         }
-        toast.error(responseData.message || "加载用户失败");
+        setLoadError(responseData.message || "加载用户失败，请重试");
       }
     } catch (error) {
       console.error("=== 捕获异常 ===");
@@ -255,11 +264,8 @@ export default function AdminMembershipUsersPage() {
                 <input
                   type="text"
                   placeholder="搜索用户名、邮箱、手机号..."
-                  value={filters.search}
-                  onChange={(e) => {
-                    setFilters((prev) => ({ ...prev, search: e.target.value }));
-                    setPagination((prev) => ({ ...prev, page: 1 }));
-                  }}
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
                   className="w-full pl-10 pr-4 h-10 border border-slate-200 rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-medium transition-all bg-white placeholder:text-slate-400"
                 />
               </div>
@@ -380,19 +386,19 @@ export default function AdminMembershipUsersPage() {
                               <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium">
                                 <span
                                   className="flex items-center gap-1 whitespace-nowrap"
-                                  title={user.email}
+                                  title={maskEmail(user.email)}
                                 >
                                   <Mail className="w-3 h-3 shrink-0" />
-                                  <span className="truncate">{user.email}</span>
+                                  <span className="truncate">{maskEmail(user.email)}</span>
                                 </span>
                                 {user.phone && (
                                   <span
                                     className="flex items-center gap-1 whitespace-nowrap"
-                                    title={user.phone}
+                                    title={maskPhone(user.phone)}
                                   >
                                     <Phone className="w-3 h-3 shrink-0" />
                                     <span className="truncate">
-                                      {user.phone}
+                                      {maskPhone(user.phone)}
                                     </span>
                                   </span>
                                 )}
@@ -438,9 +444,9 @@ export default function AdminMembershipUsersPage() {
                               <Calendar className="w-3.5 h-3.5 text-[#3182ce] shrink-0" />
                               <span
                                 className="font-mono tracking-tight"
-                                title={`开通时间：${formatDateTime(user.membershipActivatedAt)}${user.membershipExpireAt ? `\n到期时间：${formatDateTime(user.membershipExpireAt)}` : ""}`}
+                                title={`开通时间：${formatDateTimeLocal(user.membershipActivatedAt)}${user.membershipExpireAt ? `\n到期时间：${formatDateTimeLocal(user.membershipExpireAt)}` : ""}`}
                               >
-                                {formatDateTime(user.membershipActivatedAt)}
+                                {formatDateTimeLocal(user.membershipActivatedAt)}
                               </span>
                             </div>
                           ) : (
@@ -454,9 +460,9 @@ export default function AdminMembershipUsersPage() {
                             <Clock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                             <span
                               className="font-mono tracking-tight"
-                              title={`注册时间：${formatDateTime(user.createdAt)}`}
+                              title={`注册时间：${formatDateTimeLocal(user.createdAt)}`}
                             >
-                              {formatDateTime(user.createdAt)}
+                              {formatDateTimeLocal(user.createdAt)}
                             </span>
                           </div>
                         </td>

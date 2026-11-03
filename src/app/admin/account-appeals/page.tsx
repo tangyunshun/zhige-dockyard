@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import Pagination from "@/components/Pagination";
 import { getAuthToken } from "@/utils/auth";
 import { useAdminPermission } from "@/contexts/AdminPermissionContext";
@@ -159,11 +161,13 @@ export default function AdminAccountAppealsPage() {
   const [selectedAppealIds, setSelectedAppealIds] = useState<Set<string>>(new Set());
   const [batchProcessing, setBatchProcessing] = useState(false);
 
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean;
     title: string;
     message: string;
     type: "danger" | "warning" | "info";
+    requireText?: { expect: string; hint?: string };
     appealContext?: {
       userAccount: string;
       appealReason: string;
@@ -213,12 +217,12 @@ export default function AdminAccountAppealsPage() {
       if (res.ok) {
         const json = await res.json();
         setAppealData(json);
+        setLoadError(null);
       } else {
-        toast.error(res.status === 403 ? "权限不足，无法查看申诉数据" : "获取申诉列表失败");
+        setLoadError(res.status === 403 ? "权限不足，无法查看申诉数据" : "获取申诉列表失败");
       }
     } catch (e) {
-      console.error("Load appeals error:", e);
-      toast.error("加载申诉列表时发生网络错误");
+      setLoadError("加载申诉列表时发生网络错误");
     } finally {
       setLoading(false);
     }
@@ -483,6 +487,7 @@ export default function AdminAccountAppealsPage() {
       title: "删除申诉工单",
       message: `确认删除「${appeal.userName || appeal.userAccount}」的这条申诉工单吗？删除后记录将从列表与合规留存中移除，且操作会写入审计日志，无法恢复。`,
       type: "danger",
+      requireText: { expect: "DELETE", hint: "删除后无法恢复，请输入「DELETE」以确认删除此工单" },
       onConfirm: () => runDeleteAppeals([appeal.id]),
     });
   };
@@ -504,6 +509,7 @@ export default function AdminAccountAppealsPage() {
           : ""
       }删除后记录将从列表与合规留存中移除，且操作会写入审计日志，无法恢复。`,
       type: "danger",
+      requireText: { expect: "DELETE", hint: `此操作不可恢复，请输入「DELETE」以确认批量删除 ${targets.length} 条工单` },
       onConfirm: () => runDeleteAppeals(targets.map((a) => a.id)),
     });
   };
@@ -644,13 +650,8 @@ export default function AdminAccountAppealsPage() {
       }
     : { total: 0, pending: 0, approved: 0, rejected: 0, archived: 0, canceled: 0 };
 
-  const formatDateTime = (s: string) => {
-    try {
-      return new Date(s).toLocaleString("zh-CN", { hour12: false });
-    } catch {
-      return s;
-    }
-  };
+  // KN-UI：直接复用 utils/format 的 formatDateTime（接受 string | Date）
+  const formatDateTimeLocal = (s: string | Date | null | undefined) => formatDateTime(s);
 
   const copyAccount = async (text: string) => {
     try {
@@ -964,6 +965,10 @@ export default function AdminAccountAppealsPage() {
             <div className="w-9 h-9 border-3 border-[#3182ce]/20 border-t-[#3182ce] rounded-full animate-spin mx-auto mb-3" />
             <p className="text-xs text-slate-500 font-bold">正在加载申诉列表...</p>
           </div>
+        ) : loadError ? (
+          <div className="p-4">
+            <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadAppeals(currentPage, statusFilter, userStatusFilter, dateRangeFilter, businessTypeFilter, searchAccount); }} retrying={loading} />
+          </div>
         ) : !appealData || appealData.appeals.length === 0 ? (
           <div className="text-center py-16 bg-slate-50/50">
             <Shield className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -1078,7 +1083,7 @@ export default function AdminAccountAppealsPage() {
                                 return (
                                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
                                     <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                                    <span className="truncate max-w-[160px]" title={phone}>{phone}</span>
+                                    <span className="truncate max-w-[160px]" title={phone}>{maskPhone(phone)}</span>
                                     <button
                                       type="button"
                                       onClick={() => copyAccount(phone)}
@@ -1095,7 +1100,7 @@ export default function AdminAccountAppealsPage() {
                                 return (
                                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
                                     <Mail className="w-3 h-3 text-slate-400 shrink-0" />
-                                    <span className="truncate max-w-[160px]" title={email}>{email}</span>
+                                    <span className="truncate max-w-[160px]" title={email}>{maskEmail(email)}</span>
                                     <button
                                       type="button"
                                       onClick={() => copyAccount(email)}
@@ -1415,7 +1420,7 @@ export default function AdminAccountAppealsPage() {
                           <span className="text-slate-500 font-bold">管控期限: </span>
                           <span className="font-bold text-amber-700">
                             {wsData.disabledUntil
-                              ? `至 ${new Date(wsData.disabledUntil).toLocaleString("zh-CN", { hour12: false })} 自动解封`
+                              ? `至 ${formatDateTime(new Date(wsData.disabledUntil))} 自动解封`
                               : "永久管控（需人工审核解封）"}
                           </span>
                         </div>
@@ -1729,6 +1734,7 @@ export default function AdminAccountAppealsPage() {
         title={confirmDialog.title}
         message={confirmDialog.message}
         type={confirmDialog.type}
+        requireText={confirmDialog.requireText}
         appealContext={confirmDialog.appealContext}
         input={confirmDialog.input}
         onConfirm={async (value) => {

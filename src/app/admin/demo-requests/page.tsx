@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ClipboardList, Inbox } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { formatDateTime, maskEmail, maskPhone } from "@/utils/format";
 
 type DemoRequest = {
   id: string;
@@ -38,6 +40,12 @@ export default function AdminDemoRequestsPage() {
   });
   const [status, setStatus] = useState("all");
   const [search, setSearch] = useState("");
+  // KN-UI：搜索 300ms 防抖（自查清单指令五）
+  const [debouncedSearch, setSearchDebounced] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setSearchDebounced(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
   const [loading, setLoading] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +60,7 @@ export default function AdminDemoRequestsPage() {
         limit: String(pagination.limit),
         status,
       });
-      if (search.trim()) params.set("search", search.trim());
+      if (search.trim()) params.set("search", debouncedSearch.trim());
       const res = await fetch(`/api/admin/demo-requests?${params.toString()}`, {
         headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
       });
@@ -157,9 +165,7 @@ export default function AdminDemoRequestsPage() {
       </div>
 
       {error && (
-        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
-          {error}
-        </div>
+        <LoadErrorBanner message={error} onRetry={() => fetchList()} retrying={loading} />
       )}
 
       <div className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
@@ -194,14 +200,14 @@ export default function AdminDemoRequestsPage() {
               return (
                 <tr key={r.id} className="hover:bg-slate-50/60">
                   <td className="px-4 py-3 text-slate-500 whitespace-nowrap">
-                    {new Date(r.createdAt).toLocaleString("zh-CN")}
+                    {formatDateTime(new Date(r.createdAt))}
                   </td>
                   <td className="px-4 py-3 font-medium text-slate-800 whitespace-nowrap">
                     {r.name}
                   </td>
-                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.email}</td>
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{maskEmail(r.email)}</td>
                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.company}</td>
-                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{r.phone || "—"}</td>
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{maskPhone(r.phone)}</td>
                   <td className="px-4 py-3 text-slate-600 max-w-xs">
                     <span className="line-clamp-2">{r.requirements || "—"}</span>
                   </td>
