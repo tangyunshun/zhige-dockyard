@@ -46,3 +46,16 @@
 - 真 MySQL 行锁、隔离级别、事务回滚语义、PREPARE/EXECUTE 在目标实例的执行权限：**未验证**。
 - 备份还原除既有 mysql 导入验证外，本轮未演练；不把说明文档当真实灾备验收。
 - 数据库当前状态未知，不自动补钱/扣回/迁租户/删资料。
+
+---
+
+# 本轮 schema 增量（2026-11-10，离线草案未迁移）
+
+## 新增模型
+1. `VerificationSendClaim`（U02 发送预约身份绑定）：id=`${sendId}:${scope}` 主键、sendId 索引、status(PENDING|REFUNDED|SETTLED|OBSOLETE)、windowStart( BigInt 窗口判据)。回滚：DROP TABLE。
+2. `PasswordResetClaim`（U02 改密授权认领）：id=resetToken jti 主键、status(PENDING|AUTH_CONSUMED|COMPLETED)。回滚：DROP TABLE。
+
+## 与既有草案的关系
+- 与 VerificationBudget/smscode/storageoperation 同为离线草案；上线前统一迁移 + 重新生成客户端。
+- 未执行迁移前：发送认领创建失败 → admitSend 503 并释放占用（无认领不发送）；PasswordResetClaim delegate 缺失 → reset-password 503 RESET_CLAIM_NOT_READY（零副作用）。
+- 历史 checksum/已部署实例兼容：未核实（真实环境门），不猜、不真实 apply。

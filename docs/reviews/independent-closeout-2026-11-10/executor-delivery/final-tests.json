@@ -1,0 +1,21 @@
+{
+ "generatedAtReal": "2026-11-10T00:31:51+08:00",
+ "commands": [
+  {
+   "name": "formal-41-file-regression",
+   "command": "npx vitest run --no-color <test-targets.json 41 文件清单>",
+   "files": 41,
+   "passed": 792,
+   "failed": 0,
+   "exitCode": 0,
+   "ranAt": "2026-11-10T00:27+08:00",
+   "note": "本轮回归通过；上一轮审核的 1 项 DOCX 预览 504 时间敏感失败在本轮全量组合中未复现（保留上轮首次结果记录于审核目录，不据此次绿结果否认上轮事实）"
+  },
+  {
+   "name": "typecheck",
+   "command": "npx tsc --noEmit --incremental false -p tsconfig.json",
+   "exitCode": 0
+  }
+ ],
+ "fixtureBoundaries": "DB/fs/SMS/SMTP/支付/模型全部隔离替身；唯一约束(P2002)/条件count/版本CAS/惰性执行/回滚在替身中真实求值；席位履约实际运行统一履约+席位服务（r0b/r0y）；未做真实 MySQL/支付互通/供应商验收"
+}

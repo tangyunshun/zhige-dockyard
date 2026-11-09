@@ -6,21 +6,15 @@ export async function POST(request: NextRequest) {
   try {
     const { workspaceId } = await request.json();
 
-    // 验证用户身份
-    let userId = request.headers.get('x-user-id');
-    if (!userId) {
-      const authHeader = request.headers.get("authorization");
-      const authResult = await validateUser(authHeader);
-      if (!authResult.valid) {
-        return NextResponse.json(
-          { message: 'UNAUTHORIZED' },
-          { status: 401 }
-        );
-      } else {
-        userId = authResult.user!.id;
+    // [U05/原9] 一律完整 validateUser：x-user-id 验签身份不等于有效会话
+    let userId: string | null = null;
+    {
+      const switchAuth = await validateUser(request.headers.get("authorization"), request);
+      if (!switchAuth.valid || !switchAuth.user) {
+        return NextResponse.json({ error: switchAuth.error || "未授权" }, { status: 401 });
       }
+      userId = switchAuth.user!.id;
     }
-
     if (!workspaceId) {
       return NextResponse.json(
         { message: '工作空间 ID 不能为空' },

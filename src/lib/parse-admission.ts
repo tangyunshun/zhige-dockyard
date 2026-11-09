@@ -213,34 +213,25 @@ export function createPrismaBackend(): ParseAdmissionBackend {
           select: { leaseId: true, userId: true, workUnits: true },
         });
         let recovered = 0;
+        // [F14 §7.1] 无停止证据不得腾槽：已启动 ACTIVE 过租约 TTL 只转 QUARANTINED（诊断保留，计数不动），
+        // 时间仅触发核验/诊断；真正的退出证据由 runner 的 exit 事件驱动（onWorkerExited → claimToken CAS 归还）。
         for (const row of expired) {
-          // 单行事务：CAS 认领过期 + 原子归还 active 与完整 workUnits；
-          // 两个回收者竞争同一行时，只有 updateMany 命中（count===1）的一方归还一次，绝不重复归还。
-          // 任一步更新失败（计数回滚）时整行回滚，租约保持 ACTIVE 可重试，不出现「终态已提交、计数没改」的半完成。
-          const done = await client.$transaction(async (tx: any) => {
+          const q = await client.$transaction(async (tx: any) => {
             const t = models(tx);
             const upd = await t.lease.updateMany({
               where: { leaseId: row.leaseId, status: "ACTIVE" },
-              data: { status: "EXPIRED", releasedAt: new Date(), updatedAt: new Date() },
+              data: { status: "QUARANTINED", note: "LEASE_TTL_EXCEEDED_AWAITING_STOP_EVIDENCE", updatedAt: new Date() },
             });
-            if (upd.count !== 1) return false; // 已被其它回收者处理，跳过
-            await t.counter.updateMany({
-              where: { id: "platform", workUnits: { gte: row.workUnits }, active: { gt: 0 } },
-              data: { active: { decrement: 1 }, workUnits: { decrement: row.workUnits } },
-            });
-            await t.counter.updateMany({
-              where: { id: `user:${row.userId}`, active: { gt: 0 } },
-              data: { active: { decrement: 1 } },
-            });
-            return true;
+            return upd.count === 1;
           });
-          if (done) recovered++;
+          if (q) recovered++;
         }
-        // [KR1/KR4] 隔离回收：已被隔离（未知停止）且超过安全时限的租约——此时 terminate 早已发起，
-        // 视为停止证据成立后的有限回收，不永久卡槽；仍按 CAS + 计数命中守恒，失败则保留待重试。
+        // [F14 §7.1/§7.2] 隔离回收必须凭退出证据（EXIT_CONFIRMED 标记，由退出确认路径写入 note）：
+        // 无停止证据的 QUARANTINED 仅凭 createdAt 时限不腾槽（保留诊断，由管理员带证据恢复）；
+        // 有证据且超过安全时限的按 CAS + 计数命中守恒回收，任一计数未命中整笔回滚可重试。
         const quarantineCutoff = new Date(now - (PARSE_LIMITS.LEASE_TTL_MS + PARSE_LIMITS.LEASE_SWEEP_GRACE_MS));
         const quarantined: any[] = await lease.findMany({
-          where: { status: "QUARANTINED", createdAt: { lt: quarantineCutoff } },
+          where: { status: "QUARANTINED", note: { startsWith: "EXIT_CONFIRMED:" }, createdAt: { lt: quarantineCutoff } },
           take: PARSE_LIMITS.LEASE_SWEEP_BATCH,
           select: { leaseId: true, userId: true, workUnits: true, claimToken: true },
         });

@@ -7,7 +7,7 @@ vi.mock("@/lib/security", () => ({ requirePlatformPermission: vi.fn(async () => 
 vi.mock("@/lib/model-pricing", () => ({ MAX_MARKUP_BPS: 100000 }));
 vi.mock("@/lib/prisma", () => {
   const defer = (run: () => any) => ({ then: (resolve: any, reject: any) => Promise.resolve().then(run).then(resolve, reject) });
-  return {
+  const prismaClient: any = {
     prisma: {
       modelpricing: {
         updateMany: ({ data }: any) => defer(() => { h.modelBps = data.markupRateBps; h.version++; return { count: 7 }; }),
@@ -19,11 +19,21 @@ vi.mock("@/lib/prisma", () => {
         upsert: ({ update }: any) => defer(() => { h.configBps = Number(update.value); return {}; }),
       },
       operationlog: { create: () => defer(() => { if (h.auditFail) throw new Error("audit failure"); return {}; }) },
-      $transaction: async (ops: any[]) => {
+      // [U09-6] 同时支持数组与交互式事务（审计在事务内用真实 count 构建）
+      $transaction: async (opsOrFn: any) => {
         h.transactions++;
         const before = { ...h };
         try {
-          return await Promise.all(ops);
+          if (typeof opsOrFn === "function") {
+            const client = {
+              modelpricing: { updateMany: async (a: any) => prismaClient.prisma.modelpricing.updateMany(a) },
+              modelpricingperiod: { updateMany: async (a: any) => prismaClient.prisma.modelpricingperiod.updateMany(a) },
+              systemconfig: { upsert: async (a: any) => prismaClient.prisma.systemconfig.upsert(a) },
+              operationlog: { create: async (a: any) => prismaClient.prisma.operationlog.create(a) },
+            };
+            return await opsOrFn(client);
+          }
+          return await Promise.all(opsOrFn);
         } catch (e) {
           Object.assign(h, before);
           throw e;
@@ -31,6 +41,7 @@ vi.mock("@/lib/prisma", () => {
       },
     },
   };
+  return prismaClient;
 });
 
 import { POST } from "@/app/api/admin/model-pricing/global-markup/route";

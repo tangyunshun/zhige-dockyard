@@ -1,0 +1,60 @@
+import {describe,it,expect,vi,beforeEach,afterEach,afterAll} from 'vitest';
+import {EventEmitter} from 'node:events';
+import fs from 'node:fs';import path from 'node:path';
+const h=vi.hoisted(()=>({counters:new Map<string,any>(),leases:new Map<string,any>(),serial:0,tail:Promise.resolve() as Promise<any>,beforeLeaseUpdate:null as any,failCounterDecrement:false,workers:[] as any[],workerWaiters:[] as Array<{n:number;resolve:()=>void}>}));
+function matches(r:any,w:any):boolean{for(const[k,v]of Object.entries(w||{})){if(v&&typeof v==='object'&&!(v instanceof Date)){for(const[op,x]of Object.entries(v)){if(op==='startsWith'){if(!String(r[k]??'').startsWith(String(x)))return false;}else if(op==='in'){if(!(x as any[]).includes(r[k]))return false;}else if(op==='gt'){if(!(r[k]>(x as any)))return false;}else if(op==='gte'){if(!(r[k]>=(x as any)))return false;}else if(op==='lt'){if(!(r[k]<(x as any)))return false;}else if(op==='lte'){if(!(r[k]<=(x as any)))return false;}else return false;}}else if(r[k]!==v)return false;}return true;}
+function table(name:string){return name==='parselease'?h.leases:h.counters;}
+function model(name:string){return {
+ create:async({data}:any)=>{const rows=table(name);const all=[...rows.values()];if(all.some(r=>name==='parselease'?(r.leaseId===data.leaseId||r.claimToken===data.claimToken):r.id===data.id)){const e:any=new Error('Unique');e.code='P2002';throw e;}const row={...data,id:data.id||'auto-'+(++h.serial)};rows.set(row.id,row);return {...row};},
+ findUnique:async({where}:any)=>{const r=[...table(name).values()].find(r=>matches(r,where));return r?{...r}:null;},
+ findMany:async({where,take,select}:any)=>[...table(name).values()].filter(r=>matches(r,where)).slice(0,take??Infinity).map(r=>select?Object.fromEntries(Object.keys(select).filter(k=>select[k]).map(k=>[k,r[k]])):{...r}),
+ updateMany:async({where,data}:any)=>{if(name==='parselease'&&h.beforeLeaseUpdate)await h.beforeLeaseUpdate({where,data});if(name==='parseadmissioncounter'&&data?.active?.decrement&&h.failCounterDecrement){h.failCounterDecrement=false;throw new Error('counter decrement unavailable');}let count=0;for(const[id,r]of table(name)){if(!matches(r,where))continue;const next={...r};for(const[k,v]of Object.entries(data)){if(v&&typeof v==='object'&&!(v instanceof Date)&&('increment'in v||'decrement'in v))next[k]=next[k]+((v as any).increment??-((v as any).decrement));else next[k]=v;}table(name).set(id,next);count++;}return {count};},
+ deleteMany:async({where}:any)=>{let count=0;for(const[id,r]of table(name))if(matches(r,where)){table(name).delete(id);count++;}return {count};}
+};}
+function makeDb(){const db:any={parseadmissioncounter:model('parseadmissioncounter'),parselease:model('parselease')};db.$transaction=(fn:any)=>{const result=h.tail.then(async()=>{const beforeC=structuredClone(h.counters),beforeL=structuredClone(h.leases);try{return await fn(db);}catch(e){h.counters=beforeC;h.leases=beforeL;throw e;}});h.tail=result.then(()=>{},()=>{});return result;};return db;}
+vi.mock('@/lib/prisma',()=>({prisma:makeDb()}));
+vi.mock('@/lib/auth',()=>({validateUser:vi.fn(async()=>({valid:true,user:{id:'u1'}}))}));
+vi.mock('@/lib/parse-policy',async(importOriginal)=>{const a:any=await importOriginal();return {...a,PARSE_LIMITS:{...a.PARSE_LIMITS,PLATFORM_MAX_CONCURRENT:1,USER_MAX_CONCURRENT:1}};});
+const observations:any[]=[];
+const now=1_700_000_000_000;
+function seed(active=2,work=2){h.counters.set('platform',{id:'platform',active,workUnits:work,requests:0,windowStart:new Date(now)});h.counters.set('user:u1',{id:'user:u1',active,workUnits:0,requests:0,windowStart:new Date(now)});}
+function lease(id:string,expired:boolean){const r={id,leaseId:id,claimToken:'token-'+id,userId:'u1',instanceId:'offline',status:'ACTIVE',workUnits:1,leaseUntil:new Date(expired?now-100000:now+100000),createdAt:new Date(now-60000),updatedAt:new Date(now)};h.leases.set(id,r);return r;}
+function latch(){let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return {promise,resolve};}
+beforeEach(async()=>{h.counters=new Map();h.leases=new Map();h.serial=0;h.tail=Promise.resolve();h.beforeLeaseUpdate=null;h.failCounterDecrement=false;h.workers=[];h.workerWaiters=[];const a=await import('@/lib/parse-admission');a.__setParseAdmissionBackendForTest(null);});
+afterEach(async()=>{h.beforeLeaseUpdate=null;const r=await import('@/lib/parse-runner');r.__resetParseRunnerHooks();vi.useRealTimers();});
+
+
+it('POSITIVE: ACTIVE expiry now quarantines without freeing any unknown worker capacity',async()=>{
+ seed(1,1);lease('old',true);const a=await import('@/lib/parse-admission');await a.sweepParseLeases(now);
+ expect(h.leases.get('old').status).toBe('QUARANTINED');expect(h.counters.get('platform').active).toBe(1);
+});
+it('POSITIVE: confirmed direct release still returns persisted weight once',async()=>{
+ const a=await import('@/lib/parse-admission');const l=await a.acquireParseLease({userId:'u1',workUnits:2,now});
+ expect(await a.releaseParseLease(l)).toBe(true);expect(await a.releaseParseLease(l)).toBe(false);expect(h.counters.get('platform').workUnits).toBe(0);
+});
+it('DEFECT: EXIT_CONFIRMED fallback cannot update an already-QUARANTINED lease after release failure',async()=>{
+ const a=await import('@/lib/parse-admission');const l=await a.acquireParseLease({userId:'u1',workUnits:1,now});await a.quarantineParseLease(l,'STOP_UNCONFIRMED');
+ h.failCounterDecrement=true;expect(await a.releaseParseLease(l)).toBe(false);
+ await a.quarantineParseLease(l,'EXIT_CONFIRMED: actual late exit observed, release failed');
+ const row=[...h.leases.values()][0];expect(row.note).toBe('STOP_UNCONFIRMED');
+ await a.sweepParseLeases(now+200000);expect(h.counters.get('platform').active).toBe(1);expect([...h.leases.values()][0].status).toBe('QUARANTINED');
+});
+it('DEFECT: exit arriving inside quarantine update is ignored before route quarantine flag is set',async()=>{
+ const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner');let w:any;
+ r.__setParseRunnerHooks({terminateTimeoutMs:5,exitConfirmMs:5,workerFactory:()=>{w=new EventEmitter();w.terminate=()=>new Promise(()=>{});queueMicrotask(()=>w.emit('message',{envelope:'result',text:'controlled fixture',usage:{}}));return w;}});
+ h.beforeLeaseUpdate=({data}:any)=>{if(data.status==='QUARANTINED')w.emit('exit',0);};
+ const f=Object.assign(new Blob(['fixture'],{type:'text/plain'}),{name:'fixture.txt'});const {POST}=await import('@/app/api/studio/extract-text/route');
+ const res=await POST({headers:new Headers(),formData:async()=>new Map([['file',f]])}as any);expect(res.status).toBe(503);
+ await new Promise(resolve=>setTimeout(resolve,10));await a.sweepParseLeases(Date.now()+200000);
+ expect(h.counters.get('platform').active).toBe(1);expect([...h.leases.values()][0].status).toBe('QUARANTINED');
+});
+it('DEFECT: cancelled stalled arrayBuffer read has no finite completion boundary',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(now);
+ const entered=latch();let resume!:(b:ArrayBuffer)=>void;let done=false;
+ const f=Object.assign(new Blob(['fixture'],{type:'text/plain'}),{name:'fixture.txt',arrayBuffer:()=>{entered.resolve();return new Promise<ArrayBuffer>(r=>resume=r);}});
+ const controller=new AbortController();const {POST}=await import('@/app/api/studio/extract-text/route');
+ const p=POST({headers:new Headers(),signal:controller.signal,formData:async()=>new Map([['file',f]])}as any).then(r=>{done=true;return r;});
+ await entered.promise;controller.abort();await vi.advanceTimersByTimeAsync(120000);expect(done).toBe(false);
+ resume(new TextEncoder().encode('fixture').buffer);expect((await p).status).toBe(503);
+ const a=await import('@/lib/parse-admission');const l=[...h.leases.values()][0];if(l)await a.releaseParseLease(l);
+});

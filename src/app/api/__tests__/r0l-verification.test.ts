@@ -38,6 +38,13 @@ vi.mock("@/lib/prisma", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         create: vi.fn().mockResolvedValue({ id: "x" }),
       },
+      // [U02] 发送认领替身：admitSend 为各维度创建 PENDING 认领（回填幂等判据）
+      verificationSendClaim: {
+        create: vi.fn(async ({ data }: any) => ({ id: data.id, ...data, status: "PENDING" })),
+        findMany: vi.fn(async () => []),
+        updateMany: vi.fn(async ({ where, data }: any) => ({ count: 1 })),
+        update: vi.fn(async ({ where, data }: any) => ({ id: where.id, ...data })),
+      },
       verificationBudget: {
         findUnique: vi.fn(async ({ where }: any) => (budget[where.id] ? { ...budget[where.id] } : null)),
         // 冷启动由 create 占有主键：重复键抛 P2002（忠实唯一约束）；

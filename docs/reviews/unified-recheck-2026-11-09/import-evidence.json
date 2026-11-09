@@ -1,0 +1,93 @@
+{
+  "billing/cost-reservation": [
+    {
+      "path": "src/app/api/__tests__/r06-cost-reservation.test.ts",
+      "line": 8,
+      "text": "} from \"@/lib/billing/cost-reservation\";"
+    },
+    {
+      "path": "src/app/api/__tests__/r08-execution-orchestration.test.ts",
+      "line": 8,
+      "text": "} from \"@/lib/billing/cost-reservation\";"
+    },
+    {
+      "path": "src/lib/billing/execution-orchestration.ts",
+      "line": 19,
+      "text": "import type { CostReservationService, QuoteInput, AdmitInputs } from \"@/lib/billing/cost-reservation\";"
+    }
+  ],
+  "billing/execution-orchestration": [
+    {
+      "path": "src/app/api/__tests__/r08-execution-orchestration.test.ts",
+      "line": 14,
+      "text": "} from \"@/lib/billing/execution-orchestration\";"
+    },
+    {
+      "path": "src/app/api/__tests__/r10-first-value-journey.test.ts",
+      "line": 12,
+      "text": "import type { AttemptOutcome } from \"@/lib/billing/execution-orchestration\";"
+    },
+    {
+      "path": "src/app/api/__tests__/r11-ops-readiness.test.ts",
+      "line": 15,
+      "text": "import type { RecoverySummary } from \"@/lib/billing/execution-orchestration\";"
+    },
+    {
+      "path": "src/lib/journey/first-value-journey.ts",
+      "line": 20,
+      "text": "import type { AttemptOutcome } from \"@/lib/billing/execution-orchestration\";"
+    },
+    {
+      "path": "src/lib/operations/ops-readiness.ts",
+      "line": 20,
+      "text": "import type { AttemptOutcome, RecoverySummary } from \"@/lib/billing/execution-orchestration\";"
+    }
+  ],
+  "billing/refund-basis": [
+    {
+      "path": "src/app/api/__tests__/r07-refund-entitlement.test.ts",
+      "line": 7,
+      "text": "} from \"@/lib/billing/refund-basis\";"
+    }
+  ],
+  "billing/entitlement-read-guard": [
+    {
+      "path": "src/app/api/__tests__/r07-refund-entitlement.test.ts",
+      "line": 8,
+      "text": "import { classifyQuotaDoubleBinding, assertReadDoesNotGrant } from \"@/lib/billing/entitlement-read-guard\";"
+    }
+  ],
+  "journey/first-value-journey": [
+    {
+      "path": "src/app/api/__tests__/r10-first-value-journey.test.ts",
+      "line": 11,
+      "text": "} from \"@/lib/journey/first-value-journey\";"
+    }
+  ],
+  "metrics/value-cost-metrics": [
+    {
+      "path": "src/app/api/__tests__/r12-value-cost-metrics.test.ts",
+      "line": 9,
+      "text": "} from \"@/lib/metrics/value-cost-metrics\";"
+    }
+  ],
+  "operations/ops-readiness": [
+    {
+      "path": "src/app/api/__tests__/r11-ops-readiness.test.ts",
+      "line": 14,
+      "text": "} from \"@/lib/operations/ops-readiness\";"
+    }
+  ],
+  "tenant/enterprise-lifecycle": [
+    {
+      "path": "src/app/api/__tests__/r09-enterprise-lifecycle.test.ts",
+      "line": 8,
+      "text": "} from \"@/lib/tenant/enterprise-lifecycle\";"
+    },
+    {
+      "path": "src/lib/journey/first-value-journey.ts",
+      "line": 21,
+      "text": "import { authorizeWorkspaceAccess, type AccessContext } from \"@/lib/tenant/enterprise-lifecycle\";"
+    }
+  ]
+}

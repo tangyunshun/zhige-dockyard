@@ -1,62 +1,87 @@
-# 统一返工收口最终报告（P14 · 2026-11-09 第二轮）
+# P14 最终报告：统一剩余修复（第三轮 · 2026-11-10）
 
-- 复核基线提交：`67243457064f645a3a4af1a2e8b4b1d012a85d2d`（上轮统一修复）
-- 复核依据：`docs/reviews/unified-recheck-2026-11-09/REVIEW.md`、`independent-results.json` 与本目录独立补测
-- 当前 HEAD：同基线 + 本轮离线代码改动（见 `final-manifest.json`）
-- 状态口径：`IMPLEMENTED_OFFLINE_VERIFIED` / `FAILED` / `DECISION_BLOCKED` / `ENVIRONMENT_UNVERIFIED`
+- 基线提交：`6d9f68b403798a8243f11eeb36a587916c4deb13`（上轮收口提交，本轮为工作区改动 29 文件，未提交）
+- 本轮依据：`docs/reviews/unified-closeout-review-2026-11-09/REVIEW.md` + `IDE-REMAINING-CLOSEOUT-PROMPT.md`
+- 状态口径：`IMPLEMENTED_OFFLINE_VERIFIED` / `FAILED` / `ENVIRONMENT_UNVERIFIED`
 - 红线：全程未连接真实库 / 未执行迁移 / 未 seed / 未创建真实管理员 / 未发真实邮件·短信 / 未真实收款 / 未调真实模型 / 未部署。所有外部 IO 用隔离替身。
+- **此前版本报告完整保留于 `history/`（2026-11-09 第二轮及更早）。**
 
 ## 一句话结论（大白话）
 
-这一轮把独立复核复现出来的具体缺陷逐条修掉了：验证码的并发漏计与锁、改密凭证被旧凭证盗用、短信登录一次验证码发两份会话、收款被重复兑现、跨渠道串单、金额精度被吞、初始化向导走不通、登录被拒后又被"复活"、被禁用账号的 Key 还能用，以及请求里偷偷建表改列。这些都配了能跑的测试。但页面接线、真实浏览器串联、真实数据库/渠道互通仍**没做完**，下面如实列出，没拿"测试通过"当"上线验收通过"。
+这一轮把复核报告点名的**七组具体缺陷**修掉了：席位增购绕过交易唯一认领、晚到账并发丢事实、发送预算回退错位、消费端不查失败锁、改密失败后凭证作废、Webhooks 绕过完整会话、调价审计记 0/0、BYO 丢 query、解析无停止证据腾槽、登录回跳可跳外站。这些都配了能跑的正式测试（41 文件 792 项全绿）。但**生产成本后端、企业撤权矩阵、首页改版、运营恢复接后台、指标接 API 这几块大的接线仍然没做**，下面 §三如实列出，没拿"测试通过"当"全部完成"。
 
-## 本轮实际修完并验证的缺陷
+## 一、本轮实际修完并验证（IMPLEMENTED_OFFLINE_VERIFIED）
 
-| 组 | 缺陷 | 修法 | 证据 |
-|---|---|---|---|
-| U02/U03 | 冷启动并发两笔都发送却只记一次 | 冷启动改 `create` 主键唯一认领，命中已有行走同一套准入裁决 | r0l3 / 独立复核 verification-review |
-| U02/U03 | 失败锁只挡发送不挡核验 | `lookup` 先查锁定 | r0l2 / r0l3 |
-| U02/U03 | 过期码仍可消费 | `consume` 先定位并核对有效期/锁定 | r0l3 |
-| U02/U03 | 跨日计数叠加成 11 | 窗口过期原子重置为 1 | r0l3 |
-| U02/U03 | 重复失败回退把预算打成负数 | 条件 `count>0` 才 decrement | r0l3 |
-| U03 | SMTP 结果 resolve 就当已接收 | 按 `accepted/rejected` 核实目标接收事实，空 accepted 归 unknown | r0f / mailer-review |
-| U09-6 | 调价与审计是两个事务，审计失败价格已改 | 改价/默认/审计合并为单一 `$transaction`，任一步失败整笔回滚 | r0d / pricing-review |
-| U06 | 路径大小写 / HTTPS→HTTP 被当成同一目的地 | 按 URL 结构保留 scheme、host 大小写归一、路径大小写敏感、默认端口归一 | r0e / byo-review |
-| U05-1/2 | 完整认证拒绝后被弱兜底复活；Key 不查账号状态 | 删除 `requirePlatformAuth` 的 JWT 弱兜底；Key 命中后实查账号禁用/封禁/注销 | r0g / security-review |
-| U05-4 | 安装向导第一步只回 success，第二步必 403 | 基于已批准 SETUP_TOKEN 签发短期一次性安装授权；向导传递并在创建动作同一事务内认领消费 | r0z / init-diagnostics-review |
-| U04 | 双订单并发同一交易号都履约 | 按「渠道+商户语境+交易号」落持久原子唯一认领（主键唯一 P2002），findFirst 不再单独裁决 | r0y / payment-review |
-| U04 | 渠道不符、REAL 缺交易号/金额、金额精度被 Math.round 吞、晚收款覆盖首笔 | 渠道/币种严格核对；底层 REAL 精确金额门禁；严格元→分解析（10.004 拒绝）；多笔晚收款保留首笔并另存冲突 | r0y / r0x / r0b |
-| U02 | 旧改密凭证借后来签发的新码恢复改密权 | resetToken 绑定 challengeId + jti；服务端按 challenge 身份原子条件消费 | r0u / reset-review |
-| U02 | 短信登录并发同一码签发两份会话 | 验证后立即原子取得唯一消费权，消费失败不发 token/cookie；注册/绑定同样前置消费 | r0u / login-review |
-| U12 | 业务请求里 CREATE TABLE / ALTER TABLE | webhooks 自愈建表、BYO 热加列、settings 惰性扩列全部改为只读结构探针 + 稳定 503 not-ready，结构交给离线迁移 | r0v |
+### 1. 原5 / U04：交易事实唯一性覆盖所有订单与终态
 
-## 验证证据（精确命令与结果）
+| 缺陷 | 修法 | 证据 |
+| --- | --- | --- |
+| SEAT_ADDON 绕过 (渠道,商户,交易号) 唯一认领，一笔收款可支撑多订单席位 | `fulfillPaidOrder` 认领行覆盖**全部订单类型**：先认领成功（P2002 裁决并发）再委托席位服务；跨订单同交易 → REJECTED | r0y 新增"同一交易并发两个不同席位订单：最多一次权益"；r0b 93 用例全绿 |
+| REAL 席位缺交易号仍能履约 | REAL 门禁不再豁免席位（放终态/超时留证分支之后，不挡无凭证过期关单） | r0y"REAL 席位缺交易号 → 拒绝，零权益" |
+| 晚到账并发读改写 metadata 丢事实；SUCCESS 新交易被当重发丢弃 | 终态到账以 (渠道,商户,交易号) 认领行**原子落行**（PENDING_RECOVERY），并发两笔各自成行；SUCCESS 第二笔交易落 DIFF_FACT 差异行可追溯；同笔重放幂等 ACK 并重读最新状态分类；超时已收款留证+条件关单 | r0y"终态订单两笔不同交易并发到账：两笔事实都可追溯""SUCCESS 订单收到另一笔交易：留存差异事实并 ACK"；r0b 超时用例改新契约 |
 
-- 正式回归（18 文件 / **318 passed**）：
-  `node node_modules/vitest/vitest.mjs run src/app/api/__tests__/r0l-*.test.ts ... r0v-u12-request-ddl.test.ts`
-  完整文件清单见 `final-tests.json`。
-- 独立复核补测（11 文件 / **58 passed**）：DEFECT 断言已全部改成正确结果断言，
-  用临时 `vitest.recheck.config.ts`（跑完已删除，`@`→`src` 别名）执行：
-  `node node_modules/vitest/vitest.mjs run --config docs/reviews/unified-recheck-2026-11-09/vitest.recheck.config.ts`
-- 严格类型检查：`node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json` → **0 错误**（未新增排除文件、未放松模式、未用 any 绕字段错误）。
-- 所有敏感拒绝断言同时检查存储/资金/网络调用计数与最终状态；事务测试替身忠实实现主键唯一（P2002）、条件 count、失败整笔回滚，不用"自动成功"失真 mock。
+### 2. 原2/4 / U02/U03：验证码
 
-## 仍失败 / 未接线 / 待决策 / 未实际验证（必须如实申报）
+| 缺陷 | 修法 | 证据 |
+| --- | --- | --- |
+| A 重复 failed 回填退掉 B 的占用（count>0 只防负） | 新增 `VerificationSendClaim`：admitSend 为各维度持久化 PENDING 认领（含窗口起点）；failed 回填按认领 PENDING→REFUNDED 幂等转换（重复回填 count=0 零效果）；跨窗口迟到回填标 OBSOLETE；认领写失败 → 释放占用 + 503 | r0l2 夹具增认领替身（真实唯一约束）；29 项验证码测试全绿 |
+| consume 不查失败锁：先成功核验再触发锁，消费仍 ok | consume 与 lookup 同一锁定事实（已锁即使持有效 token 也 429） | r0l/r0l2/r0l3 回归 |
+| 锁表 P2021 被吞成 null 当"没有锁"继续放行 | `VerificationBackendUnavailableError`：lookup 抛出（verify 层 notReady fail-closed 不计用户失败）、consume 503 零敏感效果；「记录不存在」与「服务不可用」严格区分 | 同上 |
+| recordFailure 首次 upsert update={} 丢失败次数 | create + P2002 重试读改（并发安全） | r0l3 夹具 |
+| 旧码标用与新码创建非原子 | issue 在同一事务内完成（生产交互事务） | r0l2（$transaction 路由到替身模型） |
+| ip/actorId 未传生产预算 | send-email-code 从可信代理头（x-forwarded-for 最后一跳/x-real-ip）取 IP、从服务端会话取 actorId；不信任 body | r0l 正常路径断言 |
+| **改密先消费后更新，update 失败重试永远 400** | 新增 `PasswordResetClaim`（jti 状态机 PENDING→AUTH_CONSUMED→COMPLETED）：写失败后同 token 重试不重复消费；响应丢失重放幂等成功；密码只写一次 | r0u 7 用例（两处断言按幂等契约更新，保留"不重做敏感写"不变量） |
 
-- **FAILED（本轮未实现）**
-  - U07（原 1/F14）：解析隔离"无停止证明过 100 秒仍占隔离"、ACTIVE sweep 计数未命中回滚、读取前实际有界读取 —— `parse-admission.ts` / `parse-runner.ts` / `extract-text` 未改。
-  - U01/U10（原 6/8/11）：生产成本预算只有 Memory 后端、编排未接真实 task/attempt/费用持久入口、来源可退依据/配额映射守卫未接实际服务、运营恢复未接管理员页面/API、null tenant scope 跨租户边界。
-  - U11/U12（原 10/12）：首页 60+/300% 与登录安全回跳、首值旅程页面、价值成本指标未接 API；预付/消费/利润分栏、未知成本口径未完成。
-  - U05-5/6/7：debug/test01 之外的标准岗位跨空间私有统计、企业撤权在 UI/Open/Key/资料各入口一致性、历史保留矩阵。
-  - U13/U14：原 1–14 全量唯一共享集成、同版本冻结 SHA 与页面/业务矩阵未完成。
-- **DECISION_BLOCKED**：平台现金预算/加价率/售价、商业退款/保留期/企业转个人政策未批准，保持拒绝/暂停，不编批准记录。
-- **ENVIRONMENT_UNVERIFIED**：真实 MySQL 行锁与迁移执行、微信/支付宝验签互通、真实 SMTP/短信供应商、真实浏览器页面串联与人工业务验收、供应商与固定成本。离线迁移已准备但**未执行**；客户端生成需隔离真实 .env 后由负责人执行。
+### 3. 原2 / U03：邮件精确接收事实
 
-## 交付材料清单
+- 删除 includes 子串误判；按传输契约提取规范化地址**精确比较**（malice 不再命中 alice）。
+- 无 accepted/rejected 确认事实 → unknown（NO_CONFIRMATION_FACT）；目标拒收 → failed；**SMTP 未配置 = failed（确定未发起）**，与已发起 unknown 区分（r0f 断言更新）。
 
-`final-manifest.json`（版本与文件）、`final-tests.json`（命令/结果/替身范围）、
-`production-wiring-map.md`（入口→服务→事实→页面）、`scope-acceptance-map.md`、
-`schema-migration-and-recovery.md`、`decisions-and-release-gates.md`、
-`user-journey-evidence.md`、`handoff.json`。
+### 4. 原9 / U05：完整身份真实入口一致 + 回跳安全
 
-所有实现者停写，状态统一 `DELIVERED_PENDING_INDEPENDENT_REVIEW`；开发者不自签独立验收或生产就绪。
+- Webhooks 删除 x-user-id 信任路径：一律完整 validateUser（会话/封禁/强制下线/到期），带凭证被拒即 401 不回退、不返回 secret。
+- workspace list / switch / upgrade(×2) / create-personal / workspace-hub-dashboard 五入口同口径移除 x-user-id 快速通道。
+- 登录页 `sanitizeInternalRedirect`：拒绝外站、协议相对(//)、反斜杠、任何 scheme、编码绕过（解码一次复查）；三处消费点（已登录跳转/回跳参数/登录后 finalPath）全覆盖，不合法回落 `/workspace-hub`。
+
+### 5. 原11 / U09-6：调价审计同事务真实计数
+
+- global-markup 改交互式事务：事务内取得实际 updateMany.count 后构建审计再提交；API 与持久 audit details 同为真实行数（default 0/0 = 真实语义）；任一步失败整笔回滚（r0d 夹具升级支持交互式事务 + 回滚语义）。
+
+### 6. 原8 / U06：BYO 目的地 query
+
+- normalizeEndpoint 捕获并逐字节比较 query——tenant/重复/编码变化默认不复用旧 key；host/scheme/path/端口/重定向保护保留（r0e 全绿）。
+
+### 7. 原1 / F14：停止/回收/有界读取
+
+| 缺陷 | 修法 | 证据 |
+| --- | --- | --- |
+| 过期 ACTIVE 凭 TTL/grace 腾槽 | sweep 只把过期 ACTIVE 转 QUARANTINED（诊断保留，计数完全不动）；退出证据由 runner exit 事件驱动 claimToken CAS 归还 | r0k1 两用例改新契约（计数守恒 + CAS 幂等），25 用例全绿 |
+| QUARANTINED 凭 createdAt 时限腾槽 | 仅 `EXIT_CONFIRMED:` 证据标记（迟到退出确认但归还未命中时写入）+ 超安全时限才按 CAS+计数命中守恒回收；无证据保留待管理员带证据恢复 | 同上 |
+| 先无限 arrayBuffer 后看上限 | 读取前 Blob.size 预检，超限 413（Content-Length 仍不作唯一依据） | extract-text 源码（r0k 组合回归） |
+
+### 8. 证据保护（§0.6）
+
+- **133 个被误删的审核/原方案 Markdown 已按 git HEAD 逐路径恢复**（未全仓 restore）。
+- 9 个被改写旧审核测试事实核查：payment/security 旧版完好；byo/pricing/verification 在 unified-independent-review 目录为第三版本（非旧版）；init-diagnostics/login/mailer/reset 旧版从未入 git、原始 blob 不可恢复——如实声明，不伪造，不为补名字创建假文件。本轮新断言全部写入正式测试；旧独立审核目录零修改。
+
+## 二、本轮验证
+
+- 正式 41 文件联合回归：**792/792 通过，exit 0**（2026-11-10 00:27；上轮审核的 1 项 DOCX 预览 504 时间敏感失败本轮未复现——上轮首次结果保留于审核目录，不据此否认）。
+- `tsc --noEmit --incremental false -p tsconfig.json` exit 0。
+- 两份解析 node:test 与 18 项基线由既有证据保护，本轮未改动解析格式逻辑。
+
+## 三、仍未完成（FAILED / ENVIRONMENT_UNVERIFIED，不宣称全部完成）
+
+| 原项 | 状态 | 具体缺口 |
+| --- | --- | --- |
+| 原6/7/8 U01/U10 | **FAILED** | 成本预约无生产共享原子后端与真实入口接线（同键异参/并发预算/UNKNOWN 保留/结算不清已耗）；持久 task/attempt/供应商事实与费用恢复未接真实入口；来源退款未接真实 ledger/grant/hold。原因：跨 Studio/Open/估价/多步重试接线 + 生产数据模型设计，工程量超出本轮交付 |
+| 原9 U05（剩余） | **FAILED** | 企业撤权全入口矩阵、岗位私有统计收口、首页不实宣传（60+/300%）与首次价值页面 |
+| 原10/11/12 U11/U12 | **FAILED** | 运营恢复接真实后台（持久可信事实/服务端权限/CAS）；指标接 API 与真实经营口径（预付款≠已消费、未知固定成本不判完整利润） |
+| 原13 | 部分 + **ENVIRONMENT_UNVERIFIED** | VerificationSendClaim/PasswordResetClaim 已入离线 schema 草案（本轮新增，未执行迁移）；迁移历史 checksum/已部署实例兼容需真实环境核实 |
+| 原14 | 部分 + **ENVIRONMENT_UNVERIFIED** | 当前版本 manifest/SHA/可复跑命令已交（final-manifest.json/final-tests.json）；浏览器实际旅程证据未采集 |
+
+## 四、决策门（无新增已批准项）
+
+售价/现金预算/赠送/商业退款/保留期/企业转个人政策、生产 Token 结算/BYOK 新收费、真实迁移/部署、浏览器验证——全部维持既有门，见 decisions-and-release-gates.md（未改动）。
+
+**由用户将本报告 + final-manifest.json + final-tests.json 交独立审核；执行者不自签独立验收、真实交易或生产可用。**

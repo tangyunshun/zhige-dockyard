@@ -94,6 +94,12 @@ export async function POST(request: NextRequest) {
       now: Date.now(),
     });
 
+    // [F14 §7.4] 读取前 File.size 预检：超限在读取前拒绝（Content-Length 不作为唯一依据，
+    // 实际 Blob.size 是已缓冲对象的真实大小）；预检后读取的字节数受预检上界约束。
+    const blobSize = (file as any).size ?? null;
+    if (blobSize != null && Number(blobSize) > PARSE_LIMITS.EXTRACT_TEXT_MAX_INPUT_BYTES) {
+      return NextResponse.json({ success: false, code: PARSE_CODES.UNREADABLE_INPUT, error: "文件超过大小上限，无法解析" }, { status: 413 });
+    }
     // 既有 20MB 单文件上限保留（不是全系统同一上限）；实际字节再核验
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
@@ -106,7 +112,14 @@ export async function POST(request: NextRequest) {
     const budget = new RootBudget({ deadlineMs: PARSE_LIMITS.HARD_DEADLINE_MS });
     // 停止证据成立（worker 实际退出，含迟到退出）后幂等归还被隔离的租约，不永久卡槽
     const onWorkerExited = async () => {
-      if (lease && quarantined) await releaseParseLease(lease).catch(() => {});
+      if (lease && quarantined) {
+        const ok = await releaseParseLease(lease).catch(() => false);
+        if (!ok) {
+          // [F14 §7.1] 退出已确认（停止证据成立）但归还未命中 → 记 EXIT_CONFIRMED 证据标记，
+          // 有界 sweep 可凭该证据回收；无证据的隔离不腾槽。
+          await quarantineParseLease(lease, "EXIT_CONFIRMED: 迟到退出已确认但自动归还未命中").catch(() => {});
+        }
+      }
     };
     const result = await parseWithBoundary(buffer, fileName, fileType, {
       budget,

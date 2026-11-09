@@ -27,6 +27,25 @@ vi.mock("@/lib/prisma", () => ({
     userdevice: { findMany: vi.fn(async () => []), updateMany: vi.fn(async () => ({ count: 0 })), create: vi.fn(async () => ({})) },
     operationlog: { create: vi.fn(async () => ({})) },
     loginhistory: { create: vi.fn(async () => ({})) },
+    // [U02 §2.2] 改密授权认领替身（jti 唯一 + 状态机）
+    passwordresetclaim: (() => {
+      const claims = new Map<string, any>();
+      return {
+        findUnique: vi.fn(async ({ where }: any) => claims.get(where.id) ?? null),
+        create: vi.fn(async ({ data }: any) => {
+          if (claims.has(data.id)) { const e: any = new Error("unique"); e.code = "P2002"; throw e; }
+          const row = { ...data };
+          claims.set(data.id, row);
+          return { ...row };
+        }),
+        update: vi.fn(async ({ where, data }: any) => {
+          const row = claims.get(where.id);
+          if (!row) { const e: any = new Error("P2025"); e.code = "P2025"; throw e; }
+          Object.assign(row, data);
+          return { ...row };
+        }),
+      };
+    })(),
   },
 }));
 vi.mock("@/lib/auth", () => ({ hashPassword: vi.fn(async () => "fake-hash") }));
@@ -61,13 +80,15 @@ beforeEach(() => {
 afterEach(() => { __resetVerificationBackend(); vi.useRealTimers(); });
 
 describe("U02 resetToken 绑定 challenge", () => {
-  it("同一 token 用两次：一次写密码、一次拒绝", async () => {
+  it("同一 token 用两次：一次写密码；重放（响应丢失场景）幂等成功且不重做敏感写", async () => {
     await storeVerificationCode("email", "fixture@example.com", "reset-password", "123456");
     const token = (await (await verifyEmail(req({ email: "fixture@example.com", code: "123456" }))).json()).resetToken;
     const a = await reset(req({ resetToken: token, newPassword: "fixture-password" }));
     const b = await reset(req({ resetToken: token, newPassword: "fixture-password" }));
-    expect([a.status, b.status]).toEqual([200, 400]);
+    // [U02 §2.2] 首次 200；重放按 COMPLETED 认领幂等 200，密码只写一次（不可重做敏感动作）
+    expect([a.status, b.status]).toEqual([200, 200]);
     expect(h.writes).toBe(1);
+    expect((await b.json()).success).toBe(true);
   });
 
   it("旧 token（已用）不能借后来签发的新码恢复改密权，且新码不被误消费", async () => {
@@ -77,9 +98,10 @@ describe("U02 resetToken 绑定 challenge", () => {
 
     vi.setSystemTime(base + 61_000);
     await storeVerificationCode("email", "fixture@example.com", "reset-password", "654321");
-    // 旧 token 仍带 challenge A，而当前是 challenge B -> 拒绝，不消费 B。
-    expect((await reset(req({ resetToken: tokenA, newPassword: "second-password" }))).status).toBe(400);
-    expect(h.writes).toBe(1);
+    // 旧 token（认领已 COMPLETED）→ 幂等成功但**不重做**密码写、不消费新码 B。
+    const replay = await reset(req({ resetToken: tokenA, newPassword: "second-password" }));
+    expect(replay.status).toBe(200);
+    expect(h.writes).toBe(1); // 密码仍只写过第一次那回
 
     // 新 challenge B 未被旧 token 误消费：用 B 正常签发的新 token 仍可改密。
     const tokenB = (await (await verifyEmail(req({ email: "fixture@example.com", code: "654321" }))).json()).resetToken;

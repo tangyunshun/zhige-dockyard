@@ -1,0 +1,34 @@
+{
+  "status": "DELIVERED_PENDING_INDEPENDENT_REVIEW",
+  "baselineCommit": "5162e5b12b105c71ca71fb628854d32f7201f371",
+  "deliveredAt": "2026-11-09",
+  "executorsStopWrite": true,
+  "implementedOfflineVerified": [
+    "U02/U03 生产验证码与一次性授权（后端+4路由+离线迁移+24测试）",
+    "U06 BYO 新目的地+空 key 不重用旧 key",
+    "U08 计费口径（÷10 移除 + FREE 只读）",
+    "U09-6 全局调价计数/审计/事务",
+    "U05-3 关闭公开诊断私有数据",
+    "U05-4 init-admin 原子初始化"
+  ],
+  "failed": [
+    "U04 支付并发唯一认领/真实收款事实",
+    "U05-1/2/5/6/7 完整认证复活/API Key 状态/企业边界/标准岗位目录",
+    "U07 解析隔离停止证明与有界读取",
+    "U01/U10/U11 真实页面接线/运营恢复/价值成本指标/首值旅程"
+  ],
+  "partial": ["U12 请求内 DDL（公开诊断已处理；webhooks/BYO/settings 待处理）"],
+  "decisionBlocked": ["U13 唯一共享集成（依赖上述实现项实际交到）"],
+  "environmentUnverified": [
+    "真实浏览器页面串联",
+    "真实 MySQL 锁/渠道验签互通/供应商成本/人工业务验收",
+    "真实迁移执行（需独立授权）"
+  ],
+  "hardRulesPreserved": [
+    "F01-F13 已验收止损不动",
+    "F07 人工退款批准保持 MANUAL_REFUND_APPROVAL_PAUSED",
+    "生产 Token 结算硬关闭",
+    "固定点数兼容模式与真实余额/历史数据保持",
+    "未开启任何真实付费能力"
+  ]
+}

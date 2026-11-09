@@ -48,37 +48,29 @@ export async function POST(request: NextRequest) {
     // 已独立设置加价率的模型数（markupRateBps 非空）；「设为默认」时不改动这些行
     const overriddenModelRows = await prisma.modelpricing.count({ where: { markupRateBps: { not: null } } });
 
-    // 单一原子事务：改价（主表+时段）、回写单一真源（systemconfig）、审计日志一起提交；
-    // 任一步失败整笔回滚，杜绝「审计失败却价格已改」「部分提交」等不一致。
-    const txOps: any[] = [];
-    let modelIdx = -1;
-    let periodIdx = -1;
-    if (scope === "all") {
-      modelIdx = txOps.length;
-      // 强制全量覆盖：把同一加价率写入全部主表行 + 全部时段行
-      txOps.push(
-        prisma.modelpricing.updateMany({
+    // 单一原子事务（交互式）：改价（主表+时段）、回写单一真源（systemconfig）、审计日志一起提交；
+    // 审计 details 在同一事务内取得实际 updateMany.count 之后构建——
+    // 修复「审计内容 0/0 与实际修改 7/3 不符」；任一步失败整笔回滚，无部分提交。
+    const txResult = await prisma.$transaction(async (tx: any) => {
+      let modelRows = 0;
+      let periodRows = 0;
+      if (scope === "all") {
+        // 强制全量覆盖：把同一加价率写入全部主表行 + 全部时段行
+        modelRows = (await tx.modelpricing.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
-        }),
-      );
-      periodIdx = txOps.length;
-      txOps.push(
-        prisma.modelpricingperiod.updateMany({
+        })).count;
+        periodRows = (await tx.modelpricingperiod.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
-        }),
-      );
-    }
-    // 两种 scope 都回写全局默认（单一真源），模型 markupRateBps 留空即继承此值
-    txOps.push(
-      prisma.systemconfig.upsert({
+        })).count;
+      }
+      // 两种 scope 都回写全局默认（单一真源），模型 markupRateBps 留空即继承此值
+      await tx.systemconfig.upsert({
         where: { key: "billing.markupCoefficientBps" },
         create: { key: "billing.markupCoefficientBps", value: String(bps) },
         update: { value: String(bps) },
-      }),
-    );
-    if (adminId) {
-      txOps.push(
-        prisma.operationlog.create({
+      });
+      if (adminId) {
+        await tx.operationlog.create({
           data: {
             id: `op_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             userId: adminId,
@@ -91,20 +83,19 @@ export async function POST(request: NextRequest) {
               oldBps,
               newBps: bps,
               percent: pct,
-              modelRows: modelCount,
-              periodRows: periodCount,
+              // [U09-6] 与本次事务内实际修改行数一致（default 模式为 0/0 = 真实语义）
+              modelRows,
+              periodRows,
               overriddenModelRows,
               syncedAt: now.toISOString(),
             } as object,
           },
-        }),
-      );
-    }
-    const txResult = await prisma.$transaction(txOps);
-    if (scope === "all") {
-      modelCount = txResult[modelIdx].count;
-      periodCount = txResult[periodIdx].count;
-    }
+        });
+      }
+      return { modelRows, periodRows };
+    });
+    modelCount = txResult.modelRows;
+    periodCount = txResult.periodRows;
 
     return NextResponse.json({
       success: true,

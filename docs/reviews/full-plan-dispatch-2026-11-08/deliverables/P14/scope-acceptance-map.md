@@ -48,3 +48,21 @@
 - CF-F10 请求 DDL：本轮已把 webhooks / BYO / settings 三处全部下线，改为离线迁移 + not-ready。
 - CF-F08 标准岗位跨空间私有统计：FAILED（U05-7）。
 - 先前的 24 项反例矩阵中，本轮新增/修正覆盖 U04 五项、U05-4 向导闭环、U02 challenge 绑定与短信并发、U12 请求零 DDL；解析/页面/指标反例仍未实现。
+
+---
+
+# 本轮新增映射（2026-11-10 第三轮）
+
+| 原编号 | 实际入口/函数 | 测试 | 状态 |
+| --- | --- | --- | --- |
+| 原5/U04 | `src/lib/payment/fulfill.ts` fulfillPaidOrder（全类型唯一认领 + 终态原子事实行 + SUCCESS 差异行）；`receipt.ts` receiptClaimId | r0y（4 新用例）、r0b（93） | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原2/U02 | `src/lib/verification-backend.ts`（VerificationSendClaim 认领/fail-closed/原子签发/recordFailure）；`reset-password/route.ts`（PasswordResetClaim 状态机）；`send-email-code/route.ts`（可信 ip/actor） | r0l/r0l2/r0l3/r0u | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原2/U03 | `src/lib/mailer.ts`（精确收件人/NO_CONFIRMATION_FACT/SMTP_NOT_CONFIGURED=failed） | r0f | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原9/U05（部分） | `webhooks/route.ts` + workspace list/switch/upgrade/create-personal/hub-dashboard（完整 validateUser）；`auth/login/page.tsx` sanitizeInternalRedirect | 源码接线 + r0g/r0z 回归 | 部分完成（撤权矩阵/首页未做=FAILED） |
+| 原11/U09-6 | `admin/model-pricing/global-markup/route.ts`（交互式事务内审计） | r0d | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原8/U06 | `workspace/byo-model/test/route.ts` normalizeEndpoint（query 参与） | r0e | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原1/F14 | `parse-admission.ts` sweep（证据门）/`extract-text/route.ts`（size 预检 + EXIT_CONFIRMED） | r0k/r0k1 | IMPLEMENTED_OFFLINE_VERIFIED |
+| 原6/7/8 U01/U10 | cost-reservation/execution-orchestration/refund-basis 接真实入口 | — | FAILED（未实现） |
+| 原10/11/12 U11/U12 | ops-readiness/value-cost-metrics 接真实后台/API | — | FAILED（未实现） |
+| 原13 | schema +VerificationSendClaim/+PasswordResetClaim（离线草案） | tsc exit 0 | 部分；迁移属环境门 |
+| 原14 | final-manifest/final-tests/handoff 更新 | — | 部分；浏览器旅程 ENVIRONMENT_UNVERIFIED |

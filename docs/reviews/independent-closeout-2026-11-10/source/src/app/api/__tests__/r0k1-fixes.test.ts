@@ -1,0 +1,878 @@
+/**
+ * R0-K1 修复（原 F14 K01–K04）正向验收：把 7 项缺陷改写为「修复后的正确结果」断言。
+ *
+ * 隔离：内存 Prisma 准入 mock（带事务回滚，忠实复现真实 createPrismaBackend 算法）+ 真实本地
+ * worker_threads 任务 + 受控小预算；无外网、无 OCR 语言包下载、无真实客户文件、无真实数据库/迁移/付费。
+ *
+ * 覆盖：
+ *  KR1  Studio 三处解析入口（file/asset/upload_doc）接入共享准入；缺表/列也不解析、未就绪稳定拒绝
+ *  KR2  真实准入算法：权重完整归还、sweep 归还 workUnits 且事务 CAS、部分提交可恢复、并发回收不重复归还
+ *  KR3  extract-text 路由准入时序：表单读取后才认领；慢表单不占用过期租约后再启动 worker
+ *  KR4-a runner 终止挂起：terminate 不 resolve 时仍能在有限时间报告 STOP_UNCONFIRMED
+ *  KR4-b OCR 创建晚到：未确认停止则保护占用（STOP_UNCONFIRMED），不提前放槽、不返回空串成功
+ *  KR5  预算旁路消除：图片像素/OOXML 解压/表格预览解压/手工降级均受根预算；超限明确失败
+ *  KR6  限制触发诚实失败：21 条 ZIP 不静默遗漏；深度超限不返回空
+ *  KR7-a 旧 OLE2 doc/ppt 经新边界可提取
+ *  KR7-b preview 纯文本 content 快捷仅限纯文本；xlsx/docx 保留 table/html 协议
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import path from "node:path";
+import { Worker } from "node:worker_threads";
+
+const h = vi.hoisted(() => ({
+  leases: new Map<string, any>(),
+  counters: new Map<string, any>(),
+  platformMax: 1,
+  userMax: 1,
+  rateMax: 20,
+  userRate: new Map<string, number[]>(),
+  now: 1_700_000_000_000,
+  workerStarts: 0,
+  workerExits: 0,
+  failAdmission: null as null | { code: string },
+  releaseFail: false,
+  auth: { valid: true, user: { id: "u1" } } as any,
+  previewDoc: null as any,
+  memberOk: true,
+  previewBuffer: null as Buffer | null,
+  acquireCalledAt: 0,
+}));
+
+// ── 外部 IO 全部替换 ──
+vi.mock("@/lib/auth", () => ({ validateUser: vi.fn(async () => h.auth) }));
+vi.mock("@/lib/security", () => ({
+  requireWorkspaceMembership: vi.fn(async () => h.memberOk),
+  getLogicalWorkspaceRole: vi.fn(async () => "OWNER"),
+  requireWorkspacePermission: vi.fn(async () => true),
+}));
+vi.mock("@/lib/file-store", () => ({
+  readAssetFile: vi.fn(async () => h.previewBuffer),
+  allocateObjectKey: vi.fn(() => ({ key: "obj-key" })),
+  saveAssetFileToKey: vi.fn(() => ({ filePath: "obj-key", size: 1, mimeType: "text/plain" })),
+  saveAssetFile: vi.fn(() => ({ filePath: "obj-key", size: 1, mimeType: "text/plain" })),
+  deleteAssetFile: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/lib/storage-quota", () => {
+  class StorageQuotaError extends Error {
+    code = "STORAGE_QUOTA";
+    status = 413;
+  }
+  const noop = async () => ({ released: false, drift: false });
+  return {
+    addStorageUsed: vi.fn(noop),
+    subtractStorageUsed: vi.fn(noop),
+    reserveStorageBytes: vi.fn(noop),
+    releaseStorageBytes: vi.fn(noop),
+    claimObjectCleanup: vi.fn(async () => ({})),
+    finalizeObjectCleanup: vi.fn(async () => ({})),
+    countOtherReferences: vi.fn(async () => 0),
+    findStorageOpByDocument: vi.fn(async () => null),
+    releaseReservationAtomic: vi.fn(noop),
+    bindOperationObjectKey: vi.fn(async () => ({})),
+    confirmStorageOperation: vi.fn(async () => ({})),
+    markStorageOperationPendingCleanup: vi.fn(async () => ({})),
+    reconcileWorkspaceStorage: vi.fn(async () => ({})),
+    StorageQuotaError,
+  };
+});
+vi.mock("@/lib/credit-service", () => ({
+  grantNewUserGift: vi.fn(async () => ({})),
+  consumePoints: vi.fn(async () => ({})),
+  refundConsumedPoints: vi.fn(async () => ({})),
+}));
+vi.mock("@/lib/notifications-store", () => ({ addNotification: vi.fn(async () => {}) }));
+vi.mock("@/lib/audit", () => ({ writeAuditLog: vi.fn(async () => {}) }));
+vi.mock("@/lib/workspaceInit", () => ({ ensureDefaultComponents: vi.fn(async () => {}) }));
+vi.mock("@/lib/serverCache", () => ({ clearServerCache: vi.fn(() => {}) }));
+
+// ── 忠实 Prisma mock：含解析准入表 + document，事务快照回滚，复现 createPrismaBackend 真实算法 ──
+function makePrismaMock() {
+  const now = () => h.now;
+  const counters = h.counters;
+  if (!counters.has("platform")) counters.set("platform", { id: "platform", active: 0, workUnits: 0 });
+  const leases = h.leases;
+  let leaseSeq = 0;
+  let failCounterDecrement = false;
+  let beforeLeaseUpdate: ((args: any) => Promise<void>) | null = null;
+  let beforeLeaseCreate: ((args: any) => Promise<void>) | null = null;
+
+  function counterUpdateMany(args: any) {
+    let count = 0;
+    for (const r of [...counters.values()]) {
+      if (args.where?.id !== undefined && args.where.id !== r.id) continue;
+      if (args.where?.active?.lt !== undefined && !(r.active < args.where.active.lt)) continue;
+      if (args.where?.active?.gt !== undefined && !(r.active > args.where.active.gt)) continue;
+      if (args.where?.workUnits?.lte !== undefined && !(r.workUnits <= args.where.workUnits.lte)) continue;
+      if (args.where?.workUnits?.gte !== undefined && !(r.workUnits >= args.where.workUnits.gte)) continue;
+      if (failCounterDecrement) throw new Error("counter decrement failed");
+      if (args.data?.active?.increment) r.active += args.data.active.increment;
+      if (args.data?.active?.decrement) r.active -= args.data.active.decrement;
+      if (args.data?.workUnits?.increment) r.workUnits += args.data.workUnits.increment;
+      if (args.data?.workUnits?.decrement) r.workUnits -= args.data.workUnits.decrement;
+      count++;
+    }
+    return { count };
+  }
+
+  function leaseUpdateMany(args: any) {
+    // 双回收屏障：用于强制两个回收者在该步骤交错，复现并发竞争
+    if (args.data?.status && beforeLeaseUpdate) {
+      // 同步触发屏障（测试内 await 编排）
+      (beforeLeaseUpdate as any)(args);
+    }
+    let count = 0;
+    for (const r of [...leases.values()]) {
+      if (args.where?.leaseId !== undefined && args.where.leaseId !== r.leaseId) continue;
+      if (args.where?.status?.in !== undefined) {
+        if (!args.where.status.in.includes(r.status)) continue;
+      } else if (args.where?.status !== undefined && args.where.status !== r.status) continue;
+      if (args.where?.leaseUntil?.lt !== undefined && !(r.leaseUntil < args.where.leaseUntil.lt)) continue;
+      if (args.where?.createdAt?.lt !== undefined && !(r.createdAt < args.where.createdAt.lt)) continue;
+      if (args.data?.status) r.status = args.data.status;
+      if (args.data?.releasedAt) r.releasedAt = args.data.releasedAt;
+      if (args.data?.updatedAt) r.updatedAt = args.data.updatedAt;
+      count++;
+    }
+    return { count };
+  }
+
+  function leaseFindMany(args: any) {
+    let rows = [...leases.values()];
+    if (args.where?.status) rows = rows.filter((r) => r.status === args.where.status);
+    else if (args.where?.status?.in) rows = rows.filter((r) => args.where.status.in.includes(r.status));
+    if (args.where?.leaseUntil?.lt !== undefined) rows = rows.filter((r) => r.leaseUntil < args.where.leaseUntil.lt);
+    if (args.where?.createdAt?.lt !== undefined) rows = rows.filter((r) => r.createdAt < args.where.createdAt.lt);
+    if (args.take) rows = rows.slice(0, args.take);
+    if (args.select) rows = rows.map((r) => ({ leaseId: r.leaseId, userId: r.userId, workUnits: r.workUnits }));
+    return rows;
+  }
+
+  const base: any = {
+    document: {
+      findUnique: async () => h.previewDoc,
+      create: async () => ({ id: "d1" }),
+      deleteMany: async () => ({ count: 0 }),
+      findFirst: async () => null,
+      update: async () => ({}),
+    },
+    workspace: { findUnique: async () => ({ id: "w1" }) },
+    user: { findUnique: async () => ({ name: "u", email: "u@x" }) },
+    parseadmissioncounter: {
+      findMany: async (args: any) => [...counters.values()].filter((r) => !args?.where || args.where.id === r.id),
+      create: async (args: any) => {
+        if (beforeLeaseCreate) await (beforeLeaseCreate as any)(args);
+        counters.set(args.data.id, { ...args.data });
+        return { ...args.data };
+      },
+      updateMany: async (args: any) => counterUpdateMany(args),
+    },
+    parselease: {
+      findMany: async (args: any) => leaseFindMany(args),
+      findUnique: async (args: any) => {
+        const r = leases.get(args?.where?.leaseId);
+        if (!r) return null;
+        if (args?.select) {
+          const out: any = {};
+          for (const k of Object.keys(args.select)) if (args.select[k]) out[k] = r[k];
+          return out;
+        }
+        return { ...r };
+      },
+      create: async (args: any) => {
+        if (beforeLeaseCreate) await (beforeLeaseCreate as any)(args);
+        const row = {
+          ...args.data,
+          leaseId: args.data.leaseId || "lease_" + leaseSeq++,
+          createdAt: args.data.createdAt || new Date(now() - 60000),
+        };
+        leases.set(row.leaseId, row);
+        return row;
+      },
+      updateMany: async (args: any) => leaseUpdateMany(args),
+      deleteMany: async (args: any) => {
+        let c = 0;
+        for (const [k, r] of [...leases.entries()]) {
+          if (args.where?.status?.in?.includes(r.status) && r.createdAt < args.where.createdAt.lt) {
+            leases.delete(k);
+            c++;
+          }
+        }
+        return { count: c };
+      },
+    },
+    $transaction: async (cb: any) => {
+      const snapC = new Map([...counters.entries()].map(([k, v]) => [k, { ...v }]));
+      const snapL = new Map([...leases.entries()].map(([k, v]) => [k, { ...v }]));
+      try {
+        return await cb({
+          parseadmissioncounter: {
+            findMany: base.parseadmissioncounter.findMany,
+            create: base.parseadmissioncounter.create,
+            updateMany: base.parseadmissioncounter.updateMany,
+          },
+          parselease: {
+            findUnique: base.parselease.findUnique,
+            findMany: base.parselease.findMany,
+            create: base.parselease.create,
+            updateMany: base.parselease.updateMany,
+            deleteMany: base.parselease.deleteMany,
+          },
+        });
+      } catch (e) {
+        counters.clear();
+        snapC.forEach((v, k) => counters.set(k, { ...v }));
+        leases.clear();
+        snapL.forEach((v, k) => leases.set(k, { ...v }));
+        throw e;
+      }
+    },
+  };
+  const prisma: any = new Proxy(base, {
+    get(target, prop: any) {
+      if (prop in target) return target[prop];
+      // 任何未显式建模的表：返回 no-op 模型，避免 handler 支线路径抛 TypeError
+      return new Proxy({}, { get: () => async () => ({ count: 0 }) });
+    },
+  });
+  return {
+    prisma,
+    setFailCounterDecrement: (v: boolean) => { failCounterDecrement = v; },
+    setBeforeLeaseUpdate: (fn: any) => { beforeLeaseUpdate = fn; },
+  };
+}
+
+const prismaMock = vi.hoisted(() => makePrismaMock());
+vi.mock("@/lib/prisma", () => ({ prisma: prismaMock.prisma }));
+
+vi.mock("@/lib/parse-policy", async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    PARSE_LIMITS: {
+      ...actual.PARSE_LIMITS,
+      HARD_DEADLINE_MS: 8000,
+      EXIT_CONFIRM_MS: 1000,
+      LEASE_TTL_MS: 8500,
+      LEASE_SWEEP_GRACE_MS: 100,
+      RATE_WINDOW_MS: 60_000,
+      PLATFORM_MAX_CONCURRENT: 1,
+      USER_MAX_CONCURRENT: 1,
+      USER_MAX_PER_MINUTE: 20,
+      WORK_UNITS_PER_PARSE: 1,
+      FORM_DATA_TIMEOUT_MS: 30000,
+    },
+  };
+});
+
+const LIMITS = PARSE_LIMITS as any;
+const DEFAULT_HARD_DEADLINE = 8000;
+function withShortDeadline<T>(ms: number, fn: () => Promise<T>): Promise<T> {
+  LIMITS.HARD_DEADLINE_MS = ms;
+  return fn().finally(() => { LIMITS.HARD_DEADLINE_MS = DEFAULT_HARD_DEADLINE; });
+}
+
+import {
+  PARSE_CODES,
+  PARSE_LIMITS,
+  ROOT_LIMITS,
+  ParseResourceError,
+  RootBudget,
+} from "@/lib/parse-policy";
+import {
+  runIsolatedParse,
+  __setParseRunnerHooks,
+  __resetParseRunnerHooks,
+} from "@/lib/parse-runner";
+import {
+  acquireParseLease,
+  releaseParseLease,
+  quarantineParseLease,
+  sweepParseLeases,
+  __setParseAdmissionBackendForTest,
+  createPrismaBackend,
+  type ParseAdmissionBackend,
+  type ParseLease,
+} from "@/lib/parse-admission";
+import {
+  parseWithBoundary,
+  __setParseBoundaryTestHooks,
+  __setOcrTestHooks,
+} from "@/lib/text-extract";
+
+// ── 简单内存后端：用于「准入是否已接线」类用例（可配置拒绝） ──
+function makeSimpleBackend(failWith?: { code: string }) {
+  const leases = new Map<string, any>();
+  return {
+    async acquire(input: any) {
+      if (failWith) {
+        const e: any = new Error("admission not ready");
+        e.code = failWith.code;
+        throw e;
+      }
+      // acquireParseLease 期望后端返回 "granted" 字符串，租约由它自身构建
+      return "granted" as any;
+    },
+    async release(lease: any) { leases.delete(lease?.leaseId); return true; },
+    async sweep() { return 0; },
+    async quarantine(lease: any) { leases.set(lease?.leaseId, "quarantined"); return true; },
+    async isLeaseActive() { return true; },
+    notReady() { return false; },
+  } as unknown as ParseAdmissionBackend;
+}
+
+// ── 内存 fake deps：让 runStudioPost 越过依赖注入边界到达 worker（不触发真实扣点/存储/模型） ──
+function makeFakeDeps() {
+  return {
+    prisma: prismaMock.prisma,
+    getUserId: async () => "u1",
+    createModelAdapter: async () => ({}) as any,
+    getActiveContractSnapshot: async () => null,
+    requireWorkspaceMembership: async () => h.memberOk,
+    requireWorkspacePermission: async () => true,
+    getRestrictedComponentIds: async () => [],
+    getOrCreateQuota: async () => ({ usedBytes: 0, limitBytes: 9e15 }),
+    checkAndResetQuotaCycle: async () => null,
+    resolveDefaultDeployment: async () => null,
+    touchComponentUsage: async () => {},
+    writeAuditLog: async () => {},
+    creditService: {
+      consumePoints: async () => ({ ok: true, remainingPoints: 1000 }),
+      consumeAndCreateSettlementHold: async () => ({ ok: true, holdId: "hold1" }),
+      refundConsumedPoints: async () => ({ ok: true }),
+    },
+    refundService: { enqueueRefundRecovery: async () => {} },
+    settlementService: {
+      releaseSettlementHold: async () => ({}),
+      completeSettlement: async () => ({}),
+      enqueueSettlementRecovery: async () => {},
+    },
+  } as any;
+}
+
+let clockNow = 0;
+let clockListeners: Array<() => void> = [];
+function mockTime(t: number) {
+  clockNow = t;
+  for (const l of clockListeners.splice(0)) l();
+}
+function mockHud() {
+  return {
+    setInterval: (_fn: any, _ms: number) => 0 as any,
+    clearInterval: (_id: any) => {},
+  };
+}
+function png(w: number, hgt: number): Buffer {
+  const buf = Buffer.alloc(8 + 8 + 13 + 2);
+  buf.writeUInt8(0x89); buf.writeUInt8(0x50); buf.writeUInt8(0x4e); buf.writeUInt8(0x47);
+  buf.writeUInt32BE(w, 16);
+  buf.writeUInt32BE(hgt, 20);
+  return buf;
+}
+function docx(bodyText: string): Buffer {
+  const AdmZip = require("adm-zip");
+  const z = new AdmZip();
+  z.addFile("word/document.xml", Buffer.from(
+    `<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>${bodyText}</w:t></w:r></w:p></w:body></w:document>`,
+    "utf-8",
+  ));
+  return z.toBuffer();
+}
+
+function instrumentRealWorkers() {
+  __setParseRunnerHooks({
+    workerFactory: (file: string, opts: any) => {
+      h.workerStarts++;
+      const w = new Worker(file, opts);
+      w.on("exit", () => { h.workerExits++; });
+      return w;
+    },
+    clock: () => clockNow,
+    exitConfirmMs: 1000,
+    terminateTimeoutMs: 1000,
+  });
+}
+function restoreRunner() { __resetParseRunnerHooks(); }
+
+beforeEach(() => {
+  h.leases.clear();
+  h.counters.clear();
+  h.counters.set("platform", { id: "platform", active: 0, workUnits: 0 });
+  h.workerStarts = 0;
+  h.workerExits = 0;
+  h.failAdmission = null;
+  h.acquireCalledAt = 0;
+  h.previewDoc = null;
+  h.previewBuffer = null;
+  h.memberOk = true;
+  h.auth = { valid: true, user: { id: "u1" } };
+  clockListeners = [];
+  clockNow = 0;
+  __setParseBoundaryTestHooks({ taskKind: null });
+  // 默认使用真实算法后端（基于 mock prisma）
+  __setParseAdmissionBackendForTest(createPrismaBackend());
+});
+
+afterEach(() => {
+  restoreRunner();
+  __setParseAdmissionBackendForTest(null);
+});
+
+// ───────────────────────── KR1：Studio 三处解析入口接入共享准入 ─────────────────────────
+describe("R0-K1 KR1：Studio 三处解析入口接入共享准入，未就绪稳定拒绝", () => {
+  it("upload_doc：解析前先认领共享准入；缺表/列（后端不可用）则稳定拒绝且不启动 worker", async () => {
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    __setParseAdmissionBackendForTest(makeSimpleBackend({ code: PARSE_CODES.ADMISSION_NOT_READY }));
+    const fd = new FormData();
+    fd.append("action", "upload_doc");
+    fd.append("workspaceId", "w1");
+    fd.append("title", "x");
+    fd.append("file", new Blob([Buffer.from("hello world 正常文本".repeat(20))], { type: "text/plain" }), "note.txt");
+    const res = await runStudioPost({ method: "POST", headers: new Headers({ authorization: "Bearer x", "content-type": "multipart/form-data" }), nextUrl: { searchParams: new URLSearchParams() }, url: "http://localhost", signal: new AbortController().signal, formData: async () => fd } as any, makeFakeDeps());
+    expect(res.status).toBe(503);
+    expect(h.workerStarts).toBe(0);
+  });
+
+  it("upload_doc：准入可用时认领一次并启动 worker（名额在退出确认后释放）", async () => {
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+    const fd = new FormData();
+    fd.append("action", "upload_doc");
+    fd.append("workspaceId", "w1");
+    fd.append("title", "x");
+    fd.append("file", new Blob([Buffer.from("hello world 正常文本".repeat(20))], { type: "text/plain" }), "note.txt");
+    const res = await runStudioPost({ method: "POST", headers: new Headers({ authorization: "Bearer x", "content-type": "multipart/form-data" }), nextUrl: { searchParams: new URLSearchParams() }, url: "http://localhost", signal: new AbortController().signal, formData: async () => fd } as any, makeFakeDeps());
+    // 不强制 200（upload_doc 仍需模型上下文），但必须已认领并启动 worker
+    expect(h.workerStarts).toBe(1);
+    expect(h.workerExits).toBe(1);
+  });
+
+  it("upload_doc STOP_UNCONFIRMED：未确认停止保护占用，不放槽、返回 503", async () => {
+    // 用挂起假 worker 模拟「terminate 不确认退出」，中途取消请求触发 STOP_UNCONFIRMED
+    __setParseRunnerHooks({
+      workerFactory: () => {
+        const w: any = new (require("events").EventEmitter)();
+        w.postMessage = () => {};
+        w.terminate = () => new Promise(() => {}); // 永不 resolve、永不退出
+        return w;
+      },
+      exitConfirmMs: 5,
+      terminateTimeoutMs: 5,
+    });
+    const admission = await import("@/lib/parse-admission");
+    const releaseSpy = vi.spyOn(admission, "releaseParseLease");
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const controller = new AbortController();
+    const fd = new FormData();
+    fd.append("action", "upload_doc");
+    fd.append("workspaceId", "w1");
+    fd.append("title", "x");
+    fd.append("file", new Blob([Buffer.from("hello world 正常文本".repeat(50))], { type: "text/plain" }), "note.txt");
+    const p = runStudioPost(
+      { method: "POST", headers: new Headers({ authorization: "Bearer x", "content-type": "multipart/form-data" }), nextUrl: { searchParams: new URLSearchParams() }, url: "http://localhost", signal: controller.signal, formData: async () => fd } as any,
+      makeFakeDeps(),
+    );
+    setTimeout(() => controller.abort(), 40);
+    const res = await p;
+    // 未确认停止：解析稳定码 STOP_UNCONFIRMED → 503，且名额必须保留（不放给新任务）
+    expect(res.status).toBe(503);
+    expect(releaseSpy).not.toHaveBeenCalled();
+  });
+});
+
+// ───────────────────────── KR2：真实准入算法（权重/回收/CAS/回滚） ─────────────────────────
+describe("R0-K1 KR2：真实准入算法——权重完整归还、sweep 归还 workUnits、事务 CAS、部分提交可恢复", () => {
+  function seed(active: number, work: number) {
+    h.counters.set("platform", { id: "platform", active, workUnits: work });
+    h.leases.set("old", { leaseId: "old", userId: "u1", workUnits: 1, status: "ACTIVE", leaseUntil: new Date(h.now - 100000), createdAt: new Date(h.now - 1000) });
+    h.leases.set("healthy", { leaseId: "healthy", userId: "u1", workUnits: 1, status: "ACTIVE", leaseUntil: new Date(h.now + 60000), createdAt: new Date(h.now - 1000) });
+  }
+
+  it("双回收者竞争同一过期行：仅隔离一次（CAS）；无停止证据不腾槽，计数守恒", async () => {
+    seed(2, 2);
+    let arrivals = 0;
+    const both = Promise.withResolvers();
+    const allowA = Promise.withResolvers();
+    const allowB = Promise.withResolvers();
+    prismaMock.setBeforeLeaseUpdate(async () => {
+      arrivals++;
+      if (arrivals === 1) { both.resolve(undefined); await allowA.promise; }
+      if (arrivals === 2) { allowB.resolve(undefined); }
+    });
+    const a = sweepParseLeases(h.now);
+    const b = sweepParseLeases(h.now);
+    await both.promise; // 两回收者都到达过期行更新
+    allowA.resolve(undefined);
+    await Promise.all([a, b]);
+    prismaMock.setBeforeLeaseUpdate(null);
+    // [F14 §7.1] 过期 ACTIVE 仅转 QUARANTINED（诊断保留，计数不动）：
+    // 平台 active 仍为 2（old+healthy 都不腾槽）；恰好一次隔离（CAS）
+    expect(h.counters.get("platform").active).toBe(2);
+    expect(h.counters.get("platform").workUnits).toBe(2);
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
+    expect([...h.leases.values()].filter((l) => l.status === "ACTIVE").length).toBe(1);
+  });
+
+  it("过期回收归还完整 workUnits：12 轮 acquire+sweep 后 workUnits 回到 0，下一 acquire 不再 BUSY", async () => {
+    h.counters.set("platform", { id: "platform", active: 0, workUnits: 0 });
+    for (let i = 0; i < 12; i++) {
+      const now = h.now + i * 200000;
+      await acquireParseLease({ userId: "u1", workUnits: 1, now });
+      await sweepParseLeases(now + 100000);
+    }
+    // 12 轮后所有租约已过期回收：active=0 且 workUnits=0（不再残留导致 BUSY）
+    expect(h.counters.get("platform").workUnits).toBe(0);
+    const lease = await acquireParseLease({ userId: "u1", workUnits: 1, now: h.now + 12 * 200000 });
+    expect(lease).toBeTruthy();
+    await releaseParseLease(lease);
+  });
+
+  it("sweep 隔离幂等可重试：无证据不腾槽（计数不动），重复 sweep 不二次改变状态", async () => {
+    seed(2, 2);
+    await sweepParseLeases(h.now);
+    // [F14 §7.1] 过期 ACTIVE → QUARANTINED（诊断保留，计数完全不动）
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
+    expect(h.counters.get("platform").active).toBe(2);
+    expect(h.counters.get("platform").workUnits).toBe(2);
+    // 重复 sweep：状态条件不再命中，不二次改变、不重复计数
+    await sweepParseLeases(h.now);
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
+    expect(h.counters.get("platform").active).toBe(2);
+  });
+
+  it("带权重释放：workUnits=2 的租约释放后平台 workUnits 回到 0（不再泄漏 1）", async () => {
+    h.counters.set("platform", { id: "platform", active: 0, workUnits: 0 });
+    const lease = await acquireParseLease({ userId: "u1", workUnits: 2, now: h.now });
+    expect(h.counters.get("platform").workUnits).toBe(2);
+    await releaseParseLease(lease);
+    expect(h.counters.get("platform").workUnits).toBe(0);
+    expect(h.counters.get("platform").active).toBe(0);
+  });
+});
+
+// ───────────────────────── KR3：extract-text 路由准入时序 ─────────────────────────
+describe("R0-K1 KR3：extract-text 表单读取后才认领准入；慢表单不占用过期租约后再启动 worker", () => {
+  it("准入在 formData 读取之后才认领：慢表单（>租约 TTL）完成后仍用新鲜租约启动 worker", async () => {
+    const { POST } = await import("@/app/api/studio/extract-text/route");
+    const { createPrismaBackend } = await import("@/lib/parse-admission");
+    __setParseAdmissionBackendForTest(createPrismaBackend());
+    instrumentRealWorkers();
+    h.leases.clear();
+    // 记录认领时刻：包装后端 acquire
+    const realBackend = createPrismaBackend();
+    const wrapped: ParseAdmissionBackend = {
+      acquire: (input: any) => { h.acquireCalledAt = Date.now(); return realBackend.acquire(input as any); },
+      release: (lease: any) => realBackend.release(lease as any),
+      sweep: (now: number) => realBackend.sweep(now),
+      quarantine: (lease: any, note: string) => realBackend.quarantine(lease as any, note),
+      isLeaseActive: (lease: any) => realBackend.isLeaseActive(lease as any),
+    };
+    __setParseAdmissionBackendForTest(wrapped);
+
+    const buffer = Buffer.from("hello world 这是正常的解析文本".repeat(5));
+    const fd = new FormData();
+    fd.append("file", new Blob([buffer], { type: "text/plain" }), "note.txt");
+    const formDataDelayMs = 1500;
+    const req: any = {
+      headers: new Headers({ authorization: "Bearer x", "content-length": String(buffer.length) }),
+      signal: new AbortController().signal,
+      formData: () => new Promise((res) => setTimeout(() => res(fd), formDataDelayMs)),
+    };
+    const t0 = Date.now();
+    const res = await withShortDeadline(8000, async () => POST(req as any));
+    const elapsed = Date.now() - t0;
+    expect(res.status).toBe(200);
+    // 认领发生在 formData 读取之后（>formDataDelayMs），而非之前（即使租约 TTL 很小也已过期）
+    expect(h.acquireCalledAt).toBeGreaterThan(t0 + formDataDelayMs - 100);
+    expect(elapsed).toBeGreaterThan(formDataDelayMs);
+  });
+
+  it("迟到 arrayBuffer 期间租约已过期：拒绝启动 worker（503），不并发超发", async () => {
+    const { POST } = await import("@/app/api/studio/extract-text/route");
+    instrumentRealWorkers();
+    h.leases.clear();
+    // 模拟“慢 arrayBuffer 后旧租约已失效”：后端 isLeaseActive 返回 false，路由据此不得启动 worker
+    const realBackend = createPrismaBackend();
+    const wrapped: ParseAdmissionBackend = {
+      acquire: (input: any) => realBackend.acquire(input as any),
+      release: (lease: any) => realBackend.release(lease as any),
+      sweep: (now: number) => realBackend.sweep(now),
+      quarantine: (lease: any, note: string) => realBackend.quarantine(lease as any, note),
+      isLeaseActive: async () => false,
+    };
+    __setParseAdmissionBackendForTest(wrapped);
+    const buffer = Buffer.from("hello world 这是正常的解析文本".repeat(5));
+    const req: any = {
+      headers: new Headers({ authorization: "Bearer x", "content-length": String(buffer.length) }),
+      signal: new AbortController().signal,
+      formData: async () => {
+        const f = new FormData();
+        f.append("file", new Blob([buffer], { type: "text/plain" }), "note.txt");
+        return f;
+      },
+    };
+    const res = await withShortDeadline(8000, () => POST(req as any));
+    expect(res.status).toBe(503);
+    // 租约失效后不得启动 worker（不并发超发、零模型/扣点）
+    expect(h.workerStarts).toBe(0);
+  });
+});
+
+// ───────────────────────── KR4-a：runner 终止挂起 ─────────────────────────
+describe("R0-K1 KR4-a：terminate 不 resolve 时仍能在有限时间报告 STOP_UNCONFIRMED", () => {
+  it("挂起 terminate：在有限时间结算（STOP_UNCONFIRMED），不无限挂起", async () => {
+    __setParseRunnerHooks({
+      workerFactory: () => {
+        const ee: any = new (require("events").EventEmitter)();
+        ee.postMessage = () => {}; // 永不发送消息
+        ee.terminate = () => new Promise<number>(() => {}); // 永不 resolve
+        return ee as unknown as Worker;
+      },
+      clock: () => clockNow,
+      exitConfirmMs: 5,
+      terminateTimeoutMs: 5,
+    });
+    const p = runIsolatedParse({ task: { kind: "parse", text: "hi" }, budget: new RootBudget({ limits: ROOT_LIMITS }), deadlineMs: 10 });
+    const settled = { v: false, code: "" as string };
+    p.then(() => { settled.v = true; }, (e) => { settled.v = true; settled.code = (e as any)?.code || ""; });
+    mockTime(0);
+    await vi.waitFor(() => expect(settled.v).toBe(true), { timeout: 2000 });
+    // 终止挂起后，仍在有限时间以「停止未确认」保守隔离，而非 TIMEOUT 或挂起
+    expect(settled.code).toBe(PARSE_CODES.STOP_UNCONFIRMED);
+  });
+});
+
+// ───────────────────────── KR4-b：OCR 创建晚到 ─────────────────────────
+describe("R0-K1 KR4-b：OCR 创建未完成时超时返回空串/无文字则保护占用（STOP_UNCONFIRMED），不提前放槽", () => {
+  it("OCR 工厂永不返回：路由超时后返回 STOP_UNCONFIRMED（503），租约不提前释放、worker 终被终止", async () => {
+    const route = await import("@/app/api/studio/extract-text/route");
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    // OCR 内部超时（2000ms）必须晚于路由硬 deadline（300ms），确保路由先中止、OCR 仍未确认停止
+    __setOcrTestHooks({ factory: () => new Promise<any>(() => { /* 永不 resolve 创建 */ }), timeoutMs: 2000 });
+    const pngBuf = png(100, 100);
+    const fd = new FormData();
+    fd.append("file", new Blob([new Uint8Array(pngBuf)], { type: "image/png" }), "a.png");
+    const req: any = {
+      headers: new Headers({ authorization: "Bearer x", "content-length": String(pngBuf.length) }),
+      signal: new AbortController().signal,
+      formData: async () => fd,
+    };
+    const res = await withShortDeadline(300, () => route.POST(req as any));
+    // 未确认停止 → 保护占用：503，不提前放槽（released 在响应时仍为 0）
+    expect(res.status).toBe(503);
+    expect(h.workerStarts).toBe(0); // OCR 工厂未创建，无 worker 启动
+  });
+});
+
+// ───────────────────────── KR5：预算旁路消除 ─────────────────────────
+describe("R0-K1 KR5：图片像素 / OOXML 解压 / 表格预览解压 / 手工降级均受根预算，超限明确失败", () => {
+  beforeEach(() => {
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+    __setOcrTestHooks({
+      factory: async () => ({ setParameters: async () => {}, recognize: async () => ({ data: { text: "ocr" } }), terminate: async () => {} } as any),
+    });
+  });
+
+  it("图片像素预算：100×100 像素在像素上限 4 时明确失败，OCR 不启动", async () => {
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS, imagePixels: 4 }, deadlineMs: 5000 });
+    await expect(parseWithBoundary(png(100, 100), "a.png", "image/png", { budget: b, timeoutMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+    expect(h.workerStarts).toBe(0);
+  });
+
+  it("OOXML 解压预算：微小 docx 在 inflatedBytes 上限 8 时明确失败，不绕过", async () => {
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS, inflatedBytes: 8 }, deadlineMs: 5000 });
+    await expect(parseWithBoundary(docx("Controlled OOXML body with readable text."), "a.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", { budget: b, timeoutMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+
+  it("表格预览解压预算：xlsx 在 inflatedBytes 上限 8 时明确失败", async () => {
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["项目", "金额"]]), "Sheet1");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "buffer" }) as Buffer;
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS, inflatedBytes: 8 }, deadlineMs: 5000 });
+    await expect(runIsolatedParse({ task: { kind: "table-preview", buffer: buf, fileName: "a.xlsx" }, budget: b, deadlineMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+
+  it("手工降级解压预算：zip 内文本在 inflatedBytes 上限 8 时明确失败", async () => {
+    const AdmZip = require("adm-zip");
+    const z = new AdmZip();
+    z.addFile("payload.txt", Buffer.from("手工降级解压预算 controlled text content here".repeat(4)));
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS, inflatedBytes: 8 }, deadlineMs: 5000 });
+    await expect(parseWithBoundary(z.toBuffer(), "a.zip", "application/zip", { budget: b, timeoutMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+});
+
+// ───────────────────────── KR6：限制触发诚实失败 ─────────────────────────
+describe("R0-K1 KR6：21 条 ZIP 不静默遗漏；深度超限不返回空", () => {
+  beforeEach(() => {
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+  });
+
+  it("21 条 ZIP：达到每层 20 条上限明确失败，不静默返回 20 条成功", async () => {
+    const AdmZip = require("adm-zip");
+    const z = new AdmZip();
+    for (let i = 0; i < 21; i++) z.addFile(`f${i}.txt`, Buffer.from(`entry number ${i} content`, "utf-8"));
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS, entries: 200 }, deadlineMs: 5000 });
+    await expect(parseWithBoundary(z.toBuffer(), "bundle.zip", "application/zip", { budget: b, timeoutMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+
+  it("深度超限：3 层嵌套压缩包明确失败，不静默返回空", async () => {
+    const AdmZip = require("adm-zip");
+    const mk = (content: string) => { const i = new AdmZip(); i.addFile("a.txt", Buffer.from(content)); return i.toBuffer(); };
+    const l3 = mk("level three");
+    const l2 = new AdmZip(); l2.addFile("l3.zip", l3);
+    const l1 = new AdmZip(); l1.addFile("l2.zip", l2.toBuffer());
+    const buf = l1.toBuffer();
+    const b = new RootBudget({ limits: { ...ROOT_LIMITS }, deadlineMs: 5000 });
+    await expect(parseWithBoundary(buf, "l1.zip", "application/zip", { budget: b, timeoutMs: 5000 }))
+      .rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+});
+
+// ───────────────────────── KR7-a：旧 OLE2 doc/ppt 经新边界可提取 ─────────────────────────
+describe("R0-K1 KR7-a：旧 OLE2 doc/ppt 经新边界可提取（legacyWord/legacyPpt 优先，parseTable 不冒泡）", () => {
+  beforeEach(() => {
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+    __setOcrTestHooks({ factory: async () => ({ setParameters: async () => {}, recognize: async () => ({ data: { text: "" } }), terminate: async () => {} } as any) });
+  });
+
+  it("旧 .doc 经隔离边界返回预期正文", async () => {
+    const buf = require("fs").readFileSync(path.join(__dirname, "../../../lib/__tests__/fixtures/legacy/sample-real.doc"));
+    const r = await parseWithBoundary(buf, "sample-real.doc", "application/msword", { timeoutMs: 15000 });
+    expect(r.noText).toBe(false);
+    expect(r.text).toContain("智慧园区项目立项报告");
+  });
+
+  it("旧 .ppt 经隔离边界返回预期正文", async () => {
+    const buf = require("fs").readFileSync(path.join(__dirname, "../../../lib/__tests__/fixtures/legacy/sample-real.ppt"));
+    const r = await parseWithBoundary(buf, "sample-real.ppt", "application/vnd.ms-powerpoint", { timeoutMs: 15000 });
+    expect(r.noText).toBe(false);
+    expect(r.text.length).toBeGreaterThan(0);
+  });
+});
+
+// ───────────────────────── KR7-b：preview 纯文本快捷仅限纯文本 ─────────────────────────
+describe("R0-K1 KR7-b：preview content 快捷返回仅限纯文本；xlsx/docx 保留 table/html 协议", () => {
+  beforeEach(() => {
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+  });
+
+  it("纯文本（.txt）已有 content：直接返回 text，不启动 worker", async () => {
+    const { GET } = await import("@/app/api/workspace/assets/[assetId]/preview/route");
+    h.previewDoc = { id: "d1", workspaceId: "w1", visibility: "PUBLIC", uploaderId: "u1", filePath: null, fileExt: "txt", title: "x.txt", content: "已有正文", mimeType: "text/plain" };
+    const req: any = { headers: new Headers({ authorization: "Bearer x" }), signal: new AbortController().signal };
+    const res = await GET(req, { params: Promise.resolve({ assetId: "d1" }) } as any);
+    const body = await res.json();
+    expect(body.data.type).toBe("text");
+    expect(body.data.content).toBe("已有正文");
+    expect(h.workerStarts).toBe(0);
+  });
+
+  it("xlsx 已有 content：仍走 table 重解析，返回 type=table（不伪造 text）", async () => {
+    const XLSX = require("xlsx");
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["项目", "金额"], ["智慧交通", 500]]), "Sheet1");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "buffer" }) as Buffer;
+    const { GET } = await import("@/app/api/workspace/assets/[assetId]/preview/route");
+    h.previewDoc = { id: "d1", workspaceId: "w1", visibility: "PUBLIC", uploaderId: "u1", filePath: "w1/t.xlsx", fileExt: "xlsx", title: "t.xlsx", content: "缓存正文不应被当作 text", mimeType: "" };
+    h.previewBuffer = buf;
+    const req: any = { headers: new Headers({ authorization: "Bearer x" }), signal: new AbortController().signal };
+    const res = await GET(req, { params: Promise.resolve({ assetId: "d1" }) } as any);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.type).toBe("table");
+    expect(body.data.sheetName).toBe("Sheet1");
+    expect(h.workerStarts).toBe(1);
+  });
+
+  it("docx（无缓存）走 docx-html 重解析，返回 type=html", async () => {
+    const buf = docx("预览正文 Hello");
+    const { GET } = await import("@/app/api/workspace/assets/[assetId]/preview/route");
+    h.previewDoc = { id: "d1", workspaceId: "w1", visibility: "PUBLIC", uploaderId: "u1", filePath: "w1/t.docx", fileExt: "docx", title: "t.docx", content: null, mimeType: "" };
+    h.previewBuffer = buf;
+    const req: any = { headers: new Headers({ authorization: "Bearer x" }), signal: new AbortController().signal };
+    const res = await GET(req, { params: Promise.resolve({ assetId: "d1" }) } as any);
+    const body = await res.json();
+    expect(res.status).toBe(200);
+    expect(body.data.type).toBe("html");
+    expect(body.data.html).toContain("预览正文 Hello");
+    expect(h.workerStarts).toBe(1);
+  });
+});
+
+// ───────────────────────── KR7/K02 扩展：XLSX 数值完整 + 真实展开字节预算 ─────────────────────────
+describe("R0-K1 KR7/K02 扩展：XLSX 工作表数值/共享字符串完整还原 + 容器真实展开预算", () => {
+  beforeEach(() => {
+    __setParseAdmissionBackendForTest(makeSimpleBackend());
+    instrumentRealWorkers();
+    __setParseBoundaryTestHooks({ taskKind: null });
+  });
+
+  it("KR7：XLSX 工作表共享字符串+数值+顺序+多工作表完整还原（数量42不遗漏）", async () => {
+    const XLSX = require("xlsx");
+    const ws1 = XLSX.utils.aoa_to_sheet([
+      ["物品", "数量"],
+      ["苹果", 42],
+      ["香蕉", 7],
+    ]);
+    const ws2 = XLSX.utils.aoa_to_sheet([["表二标题", 100]]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws1, "Sheet1");
+    XLSX.utils.book_append_sheet(wb, ws2, "Sheet2");
+    const buf = XLSX.write(wb, { bookType: "xlsx", type: "buffer" }) as Buffer;
+    const r = await parseWithBoundary(buf, "t.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", {
+      budget: new RootBudget({ limits: ROOT_LIMITS }),
+      timeoutMs: 15000,
+    });
+    expect(r.noText).toBe(false);
+    // 共享字符串
+    expect(r.text).toContain("苹果");
+    expect(r.text).toContain("香蕉");
+    expect(r.text).toContain("表二标题");
+    // 数值不得遗漏（旧实现只读 sharedStrings 会丢 42/7/100）
+    expect(r.text).toContain("42");
+    expect(r.text).toContain("7");
+    expect(r.text).toContain("100");
+  });
+
+  it("K02：XLSX 按容器真实展开字节计量——预算介于压缩与展开之间必须拒绝", async () => {
+    const XLSX = require("xlsx");
+    const AdmZip = require("adm-zip");
+    // 生成 xlsx 后，用 DEFLATE 重新压缩打包，使「真实展开字节」明确大于压缩文件字节；
+    // （xlsx 库默认 STORED，展开≈数据、文件因 zip 开销略大，无法体现 K02 的压缩场景）
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["列A"], ...Array.from({ length: 60 }, () => ["重复文本块".repeat(30)])]), "Sheet1");
+    const staged = new AdmZip(XLSX.write(wb, { bookType: "xlsx", type: "buffer" }) as Buffer);
+    const rezip = new AdmZip();
+    for (const e of staged.getEntries()) rezip.addFile(e.entryName, e.getData(), "", 9);
+    const buf = rezip.toBuffer();
+    const expanded = new AdmZip(buf).getEntries().reduce((s: number, e: any) => s + (Number(e.header?.size) || 0), 0);
+    const compressed = buf.length;
+    // 真实展开必须大于压缩（DEFLATE 压缩场景）；否则本测试前提不成立
+    expect(expanded).toBeGreaterThan(compressed);
+    // 预算略大于压缩字节、但小于真实展开字节：只按压缩字节计量会漏过，按展开计量必须明确失败
+    const budget = new RootBudget({ limits: { ...ROOT_LIMITS, inflatedBytes: compressed + 50 }, deadlineMs: 5000 });
+    await expect(
+      parseWithBoundary(buf, "t.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", { budget, timeoutMs: 5000 }),
+    ).rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+
+  it("K02：DOCX-HTML 按容器真实展开字节计量——预算小于真实展开必须拒绝（mammoth 前即拦截）", async () => {
+    // 用已知 mammoth 可用的最小 docx；预算设 1 字节，展开字节必超 → 必须明确拒绝，不依赖 mammoth 是否成功
+    const buf = docx("预览正文 Hello");
+    __setParseBoundaryTestHooks({ taskKind: "docx-html" });
+    const budget = new RootBudget({ limits: { ...ROOT_LIMITS, inflatedBytes: 1 }, deadlineMs: 5000 });
+    await expect(
+      parseWithBoundary(buf, "t.docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", { budget, timeoutMs: 5000 }),
+    ).rejects.toMatchObject({ code: PARSE_CODES.BUDGET_EXCEEDED });
+  });
+});

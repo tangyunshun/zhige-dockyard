@@ -488,7 +488,7 @@ describe("R0-K1 KR2：真实准入算法——权重完整归还、sweep 归还 
     h.leases.set("healthy", { leaseId: "healthy", userId: "u1", workUnits: 1, status: "ACTIVE", leaseUntil: new Date(h.now + 60000), createdAt: new Date(h.now - 1000) });
   }
 
-  it("双回收者回收同一过期行：只归还一次（CAS），平台 active 不归零、不超发", async () => {
+  it("双回收者竞争同一过期行：仅隔离一次（CAS）；无停止证据不腾槽，计数守恒", async () => {
     seed(2, 2);
     let arrivals = 0;
     const both = Promise.withResolvers();
@@ -505,8 +505,11 @@ describe("R0-K1 KR2：真实准入算法——权重完整归还、sweep 归还 
     allowA.resolve(undefined);
     await Promise.all([a, b]);
     prismaMock.setBeforeLeaseUpdate(null);
-    // 'healthy' 仍活跃 → 平台 active 应为 1（仅 'old' 被回收一次）；绝不归零
-    expect(h.counters.get("platform").active).toBe(1);
+    // [F14 §7.1] 过期 ACTIVE 仅转 QUARANTINED（诊断保留，计数不动）：
+    // 平台 active 仍为 2（old+healthy 都不腾槽）；恰好一次隔离（CAS）
+    expect(h.counters.get("platform").active).toBe(2);
+    expect(h.counters.get("platform").workUnits).toBe(2);
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
     expect([...h.leases.values()].filter((l) => l.status === "ACTIVE").length).toBe(1);
   });
 
@@ -524,17 +527,17 @@ describe("R0-K1 KR2：真实准入算法——权重完整归还、sweep 归还 
     await releaseParseLease(lease);
   });
 
-  it("sweep 部分提交可恢复：计数更新失败则整行回滚，过期行保持 ACTIVE 可重试", async () => {
+  it("sweep 隔离幂等可重试：无证据不腾槽（计数不动），重复 sweep 不二次改变状态", async () => {
     seed(2, 2);
-    prismaMock.setFailCounterDecrement(true);
     await sweepParseLeases(h.now);
-    prismaMock.setFailCounterDecrement(false);
-    // 计数失败 → 事务回滚 → 'old' 仍为 ACTIVE（不出现「终态 EXPIRED 但计数没改」半完成）
-    expect(h.leases.get("old").status).toBe("ACTIVE");
-    // 可重试：下一轮成功回收
+    // [F14 §7.1] 过期 ACTIVE → QUARANTINED（诊断保留，计数完全不动）
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
+    expect(h.counters.get("platform").active).toBe(2);
+    expect(h.counters.get("platform").workUnits).toBe(2);
+    // 重复 sweep：状态条件不再命中，不二次改变、不重复计数
     await sweepParseLeases(h.now);
-    expect(h.leases.get("old").status).toBe("EXPIRED");
-    expect(h.counters.get("platform").active).toBe(1);
+    expect(h.leases.get("old").status).toBe("QUARANTINED");
+    expect(h.counters.get("platform").active).toBe(2);
   });
 
   it("带权重释放：workUnits=2 的租约释放后平台 workUnits 回到 0（不再泄漏 1）", async () => {

@@ -55,15 +55,12 @@ async function getEnterpriseQuota(userId: string) {
 // GET: 获取工作空间信息和配额
 export async function GET(request: NextRequest) {
   try {
-    let userId = request.headers.get("x-user-id");
-    if (!userId) {
-      const authHeader = request.headers.get("authorization");
-      const authResult = await validateUser(authHeader);
-      if (!authResult.valid) {
-        return NextResponse.json({ error: "未授权访问" }, { status: 401 });
-      }
-      userId = authResult.user!.id;
+    // [U05/原9] 一律完整 validateUser：x-user-id 验签身份不等于有效会话
+    const upgradeAuth = await validateUser(request.headers.get("authorization"), request);
+    if (!upgradeAuth.valid || !upgradeAuth.user) {
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
+    const userId = upgradeAuth.user!.id;
     const { searchParams } = new URL(request.url);
     const workspaceId = searchParams.get("workspaceId");
 
@@ -118,15 +115,12 @@ export async function GET(request: NextRequest) {
 // 免费套餐（金额为 0）无需支付，直接开通。
 export async function POST(request: NextRequest) {
   try {
-    let userId = request.headers.get("x-user-id");
-    if (!userId) {
-      const authHeader = request.headers.get("authorization");
-      const authResult = await validateUser(authHeader);
-      if (!authResult.valid) {
-        return NextResponse.json({ error: "未授权访问" }, { status: 401 });
-      }
-      userId = authResult.user!.id;
+    // [U05/原9] 一律完整 validateUser：x-user-id 验签身份不等于有效会话
+    const upgradeAuth2 = await validateUser(request.headers.get("authorization"), request);
+    if (!upgradeAuth2.valid || !upgradeAuth2.user) {
+      return NextResponse.json({ error: "未授权访问" }, { status: 401 });
     }
+    const userId = upgradeAuth2.user!.id;
     const body = await request.json();
     const { workspaceId, targetPlan, billingCycle, option } = body;
 

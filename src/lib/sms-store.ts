@@ -34,8 +34,10 @@ export async function storeSmsCode(
   key: string,
   code: string,
   type?: VerifyPurpose,
+  opts: { ip?: string; actorId?: string | null } = {},
 ): Promise<SendResult> {
-  return storeVerificationCode("sms", key, type ?? "reset-password", code);
+  // [U02 §2.1.5] 可信 IP/已认证 actor 从实际入口传入生产预算
+  return storeVerificationCode("sms", key, type ?? "reset-password", code, opts);
 }
 
 /** 核验短信验证码（不消费）。 */

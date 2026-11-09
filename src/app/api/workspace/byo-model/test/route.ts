@@ -16,14 +16,16 @@ import { testByoModelConnection, deriveSuggestedCapabilities } from "@/lib/works
 function normalizeEndpoint(url: string | null | undefined): string {
   if (!url) return "";
   const s = String(url).trim();
-  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)([^?#]*)/.exec(s);
+  // [U06] query 参与目的地比较：query 变化（tenant/重复/编码差异）默认视为不同目标，
+  // 不得复用旧 key；仅逐字节相同的 query 才等价（偏严格，不扩大授权）。
+  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)([^#]*)/.exec(s);
   if (!m) return s; // 非标准 URL：原样比较（偏严格，不跨方案复用）
   const scheme = m[1].toLowerCase();
   let host = m[2].toLowerCase();
-  const path = m[3] || "";
+  const pathAndQuery = m[3] || "";
   if (scheme === "https") host = host.replace(/:443$/, "");
   else if (scheme === "http") host = host.replace(/:80$/, "");
-  return `${scheme}://${host}${path}`;
+  return `${scheme}://${host}${pathAndQuery}`;
 }
 
 /**
@@ -71,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     if (!baseUrl) return NextResponse.json({ error: "Base URL 不能为空" }, { status: 400 });
 
-    // 未填写密钥时的兜底：仅当本次测试目标与已保存配置「完全一致」（同一 endpoint + 同一协议）
+    // 未填写密钥时的兜底：仅当本次测试目标与已保存配置「完全一致」（同 endpoint 含逐字节相同 query + 同一协议）
     // 才复用已保存密钥，便于不重输密钥验证已保存配置是否仍连通。
     // 目标变更（新的 baseUrl 或不同协议）必须重新提供该目标的授权凭据，
     // 禁止拿旧 key 发往新目的地（防 SSRF/跨域携带旧 Authorization）。

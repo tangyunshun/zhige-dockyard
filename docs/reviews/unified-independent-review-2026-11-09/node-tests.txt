@@ -1,0 +1,32 @@
+▶ 文本提取路径：文档格式与图片 OCR
+  ✔ .docx（OOXML）必须提取出正文文本 (4779.8182ms)
+  ✔ .pdf 必须提取出文本流内容（真实 PDF 分支，非 OCR 兜底） (4845.8057ms)
+  ✔ 图片 PNG：OCR 命中时必须返回识别文本 (3.0666ms)
+  ✔ 图片 PNG：OCR 无文本时必须返回空（不得伪造内容） (2.9878ms)
+  ✔ 图片 OCR 超时必须被取消并返回空（不泄露异常、不阻塞） (775.0769ms)
+  ✔ 扫描件 PDF（无文字层）必须回落 OCR 兜底并返回识别文本 (103.2127ms)
+  ✔ 旧版 .xls（OLE2/BIFF8 复合文档）必须提取单元格文本 (89.0047ms)
+  ✔ Zip 压缩包必须递归解包并聚合内部文件文本 (266.0765ms)
+  ✔ 旧版 .doc（Word 97-2003，真实样本）必须还原正文（含中文与英文） (34.2513ms)
+  ✔ 旧版 .ppt（PowerPoint 97-2003，真实样本）必须还原标题与正文文本 (28.4747ms)
+✔ 文本提取路径：文档格式与图片 OCR (10934.0696ms)
+▶ extractTextFromBuffer 可取消（AbortSignal）
+  ✔ 已中止的 signal：立即返回空串，解析请求可正常结束 (62.6143ms)
+  ✔ 图片 + 已中止 signal：不启动 OCR，直接返回空串 (0.5721ms)
+  ✔ 正常文本文件：无 signal 时仍可提取文本 (1659.5083ms)
+  ✔ OCR worker 创建后 abort：terminate 被调用，且不产生第二次 recognize (48.6379ms)
+  ✔ OCR 超时后 Promise 能结束并终止 worker (72.6904ms)
+  ✔ abort 后不产生未处理 rejection (90.1107ms)
+✔ extractTextFromBuffer 可取消（AbortSignal） (1940.6724ms)
+▶ extractTextFromBufferWithTimeout（统一可取消超时入口）
+  ✔ worker 创建延迟：超时后仍会终止最终创建的 worker（无泄漏） (387.9476ms)
+  ✔ 正常文本：统一入口无超时可直接提取 (1780.6877ms)
+✔ extractTextFromBufferWithTimeout（统一可取消超时入口） (2171.431ms)
+ℹ tests 18
+ℹ suites 3
+ℹ pass 18
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 18079.3729

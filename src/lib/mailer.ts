@@ -123,8 +123,9 @@ export async function sendMail(opts: SendMailOptions): Promise<SendMailResult> {
 
   const transport = await getTransport();
   if (!transport) {
+    // [U03] SMTP 未配置 = 确定未发起（区别于已发起结果未知）；调用方可安全退还占用
     console.warn("[邮件] SMTP 未配置，跳过发送 →", opts.to, "|", opts.subject);
-    return { ok: false, outcome: "unknown", reason: "SMTP_NOT_CONFIGURED" };
+    return { ok: false, outcome: "failed", reason: "SMTP_NOT_CONFIGURED" };
   }
 
   try {
@@ -136,20 +137,27 @@ export async function sendMail(opts: SendMailOptions): Promise<SendMailResult> {
       text: opts.text,
       html: opts.html,
     });
-    // 核实目标接收事实：传输返回的 accepted/rejected 才是“是否真的被接收”的依据，
-    // Promise resolve 不等于发送成功；空 accepted 或目标未被确认接收不得返回“验证码已发送”。
-    const accepted: string[] = Array.isArray(info?.accepted) ? info.accepted : [];
-    const rejected: string[] = Array.isArray(info?.rejected) ? info.rejected : [];
-    const hit = (list: string[]) =>
-      list.some((a) => a === opts.to || String(a).includes(opts.to) || opts.to.includes(String(a)));
-    if (hit(rejected)) {
+    // [U03] 核实目标接收事实：按当前传输契约提取规范化地址并**精确比较**——
+    // 子串误判（malice@example.com 命中 alice@example.com）已删除。
+    const normalize = (a: unknown): string => {
+      const s = String(a ?? "").trim();
+      const angled = /<([^>]+)>/.exec(s);
+      return (angled ? angled[1] : s).trim().toLowerCase();
+    };
+    const target = normalize(opts.to);
+    const accepted: string[] = Array.isArray(info?.accepted) ? info.accepted.map(normalize) : [];
+    const rejected: string[] = Array.isArray(info?.rejected) ? info.rejected.map(normalize) : [];
+    if (!Array.isArray(info?.accepted) && !Array.isArray(info?.rejected)) {
+      // 传输未返回任何确认事实（如空对象）→ 无法确认目标被接受 → 未知，不宣称已发送
+      return { ok: false, outcome: "unknown", reason: "NO_CONFIRMATION_FACT" };
+    }
+    if (target && rejected.includes(target)) {
+      // 目标明确拒收 = 确定失败
       return { ok: false, outcome: "failed", reason: "RECIPIENT_REJECTED" };
     }
-    if (Array.isArray(info?.accepted) || Array.isArray(info?.rejected)) {
+    if (!target || !accepted.includes(target)) {
       // 传输返回了结果但本收件人未被确认接收（空 accepted 或未被列出）→ 不得宣称已发送
-      if (!hit(accepted)) {
-        return { ok: false, outcome: "unknown", reason: "NO_ACCEPTED_CONFIRMATION" };
-      }
+      return { ok: false, outcome: "unknown", reason: "NO_ACCEPTED_CONFIRMATION" };
     }
     return { ok: true, outcome: "accepted" };
   } catch (e) {

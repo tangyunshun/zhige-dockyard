@@ -24,9 +24,9 @@ beforeEach(() => {
   ] as any);
 });
 
-it("传输器不可用（SMTP 未配置）归 unknown，不阻断主流程", async () => {
+it("传输器不可用（SMTP 未配置）= 确定未发起 failed（区别于已发起结果 unknown）", async () => {
   vi.mocked(prismaMock.systemconfig.findMany).mockResolvedValue([]); // smtpHost 缺失 → getTransport 返回 null
-  expect((await sendMail({ to: "fixture@example.com", subject: "fixture", text: "fixture" })).outcome).toBe("unknown");
+  expect((await sendMail({ to: "fixture@example.com", subject: "fixture", text: "x" } as any)).outcome).toBe("failed");
 });
 
 it("传输明确拒收目标 → failed", async () => {

@@ -1,47 +1,48 @@
 {
-  "status": "DELIVERED_PENDING_INDEPENDENT_REVIEW",
-  "baselineCommit": "67243457064f645a3a4af1a2e8b4b1d012a85d2d",
-  "closeoutPrompt": "docs/reviews/unified-recheck-2026-11-09/IDE-UNIFIED-CLOSEOUT-PROMPT.md",
-  "deliveredAt": "2026-11-09",
-  "executorsStopWrite": true,
-  "implementedOfflineVerified": [
-    "U02/U03 验证码：冷启动唯一认领、失败锁、过期码、跨日重置、回退不负数",
-    "U03 SMTP 三态（accepted/failed/unknown）",
-    "U02 resetToken 绑定 challenge+jti、短信登录/注册/绑定前置原子消费",
-    "U09-6 调价与审计单一事务、真实行数",
-    "U06 BYO scheme/路径/端口目的地严格",
-    "U05-1/2 完整认证拒绝不复活、禁用账号 Key 拒绝",
-    "U05-4 安装向导一次性授权闭环",
-    "U04 支付持久唯一认领、渠道/商户/币种/精度严格、晚收款不覆盖",
-    "U12 三类请求内 DDL 下线 + 离线迁移（建表前提+幂等加列），未执行"
-  ],
-  "failed": [
-    "U07 解析隔离停止证明与有界读取",
-    "U01/U10 成本预算生产后端/编排持久接线/来源与配额守卫/运营恢复/null scope",
-    "U11/U12 首页与登录回跳、首值旅程页面、价值成本指标接线与利润分栏",
-    "U05-5/6/7 企业撤权各入口一致、标准岗位跨空间私有统计",
-    "U13/U14 原 1-14 唯一共享集成与同版本冻结证据"
-  ],
-  "decisionBlocked": [
-    "平台现金预算/加价率/售价",
-    "商业退款/保留期/企业转个人政策"
-  ],
-  "environmentUnverified": [
-    "真实 MySQL 行锁与迁移执行（两个离线迁移已准备未执行）",
-    "prisma generate 客户端与 schema 一致性核对（需隔离真实 .env）",
-    "微信/支付宝验签互通、真实 SMTP/短信供应商",
-    "真实浏览器页面串联与人工业务验收"
-  ],
-  "evidence": {
-    "formalTests": "18 files / 318 passed",
-    "independentRecheck": "11 files / 58 passed（DEFECT 已改为正确结果断言）",
-    "tsc": "tsc --noEmit --incremental false -p tsconfig.json -> 0 errors"
+ "state": "DELIVERED_PENDING_INDEPENDENT_REVIEW",
+ "at": "2026-11-10T00:31:51+08:00",
+ "finalVersion": {
+  "baseline": "6d9f68b",
+  "workingTreeChanges": 29,
+  "committed": false
+ },
+ "executorStoppedWriting": true,
+ "completedThisRound": [
+  "U04 席位交易唯一认领+晚到账原子事实",
+  "U02 发送预约身份/幂等回退/consume锁/fail-closed/原子签发/失败计数并发安全/ip-actor",
+  "U02 reset 密码持久授权认领（提交一致性）",
+  "U03 mailer 精确收件人/无确认unknown/未配置=failed",
+  "U05 Webhooks 及 5 个工作空间入口完整会话验证",
+  "U05 登录回跳净化（外站/协议相对/反斜杠/编码绕过）",
+  "U09-6 调价审计事务内真实计数",
+  "U06 BYO query 参与目的地比较",
+  "F14 无停止证据不腾槽 + 退出证据回收 + File.size 预检"
+ ],
+ "remainingFailed": [
+  {
+   "id": "U01/U10（原6/7/8）",
+   "item": "生产共享成本预约后端接入真实入口；持久 task/attempt/供应商事实与费用恢复；来源退款接真实 ledger/hold",
+   "status": "FAILED",
+   "reason": "本轮未实现——需要跨 Studio/Open/估价/多步重试的接线与生产数据模型设计，剩余工程量大，未在本次交付内完成"
   },
-  "hardRulesPreserved": [
-    "F01-F13 已验收止损不动",
-    "F07 人工退款批准保持暂停、F16 旧直充退役",
-    "生产 Token 结算硬关闭、固定点数兼容模式与真实余额/历史数据保持",
-    "未开启任何真实付费能力、未创建真实管理员、未真实收款"
-  ],
-  "nextGate": "真实环境/人工验收 + U07/U01/U10/U11/U05-5-6-7 实现与唯一共享集成"
+  {
+   "id": "U05（原9）",
+   "item": "企业撤权全入口矩阵/岗位私有统计收口；首页 60+/300% 不实宣传与首次价值页面",
+   "status": "FAILED",
+   "reason": "本轮仅完成 Webhooks+5 入口会话一致与登录回跳净化；撤权矩阵与首页改版未实现"
+  },
+  {
+   "id": "U11/U12（原10/11/12）",
+   "item": "运营恢复接真实后台（持久可信事实）；指标接 API 与真实经营口径",
+   "status": "FAILED",
+   "reason": "本轮未实现"
+  },
+  {
+   "id": "原13/14",
+   "item": "迁移历史 checksum/已部署兼容核实；页面实际旅程证据",
+   "status": "ENVIRONMENT_UNVERIFIED",
+   "reason": "真实迁移/浏览器验证属环境门，未执行"
+  }
+ ],
+ "decisionGates": "见 decisions-and-release-gates.md（未新增已批准项）"
 }

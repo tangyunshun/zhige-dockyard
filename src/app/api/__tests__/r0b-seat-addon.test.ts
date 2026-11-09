@@ -201,6 +201,12 @@ function makeClient(kind: "ROOT" | "TX", undo?: (() => void)[]) {
         record("billingrecord", "create");
         guardRootWrite();
         checkFail("billingrecord", "create");
+        // [U04/§13] 忠实唯一约束：主键冲突抛 P2002（收款认领/事实行依赖它裁决并发）
+        if (store.billingrecord[data.id]) {
+          const e = new Error("unique constraint");
+          (e as any).code = "P2002";
+          throw e;
+        }
         store.billingrecord[data.id] = { ...data };
         return { ...store.billingrecord[data.id] };
       },
@@ -500,7 +506,7 @@ describe("R0-B 基础履约：单次有效 2 席位订单", () => {
     // 履约写入全部在事务客户端：条件更新（写边界）→ 条件席位写入；无根客户端写逃逸
     expect(writeLog).toContain("TX billingrecord.updateMany");
     expect(writeLog).toContain("TX workspace.updateMany");
-    expect(writeLog.filter((w) => w.startsWith("ROOT"))).toEqual([]);
+    expect(writeLog.filter((w) => w.startsWith("ROOT"))).toEqual(["ROOT billingrecord.create"]); // [U04] 唯一认领行
   });
 
   it("MOCK 确认：同一服务入账，paymentMode 如实记录 MOCK（不冒充真实收入）", async () => {
@@ -523,6 +529,7 @@ describe("R0-B 基础履约：单次有效 2 席位订单", () => {
       paymentMethod: "WECHAT_PAY",
       paymentMode: "REAL",
       remark: "t",
+      gatewayTransactionId: "tx_SA_real",
       gatewayAmountCents: 2600,
     });
     expect(r1.status).toBe("FULFILLED");
@@ -549,6 +556,7 @@ describe("R0-B 并发唯一履约权", () => {
         paymentMethod: "WECHAT_PAY",
         paymentMode: "REAL",
         remark: "t",
+        gatewayTransactionId: "tx_SA_test_1",
         gatewayAmountCents: 2600,
       });
     const [r1, r2] = await Promise.all([mk(), mk()]);
@@ -565,6 +573,7 @@ describe("R0-B 并发唯一履约权", () => {
     staleBillingRead = { row: JSON.parse(JSON.stringify(order)), remaining: 2 };
     const mk = () =>
       fulfillPaidOrder({
+        gatewayTransactionId: "tx_SA_test_1",
         orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
       });
     const [r1, r2] = await Promise.all([mk(), mk()]);
@@ -577,9 +586,9 @@ describe("R0-B 并发唯一履约权", () => {
   });
 
   it("三次重复确认：最终仍只增 2，零重复成功记录", async () => {
-    seedFixture({ seats: 2, amount: 2600 });
+    seedFixture({ seats: 2, amount: 2600, channel: "ALIPAY" });
     const mk = () =>
-      fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "ALIPAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600 });
+      fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "ALIPAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_SA_test_1", gatewayAmountCents: 2600 });
     const results = [];
     for (let i = 0; i < 3; i++) results.push((await mk()).status);
     expect(results.filter((s) => s === "FULFILLED").length).toBe(1);
@@ -598,10 +607,10 @@ describe("R0-B 并发唯一履约权", () => {
 
   it("不同订单同一空间并发：各增加一次，总量正确，互不覆盖", async () => {
     seedFixture({ orderId: "SA_a", seats: 2, amount: 2600 });
-    seedFixture({ orderId: "SA_b", seats: 3, amount: 3900 });
+    seedFixture({ orderId: "SA_b", seats: 3, amount: 3900, channel: "ALIPAY" });
     const [ra, rb] = await Promise.all([
-      fulfillPaidOrder({ orderNo: "SA_a", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600 }),
-      fulfillPaidOrder({ orderNo: "SA_b", paymentMethod: "ALIPAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 3900 }),
+      fulfillPaidOrder({ orderNo: "SA_a", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_SA_a", gatewayAmountCents: 2600 }),
+      fulfillPaidOrder({ orderNo: "SA_b", paymentMethod: "ALIPAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_SA_b", gatewayAmountCents: 3900 }),
     ]);
     expect(ra.status).toBe("FULFILLED");
     expect(rb.status).toBe("FULFILLED");
@@ -619,6 +628,7 @@ describe("R0-B 事务原子性：各写点/提交故障注入", () => {
     // [R0-B1 F2] 席位写入现为条件 updateMany（写边界核验），注入其失败
     failConf = { model: "workspace", method: "updateMany", times: 1 };
     const r1 = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r1.ok).toBe(false);
@@ -629,6 +639,7 @@ describe("R0-B 事务原子性：各写点/提交故障注入", () => {
     expect(store.workspace["w1"].extraSeats).toBe(0);
     // 重试：恰好履约一次
     const r2 = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r2.status).toBe("FULFILLED");
@@ -640,12 +651,14 @@ describe("R0-B 事务原子性：各写点/提交故障注入", () => {
     seedFixture({ seats: 2, amount: 2600 });
     failCommit = true;
     const r1 = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r1.ok).toBe(false);
     expect(store.billingrecord["SA_test_1"].status).toBe("PENDING");
     expect(store.workspace["w1"].extraSeats).toBe(0);
     const r2 = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r2.status).toBe("FULFILLED");
@@ -656,6 +669,7 @@ describe("R0-B 事务原子性：各写点/提交故障注入", () => {
     seedFixture({ seats: 2, amount: 2600 });
     failConf = { model: "billingrecord", method: "updateMany", times: 1 };
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -668,10 +682,11 @@ describe("R0-B 事务原子性：各写点/提交故障注入", () => {
     // 此处补一个显式断言：正常履约写序列只包含 TX 写 + 事务外的预读/重读（只读）。
     seedFixture({ seats: 2, amount: 2600 });
     await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     const rootWrites = writeLog.filter((w) => w.startsWith("ROOT"));
-    expect(rootWrites).toEqual([]);
+    expect(rootWrites).toEqual(["ROOT billingrecord.create"]); // [U04] 唯一认领行
   });
 });
 
@@ -681,6 +696,7 @@ describe("R0-B 金额与权限门禁", () => {
   it("REAL 缺实付金额 → 拒绝，零权益写入，订单保持 PENDING", async () => {
     seedFixture({ seats: 2, amount: 2600 });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: null,
     });
     expect(r.ok).toBe(false);
@@ -691,6 +707,7 @@ describe("R0-B 金额与权限门禁", () => {
   it("REAL 金额与订单不一致 → 拒绝入账", async () => {
     seedFixture({ seats: 2, amount: 2600 });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2601,
     });
     expect(r.ok).toBe(false);
@@ -750,6 +767,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
     it(`损坏席位数 seats=${JSON.stringify(s)} → 拒绝并人工核查，零写入`, async () => {
       seedFixture({ seats: s as any, amount: 2600 });
       const r = await fulfillPaidOrder({
+        gatewayTransactionId: "tx_SA_test_1",
         orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
       });
       expect(r.ok).toBe(false);
@@ -761,6 +779,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("异常金额（0 元）→ 拒绝并入工核查，零写入", async () => {
     seedFixture({ seats: 2, amount: 0 });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 0,
     });
     expect(r.ok).toBe(false);
@@ -770,6 +789,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("缺目标空间（workspaceId 为空）→ 拒绝并人工核查", async () => {
     seedFixture({ seats: 2, amount: 2600, workspaceId: null });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -779,6 +799,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("目标空间不存在 → 拒绝并人工核查", async () => {
     seedFixture({ seats: 2, amount: 2600, workspaceMissing: true });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -789,6 +810,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("空间类型变化（非企业）→ 拒绝并人工核查", async () => {
     seedFixture({ seats: 2, amount: 2600, workspaceType: "PERSONAL" });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -798,6 +820,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("席位相加溢出 Int 上限 → 拒绝，零写入", async () => {
     seedFixture({ seats: 3, amount: 2600, extraSeats: 2147483646 });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -808,6 +831,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("套餐到期基准变化（已续费/变更）→ 拒绝并人工核查，不授予错误席位", async () => {
     seedFixture({ seats: 2, amount: 2600, planExpiresMismatch: true });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -818,6 +842,7 @@ describe("R0-B 非 PENDING、超时与损坏订单", () => {
   it("空间套餐到期时间为空 → 拒绝并人工核查", async () => {
     seedFixture({ seats: 2, amount: 2600, workspacePlanExpiresNull: true });
     const r = await fulfillPaidOrder({
+      gatewayTransactionId: "tx_SA_test_1",
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600,
     });
     expect(r.ok).toBe(false);
@@ -907,7 +932,7 @@ describe("R0-B 下单契约与回归（不改变定价公式）", () => {
 // ══════════════════════════════════════════════════════
 describe("R0-B1 F1：超时关闭不覆盖已成功订单", () => {
   const mkFulfill = () =>
-    fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600 });
+    fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_SA_test_1", gatewayAmountCents: 2600 });
 
   it("共享席位服务：履约已提交后，持有旧 PENDING+过期快照的迟到请求不得覆盖 SUCCESS", async () => {
     const { order } = seedFixture({ seats: 2, amount: 2600 });
@@ -955,16 +980,20 @@ describe("R0-B1 F1：超时关闭不覆盖已成功订单", () => {
     expect(store.workspace["w1"].extraSeats).toBe(2);
   });
 
-  it("正常超时关闭先胜出（确实过期的 PENDING）→ 条件置 EXPIRED；后续请求不得再发席位", async () => {
+  it("正常超时关闭先胜出（确实过期的 PENDING）：已验收款 → 留证 + 条件关单；重放幂等且零席位", async () => {
     seedFixture({ seats: 2, amount: 2600, expired: true });
+    // [U04/原5] 已超时但收到已验收款：持久收款事实 + 条件关单（不发放、不丢钱）
     const r1 = await mkFulfill();
-    expect(r1.ok).toBe(false);
-    expect(store.billingrecord["SA_test_1"].status).toBe("EXPIRED");
+    expect(r1.ok).toBe(true);
+    expect(r1.status).toBe("RECEIPT_PENDING_RECOVERY");
+    expect(store.billingrecord["SA_test_1"].status).toBe("EXPIRED"); // 已条件关单
     expect(store.workspace["w1"].extraSeats).toBe(0);
-    // 后续（含旧读）请求：状态已 EXPIRED，不覆盖其他终态、不发席位
+    expect(store.billingrecord["SA_test_1"].metadata.pendingReceipt).toBeTruthy();
+    // 重放（含旧读）：同笔交易幂等 ACK，不重复发放、不覆盖终态
     staleBillingRead = { row: JSON.parse(JSON.stringify(store.billingrecord["SA_test_1"])), remaining: 1 };
     const r2 = await mkFulfill();
-    expect(r2.ok).toBe(false);
+    expect(r2.ok).toBe(true);
+    expect(r2.status).toBe("RECEIPT_PENDING_RECOVERY");
     expect(store.billingrecord["SA_test_1"].status).toBe("EXPIRED");
     expect(store.workspace["w1"].extraSeats).toBe(0);
   });
@@ -982,7 +1011,7 @@ describe("R0-B1 F1：超时关闭不覆盖已成功订单", () => {
 // ══════════════════════════════════════════════════════
 describe("R0-B1 F2：空间/报价基准校验", () => {
   const mkFulfill = (orderNo = "SA_test_1") =>
-    fulfillPaidOrder({ orderNo, paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600 });
+    fulfillPaidOrder({ orderNo, paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_x", gatewayAmountCents: 2600 });
 
   it.each(["ARCHIVED", "DISABLED"])("归档/停用空间（status=%s）→ 拒绝，零席位、订单不落 SUCCESS", async (st) => {
     seedFixture({ seats: 2, amount: 2600, workspaceStatus: st });
@@ -1394,6 +1423,7 @@ describe("R0-B2-1：时间裁决边界（预检通过后、事务/取锁后才�
       seedFixture({ seats: 2, amount: 2600, expiresOffsetMs: 500 });
       const r = await fulfillPaidOrder({
         orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL",
+        gatewayTransactionId: "tx_SA_test_1",
         remark: "t", gatewayAmountCents: 2600,
       });
       expect(r.ok).toBe(false);
@@ -1430,6 +1460,7 @@ describe("R0-B2-1：时间裁决边界（预检通过后、事务/取锁后才�
     seedFixture({ seats: 2, amount: 2600 });
     const r1 = await fulfillPaidOrder({
       orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL",
+      gatewayTransactionId: "tx_SA_test_1",
       remark: "t", gatewayAmountCents: 2600,
     });
     expect(r1.ok).toBe(true);
@@ -1693,7 +1724,7 @@ describe("R0-B3 T01—T08：最终授权时刻在两把行锁到手、必要等�
     expect(store.billingrecord["SA_test_1"].metadata.seatsAdded).toBeUndefined(); // 临时写已回滚
   };
   const shared = () => fulfillSeatAddonOrder({ orderNo: "SA_test_1", paymentMode: "MOCK", isRealPayment: false, gatewayAmountCents: null });
-  const real = () => fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 2600 });
+  const real = () => fulfillPaidOrder({ orderNo: "SA_test_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayTransactionId: "tx_SA_test_1", gatewayAmountCents: 2600 });
 
   // T01：预检有效，进入事务回调「前」等待跨期（B2 已有效的保护，必须保留）
   it("T01 回调前等待跨订单/套餐期限 → 拒绝、零权益、不覆盖成功", async () => {

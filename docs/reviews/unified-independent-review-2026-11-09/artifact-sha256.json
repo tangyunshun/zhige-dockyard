@@ -1,0 +1,289 @@
+{
+  "capturedAt": "2026-11-09T07:44:32.732Z",
+  "artifacts": [
+    {
+      "path": "admission-review.test.ts",
+      "sha256": "763fd5db211f7df95b0ad269ddce18cd2af5fa35ba73b8843c5459752611ce44"
+    },
+    {
+      "path": "audit.config.ts",
+      "sha256": "432ea502ec363698e5444bd689dca5c890d797acc50145ff84d6b3760a5b972a"
+    },
+    {
+      "path": "auth-review.test.ts",
+      "sha256": "866574e44c0c4d1a4684a782c5d0e171db141f1c67b787eaffc67e77cb2fd59f"
+    },
+    {
+      "path": "business-modules-review.test.ts",
+      "sha256": "f6bb4c0b5f6e9746433b8ec43b5f93b7fd21a2af617629bdb1115b99998436ae"
+    },
+    {
+      "path": "byo-review.test.ts",
+      "sha256": "78aedf4ee97b8dc777b0e1e44e53195cadb84865b50c8ded000ec19389be5a6b"
+    },
+    {
+      "path": "collect.cjs",
+      "sha256": "2532d214734f7fdcb39914f33743fa304354495cd1c4820218379cef99cc3491"
+    },
+    {
+      "path": "delivery-check.json",
+      "sha256": "54be5958dd77467a8c68d6f274afccbd9993b2d9d2d0714ee28bdffb8ed1e5e3"
+    },
+    {
+      "path": "finalize-evidence.cjs",
+      "sha256": "3e6b2642ebea7b21a3040eeef021034b4189e3292f854324dafafdff1763b135"
+    },
+    {
+      "path": "formal-output.txt",
+      "sha256": "7234ca44a4cc5ec3d005cd37791c0a5f4c55c9a95fd1dd10895059e336f2f17e"
+    },
+    {
+      "path": "formal-results.json",
+      "sha256": "f2d577fd465a918cf339cc0fc42003188782d49e96c9e36599251a415d5a51ef"
+    },
+    {
+      "path": "foundation-review.test.ts",
+      "sha256": "05e6d606d5445a1310aa292086dc67884f21a45d78443994787a750a7ea1faa6"
+    },
+    {
+      "path": "IDE-UNIFIED-REPAIR-PROMPT.md",
+      "sha256": "108e52d684ea41778439a03aadee587ed1def491e4a281273d82ea9a3066d719"
+    },
+    {
+      "path": "import-evidence.json",
+      "sha256": "d75956dadbd481e8281ff0e0c18b56ef1af17dd015cd711b4b625a37781562a1"
+    },
+    {
+      "path": "independent-output.txt",
+      "sha256": "f5f0c61d2d3ddaf07b939690d4cbe6b42a2b5e36c17cdbb019a440f42ffc4498"
+    },
+    {
+      "path": "independent-results.json",
+      "sha256": "efcf8530d10f21f67adb7110bc640c5d4d9d4592cea2b6c02092b12624c51b22"
+    },
+    {
+      "path": "node-tests.txt",
+      "sha256": "5032dbf513aa16b96ccc29809b767581314f75ea27d3e2e1cc7f58a811c03a22"
+    },
+    {
+      "path": "payment-review.test.ts",
+      "sha256": "a48800046cf837dc31ac5cc978464d6ee8ea6e56bd57dbd3cdd073c72ed49032"
+    },
+    {
+      "path": "prepare-independent.cjs",
+      "sha256": "97008885ffc1a6b2c4cd8a7d7306880c8cf4af9e443d2cc1dc77b11f80e0d7eb"
+    },
+    {
+      "path": "pricing-review.test.ts",
+      "sha256": "8f678b1e44050023b19e928084ed691cf977a012c6f399de33ddad76e666032b"
+    },
+    {
+      "path": "REVIEW.md",
+      "sha256": "a31ba7dd620760456ecd2a953da8024d4ab804982f14ebca840487f9df825efd"
+    },
+    {
+      "path": "security-review.test.ts",
+      "sha256": "23aec733cff8948f6fe727897a95d75ee739d861a65824dfc1a533ccb1832a60"
+    },
+    {
+      "path": "source/prisma__schema.prisma.txt",
+      "sha256": "216d92ef20bc11019ff29de924d1060ceb1809c9f35fc6da58070de23e2cbc2e"
+    },
+    {
+      "path": "source/src__app__api__admin__model-pricing__global-markup__route.ts.txt",
+      "sha256": "40c19a93a9d4a4496d238efc572933ae652a26581f91d8cde373c94b43f54035"
+    },
+    {
+      "path": "source/src__app__api__admin__posts__standard__route.ts.txt",
+      "sha256": "f9b3a268e3725258ee14fbf5636ed888c4d1e647b8d8c6b18c1ccc3f52d807e4"
+    },
+    {
+      "path": "source/src__app__api__admin__settings__route.ts.txt",
+      "sha256": "e451114c69c6219889caaf27e32c4b0f6526230255cffbca708649e8880cba38"
+    },
+    {
+      "path": "source/src__app__api__auth__init-admin__route.ts.txt",
+      "sha256": "8a6bb60f3f10ed30ce085d223daeb6371158594da6f1d07271b2199c1fb8c5eb"
+    },
+    {
+      "path": "source/src__app__api__auth__login-sms__route.ts.txt",
+      "sha256": "593c837faa7d9dd71d837c72e654aed01c7f4365694caac83e8162370b7d7da4"
+    },
+    {
+      "path": "source/src__app__api__auth__reset-password__route.ts.txt",
+      "sha256": "34603c6680b7f59224c6a03bc552a97ba551e6043a811b18f9d5d827423c3ae4"
+    },
+    {
+      "path": "source/src__app__api__auth__verify-sms-code__route.ts.txt",
+      "sha256": "62f200f0a0db4885442031f0d68495d2c22534026880965f611909f08173b2a4"
+    },
+    {
+      "path": "source/src__app__api__health__debug-test01__route.ts.txt",
+      "sha256": "0816499605f73cc349b8f95802963c553b53b039fe63fcb5fee4b25b0abbcb01"
+    },
+    {
+      "path": "source/src__app__api__payments__notify__alipay__route.ts.txt",
+      "sha256": "9f943c093721c4e247411b316f2105961b17f3bc4d6eb327d8bf040e91495390"
+    },
+    {
+      "path": "source/src__app__api__payments__notify__wechat__route.ts.txt",
+      "sha256": "a4baa53d44ea27fded3c58ff153b6847761c6a872bcf81f20bc916b0a6bdb478"
+    },
+    {
+      "path": "source/src__app__api__studio__extract-text__route.ts.txt",
+      "sha256": "fe34f4da3038f0d738237bb9e145b47d11da146ad458a9a17e93fd2881f8a39c"
+    },
+    {
+      "path": "source/src__app__api__studio__handler.ts.txt",
+      "sha256": "3de2b2eaac3009e1ad7eb4f8e3895d4f3f4bea924dfdeed3cb0205ac4ff7fdc4"
+    },
+    {
+      "path": "source/src__app__api__test-db__route.ts.txt",
+      "sha256": "d6298b4c879f997444dc8d16f8b7d88d16bbbf78fd158fa551a8eb18d254986b"
+    },
+    {
+      "path": "source/src__app__api__webhooks__route.ts.txt",
+      "sha256": "2e2801daf7b6823c5699f4cd8ab870c2d78b71c18ec08ab349b4fd7e100412a6"
+    },
+    {
+      "path": "source/src__app__api__workspace__byo-model__test__route.ts.txt",
+      "sha256": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440"
+    },
+    {
+      "path": "source/src__app__api__workspace__posts__suggested__route.ts.txt",
+      "sha256": "e61f828ad38ccf1a6aa19b54cd6e8aa21ec3e00e0270a08a2b69462fb34388f9"
+    },
+    {
+      "path": "source/src__app__auth__login__page.tsx.txt",
+      "sha256": "f4f96551b575f637a39846c02f7278e7d0202d7fa5a10c89e9d6fa5373f1c2eb"
+    },
+    {
+      "path": "source/src__components__HeroSection.tsx.txt",
+      "sha256": "53baf7502d0416cbcccc6246851714112db85a355a80d74ebe3bbe0476062040"
+    },
+    {
+      "path": "source/src__lib__api-key-auth.ts.txt",
+      "sha256": "83c2ea784f6ea6f589b0a2470509c01085b9d40fde17f7db3705e18a9b36be98"
+    },
+    {
+      "path": "source/src__lib__billing__billing-config.ts.txt",
+      "sha256": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea"
+    },
+    {
+      "path": "source/src__lib__billing__cost-reservation.ts.txt",
+      "sha256": "13c7e590a078bdc88a7fbe67b0278dcd7b93cc57b9241eb3a1df42d17f26a3a3"
+    },
+    {
+      "path": "source/src__lib__billing__entitlement-read-guard.ts.txt",
+      "sha256": "73e469e5d853b97aaa048b2eae4415695f81f8d6492a78708d483c47beb69d91"
+    },
+    {
+      "path": "source/src__lib__billing__execution-orchestration.ts.txt",
+      "sha256": "f7c342725abb87f9a7fa9f6f19da78040b1aec32ce55d26fd1002322617779b1"
+    },
+    {
+      "path": "source/src__lib__billing__refund-basis.ts.txt",
+      "sha256": "5f8cdfd2ff230946333e15b815a6bca4ec4a2ae930408b443e27fb5405455061"
+    },
+    {
+      "path": "source/src__lib__journey__first-value-journey.ts.txt",
+      "sha256": "96c781db5ca041923ec7d6f6e718f165a1e3e618838aa5f686552f0df663da1e"
+    },
+    {
+      "path": "source/src__lib__mailer.ts.txt",
+      "sha256": "4ccd4912d458f1150611d2175b74f8b436157e96a27528acea1d0ed013ca073c"
+    },
+    {
+      "path": "source/src__lib__metrics__value-cost-metrics.ts.txt",
+      "sha256": "8f2e7a7973e89b432f2e23760bfc9fed351c28e4c76d8a03621f039fc4e9f504"
+    },
+    {
+      "path": "source/src__lib__operations__ops-readiness.ts.txt",
+      "sha256": "9dc71328ece201c41b0db842a071ca3b3c7208949b11b9cb22792e5f4a28263f"
+    },
+    {
+      "path": "source/src__lib__parse-admission.ts.txt",
+      "sha256": "9782159b11a5fa0d9d1ec301847e922cccafee798a4947b9f3d2cbcbbcb7621f"
+    },
+    {
+      "path": "source/src__lib__parse-runner.ts.txt",
+      "sha256": "b6abb315fa52d80d3db72b2696657438115df53585ef06d71da5398bc84069bc"
+    },
+    {
+      "path": "source/src__lib__parse-worker.cjs.txt",
+      "sha256": "edba82874b7314cda12cd8c938c1bcef36d07bb0b49ce3e6a10d64347d8dea4a"
+    },
+    {
+      "path": "source/src__lib__payment__alipay.ts.txt",
+      "sha256": "20122fbf1051101f632834114bebb72feb7244795669a72e2976de2f40945acb"
+    },
+    {
+      "path": "source/src__lib__payment__fulfill.ts.txt",
+      "sha256": "5b52f1cf1a99ea034e5d800e724be840c9815e703dd40735b0869f9dc9dea06a"
+    },
+    {
+      "path": "source/src__lib__payment__wechatpay.ts.txt",
+      "sha256": "07bb7b6dfc535e4ccc37b4351097190b09e6c51df2d4b56278ccc456fd32f8b7"
+    },
+    {
+      "path": "source/src__lib__quota-token.ts.txt",
+      "sha256": "556bb71a81d95702fc388b8f09478d34a5645a482032070101503cfc6aaba670"
+    },
+    {
+      "path": "source/src__lib__security.ts.txt",
+      "sha256": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e"
+    },
+    {
+      "path": "source/src__lib__sms-store.ts.txt",
+      "sha256": "13b568e09c05f08b50ccceecd9bfe6ed5ab5a4bc700c76508359092c18b5864a"
+    },
+    {
+      "path": "source/src__lib__tenant__enterprise-lifecycle.ts.txt",
+      "sha256": "be283c1d1bfdfe6883daf0708568ac6c405c50e548885bc9b18b4165b189add8"
+    },
+    {
+      "path": "source/src__lib__text-extract.ts.txt",
+      "sha256": "7c294ee8179a0320a5d2e4d89e44859e5117a00d3a58c8b36f8073e45c5de750"
+    },
+    {
+      "path": "source/src__lib__verification-backend.ts.txt",
+      "sha256": "3c0d7e9d1ee7a7ce2a620c3805d4ee4ede70954cd7dcb6c2f2a8a1e0612f5da1"
+    },
+    {
+      "path": "source/src__lib__verification-codes.ts.txt",
+      "sha256": "eb8438f743535baf02f09425b634405b12976a74bf64f6b8d8a4d604f6c03cbd"
+    },
+    {
+      "path": "source/src__lib__workspace-byo-model.ts.txt",
+      "sha256": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53"
+    },
+    {
+      "path": "source/src__middleware.ts.txt",
+      "sha256": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6"
+    },
+    {
+      "path": "source-manifest.json",
+      "sha256": "26fe5a19c853b750a1ccd449f3921095cfb30f1f1137a2555ee4e7b6cd7028c8"
+    },
+    {
+      "path": "test-targets.json",
+      "sha256": "09fda771396404af477081b9e020239aee1547e4e5bca4be7f451adbf81d2167"
+    },
+    {
+      "path": "typecheck.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "verification-review.test.ts",
+      "sha256": "70708dff36c1ee8c3e19c899d53873a138dcb0b8e09cdffe3b9597be6e504571"
+    },
+    {
+      "path": "verification-summary.json",
+      "sha256": "b04f44d8d076346e42fe9ead0f5a047e094b187f54f57f839ad89fe8a03083ec"
+    },
+    {
+      "path": "verify-delivery.cjs",
+      "sha256": "57b52a488508ac17a2f687ec46d3db39d6351b0b2d7c6fe82d6da09a15dc74b7"
+    }
+  ]
+}

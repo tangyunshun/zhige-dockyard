@@ -1,0 +1,77 @@
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/decisions-and-release-gates.md
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/final-manifest.json
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/final-report.md
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/final-tests.json
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/handoff.json
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/production-wiring-map.md
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/schema-migration-and-recovery.md
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/scope-acceptance-map.md
+ M docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/user-journey-evidence.md
+ M prisma/schema.prisma
+ M src/app/api/__tests__/r0b-seat-addon.test.ts
+ M src/app/api/__tests__/r0d-global-markup.test.ts
+ M src/app/api/__tests__/r0f-mailer.test.ts
+ M src/app/api/__tests__/r0k1-fixes.test.ts
+ M src/app/api/__tests__/r0l-verification.test.ts
+ M src/app/api/__tests__/r0l2-verification-production.test.ts
+ M src/app/api/__tests__/r0l3-verification-fixes.test.ts
+ M src/app/api/__tests__/r0u-auth-challenge.test.ts
+ M src/app/api/__tests__/r0y-payment-u04.test.ts
+ M src/app/api/admin/model-pricing/global-markup/route.ts
+ M src/app/api/auth/reset-password/route.ts
+ M src/app/api/auth/send-email-code/route.ts
+ M src/app/api/studio/extract-text/route.ts
+ M src/app/api/user/workspace-hub/dashboard/route.ts
+ M src/app/api/webhooks/route.ts
+ M src/app/api/workspace/byo-model/test/route.ts
+ M src/app/api/workspace/create-personal/route.ts
+ M src/app/api/workspace/list/route.ts
+ M src/app/api/workspace/switch/route.ts
+ M src/app/api/workspace/upgrade/route.ts
+ M src/app/auth/login/page.tsx
+ M src/lib/email-code-store.ts
+ M src/lib/mailer.ts
+ M src/lib/parse-admission.ts
+ M src/lib/payment/fulfill.ts
+ M src/lib/sms-store.ts
+ M src/lib/verification-backend.ts
+ M src/lib/verification-codes.ts
+?? docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/history/
+?? docs/reviews/independent-closeout-2026-11-10/
+?? docs/reviews/remaining-closeout-fix-2026-11-09/
+?? docs/reviews/unified-closeout-review-2026-11-09/
+?? docs/reviews/unified-independent-review-2026-11-09/
+?? docs/reviews/unified-recheck-2026-11-09/IDE-UNIFIED-CLOSEOUT-PROMPT.md
+?? docs/reviews/unified-recheck-2026-11-09/REVIEW.md
+?? docs/reviews/unified-recheck-2026-11-09/admission-review.test.ts
+?? docs/reviews/unified-recheck-2026-11-09/artifact-sha256.json
+?? docs/reviews/unified-recheck-2026-11-09/audit.config.ts
+?? docs/reviews/unified-recheck-2026-11-09/business-modules-review.test.ts
+?? docs/reviews/unified-recheck-2026-11-09/changes-from-last-review.json
+?? docs/reviews/unified-recheck-2026-11-09/collect.cjs
+?? docs/reviews/unified-recheck-2026-11-09/delivery-check.json
+?? docs/reviews/unified-recheck-2026-11-09/executor-delivery/
+?? docs/reviews/unified-recheck-2026-11-09/finalize-evidence.cjs
+?? docs/reviews/unified-recheck-2026-11-09/formal-output.txt
+?? docs/reviews/unified-recheck-2026-11-09/formal-results.json
+?? docs/reviews/unified-recheck-2026-11-09/import-evidence.json
+?? docs/reviews/unified-recheck-2026-11-09/independent-output.txt
+?? docs/reviews/unified-recheck-2026-11-09/independent-results.json
+?? docs/reviews/unified-recheck-2026-11-09/node-tests.txt
+?? docs/reviews/unified-recheck-2026-11-09/prepare-independent.cjs
+?? docs/reviews/unified-recheck-2026-11-09/source-manifest.json
+?? docs/reviews/unified-recheck-2026-11-09/source/
+?? docs/reviews/unified-recheck-2026-11-09/test-targets.json
+?? docs/reviews/unified-recheck-2026-11-09/typecheck.txt
+?? docs/reviews/unified-recheck-2026-11-09/verification-summary.json
+?? scratch/changed-files.json
+?? scratch/create-personal-patch.cjs
+?? scratch/fix-r0d-r0f.cjs
+?? scratch/fix-r0k1-sweep.cjs
+?? scratch/p14-rest.cjs
+?? scratch/r0b-final-contract.cjs
+?? scratch/r0b-one-shot.cjs
+?? scratch/r0b-txid-patch.cjs
+?? scratch/send-email-patch.cjs
+?? scratch/u05-auth-patch.cjs
+?? scratch/write-p14.cjs

@@ -29,17 +29,12 @@ function shouldRunSelfHeal(userId: string): boolean {
 
 export async function GET(request: NextRequest) {
   try {
-    // 验证用户身份
-    let userId = request.headers.get("x-user-id");
-    if (!userId) {
-      const authHeader = request.headers.get("authorization");
-      const authResult = await validateUser(authHeader);
-      if (!authResult.valid) {
-        return NextResponse.json({ error: authResult.error }, { status: 401 });
-      } else {
-        userId = authResult.user!.id;
-      }
+    // [U05/原9] 一律完整 validateUser：x-user-id 验签身份不等于有效会话
+    const listAuth = await validateUser(request.headers.get("authorization"), request);
+    if (!listAuth.valid || !listAuth.user) {
+      return NextResponse.json({ error: listAuth.error || "未授权" }, { status: 401 });
     }
+    const userId = listAuth.user!.id;
 
     // 查询用户的所有工作空间（包括作为成员和作为所有者的空间）
     // P3 优化：成员列表与"作为所有者"的列表互不依赖，并行发起缩短总等待

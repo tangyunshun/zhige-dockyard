@@ -1,0 +1,735 @@
+{
+  "capturedAt": "2026-11-09T15:01:50.135Z",
+  "head": "6d9f68b403798a8243f11eeb36a587916c4deb13",
+  "previousReviewedHead": "67243457064f645a3a4af1a2e8b4b1d012a85d2d",
+  "sourceCompared": 1070,
+  "changedSincePreviousReview": 43,
+  "sourceChangesDuringReview": [],
+  "formal": {
+    "files": 41,
+    "total": 788,
+    "passed": 787,
+    "failed": 1,
+    "start": "2026-11-09T14:46:23.155Z",
+    "failureDetails": [
+      {
+        "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/src/app/api/__tests__/r0k1-fixes.test.ts",
+        "name": "R0-K1 KR7-b：preview content 快捷返回仅限纯文本；xlsx/docx 保留 table/html 协议 docx（无缓存）走 docx-html 重解析，返回 type=html",
+        "messages": [
+          "AssertionError: expected 504 to be 200 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0k1-fixes.test.ts:802:24\n    at processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+        ]
+      }
+    ],
+    "meaning": "Initial combined result retained; do not report as all green."
+  },
+  "targetedRetry": {
+    "files": 1,
+    "total": 25,
+    "passed": 25,
+    "failed": 0,
+    "meaning": "Failed parse file passed in isolation; original timing failure root cause not established."
+  },
+  "independent": {
+    "files": 13,
+    "total": 79,
+    "passed": 79,
+    "failed": 0,
+    "positive": 60,
+    "confirmedDefectCharacterizations": 19,
+    "meaning": "Includes reused isolated positive fixtures and newly added boundary assertions. Green defect characterizations prove remaining defects, not repaired acceptance.",
+    "cases": [
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: concurrent sweep returns counters once and full weight",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: weighted release now returns two units, repeats return none",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: twelve completed expiry accounting cycles leave no units",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: thrown counter fault rolls back expiry and retry recovers",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: release uses persisted weight even if caller weight differs",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: zero-row counter update rolls back RELEASED",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates DEFECT: elapsed age alone releases QUARANTINED lease without exit evidence",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates DEFECT: expired ACTIVE sweep commits terminal state despite zero-row counter miss",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "auth-failure-review.test.ts",
+        "name": "DEFECT: password write failure irreversibly consumes authorization and leaves no resumable success",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 resetToken 绑定 challenge 同一 token 用两次：一次写密码、一次拒绝",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 resetToken 绑定 challenge 旧 token（已用）不能借后来签发的新码恢复改密权，且新码不被误消费",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 resetToken 绑定 challenge 缺少 challenge 绑定的伪造 token 拒绝，零密码写入",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 resetToken 绑定 challenge 用途隔离：register 验证码不能换 reset-password 凭证",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 短信登录并发唯一会话 两个并发请求最多一份会话、一次 sessionToken 写入",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 短信登录并发唯一会话 顺序重放被拒，零重复会话",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "auth-positive.test.ts",
+        "name": "U02 源码接线契约（静态，无副作用） 安装向导第二步传递 initToken，且注册不再用无返回值 delete 宣称已消费",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "POSITIVE: legitimate 20000 bps now remains unchanged",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: same key with different tenant and input receives original successful reservation",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: prepaid receipts are all reported as consumed service",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: unknown fixed cost is omitted from profit incompleteness flag",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: no cross-tenant permission with null scope returns other tenant records",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "不同 host 不复用旧 key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "完全相同 endpoint+协议可复用旧 key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "路径大小写不同是新目的地，不复用旧 key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "HTTPS 改 HTTP 协议降级是新目的地，不复用旧 key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "DEFECT: query change is discarded when choosing whether to reuse saved key",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 SETUP_TOKEN 错误 → 401 且不签发授权",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 无授权 / 伪造授权 / 用途不符 → 403，有明确提示，零创建",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 合法向导两步流程走通：验证取授权 → 携带授权创建成功",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 旧授权不可重放：已初始化后同授权再创建 → 400，仍只有一名管理员",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 并发两笔同授权 → 最多一次创建（唯一认领 + 空库检查同事务）",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 已初始化后不再签发新授权",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-positive.test.ts",
+        "name": "U05-4 安装向导授权闭环 授权与 SETUP_TOKEN 绑定：换配置后旧授权失效",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "传输器不可用（SMTP 未配置）归 unknown，不阻断主流程",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "传输明确拒收目标 → failed",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "传输返回结果但本收件人未在 accepted（空 accepted、未拒收）→ unknown，不宣称已发送",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "目标确在 accepted → accepted",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "DEFECT: unrelated mailbox suffix is mistaken for accepted target",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "DEFECT: missing recipient confirmation fields still becomes accepted",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 金额按安全整数与协议精度解析 parseYuanToCents：合法两位小数、整数元",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 金额按安全整数与协议精度解析 多余精度/指数/NaN/负数/超范围/非字符串一律拒绝",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 金额按安全整数与协议精度解析 parseCents：仅正的安全整数分",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 合法 REAL 收款：恰好一次发放，认领行与订单 SUCCESS 同时落下",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 双订单并发同交易号：最多一次权益、一次发放（持久唯一认领裁决）",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 同单重发：首次 FULFILLED，二次 ALREADY_PROCESSED，零双发",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 渠道不符（ALIPAY 收款兑现 WECHAT_PAY 订单）→ 拒绝，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 币种非 CNY → 拒绝，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 REAL 缺交易号 / 缺金额 / 金额不符 → 拒绝，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 金额非法（小数分 / NaN / Infinity）→ 拒绝，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 SUCCESS 幂等不被用来掩盖金额异常",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 收款事实与唯一履约 同交易号不同渠道是合法不同收款，不误冲突",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 晚收款多笔不覆盖 CANCELLED 订单两笔不同交易：首笔保留，冲突另存，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 晚收款多笔不覆盖 同一笔晚收款重发幂等，不重复写入、不发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 两条 notify 路由的金额与字段门禁 微信：金额齐全 → 200 入账一次",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 两条 notify 路由的金额与字段门禁 微信：非整数金额 / 缺金额 → 400 FAIL，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 两条 notify 路由的金额与字段门禁 支付宝：10.004 多余精度视为非法，400 fail，零发放（不被四舍五入接受）",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "U04 两条 notify 路由的金额与字段门禁 支付宝：合法 10.00 + trade_no → 200 success 入账一次",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent payment boundary checks DEFECT: concurrent late receipts overwrite one another despite sequential preservation",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent payment boundary checks DEFECT: second different receipt for SUCCESS order is acknowledged without preserving its fact",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "pricing-review.test.ts",
+        "name": "正常：返回真实行数 7/3",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "pricing-review.test.ts",
+        "name": "审计失败整笔回滚：价格/默认/版本不变，且只有 1 个事务",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "pricing-review.test.ts",
+        "name": "DEFECT: response counts are correct but committed audit still reports zero modified rows",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "seat-receipt-review.test.ts",
+        "name": "POSITIVE: same seat order repeat adds seats once",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "seat-receipt-review.test.ts",
+        "name": "DEFECT: same receipt fulfills two different seat orders and adds four seats",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "seat-receipt-review.test.ts",
+        "name": "DEFECT: REAL seat order can fulfill without gateway transaction identifier",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "security-positive.test.ts",
+        "name": "完整认证明确拒绝（FORCED_LOGOUT）后平台守卫不复活，仍 unauthorized",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "security-positive.test.ts",
+        "name": "完整认证通过时平台守卫正常放行超管",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "security-positive.test.ts",
+        "name": "账号被封禁时 API Key 拒绝，且实际查询了账号状态",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "security-positive.test.ts",
+        "name": "账号注销冷静期（deleting）时 API Key 拒绝",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "security-positive.test.ts",
+        "name": "账号正常时 API Key 放行",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "冷启动竞争：只准入一笔且计数一次（不双准、预算==准入）",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "5 次错误后锁定，正确码也被拒",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "过期挑战不可消费",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "跨日窗口重置为 1 而非叠加，新窗口内可继续",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "重复 failed 回填不使预算为负",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: repeated failed callback steals another active send platform reservation",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: locked challenge remains consumable even though verification has been locked",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: unreadable failure-lock table does not fail closed during verification",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "webhook-auth-review.test.ts",
+        "name": "DEFECT: trusted identity header skips complete session validation and exposes webhook material after forced logout",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      }
+    ]
+  },
+  "typecheck": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 0,
+    "output": "typecheck.txt"
+  },
+  "node": {
+    "command": "node node_modules/tsx/dist/cli.mjs --test --test-timeout=8000 src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts",
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "cancelled": 0,
+    "output": "node-tests.txt"
+  },
+  "workerSyntax": {
+    "exitCode": 0,
+    "stderr": ""
+  },
+  "staticClient": {
+    "model": "VerificationBudget",
+    "fields": [
+      "id",
+      "count",
+      "windowStart",
+      "version",
+      "updatedAt"
+    ]
+  },
+  "workspaceEvidence": {
+    "trackedDeletions": [
+      "docs/reviews/R0-A-fix-report.md",
+      "docs/reviews/R0-A-independent-review/IDE-R0-A1-PROMPT.md",
+      "docs/reviews/R0-A-independent-review/REVIEW.md",
+      "docs/reviews/R0-A1-fix-report.md",
+      "docs/reviews/R0-A1-independent-review/IDE-R0-A2-PROMPT.md",
+      "docs/reviews/R0-A1-independent-review/REVIEW.md",
+      "docs/reviews/R0-A2-fix-report.md",
+      "docs/reviews/R0-A2-independent-review/IDE-R0-A3-PROMPT.md",
+      "docs/reviews/R0-A2-independent-review/REVIEW.md",
+      "docs/reviews/R0-A3-fix-report.md",
+      "docs/reviews/R0-A3-independent-review/IDE-R0-A4-PROMPT.md",
+      "docs/reviews/R0-A3-independent-review/REVIEW.md",
+      "docs/reviews/R0-A4-fix-report.md",
+      "docs/reviews/R0-A4-independent-review/IDE-R0-A5-PROMPT.md",
+      "docs/reviews/R0-A4-independent-review/REVIEW.md",
+      "docs/reviews/R0-A5-fix-report.md",
+      "docs/reviews/R0-A5-independent-review/IDE-R0-B-PROMPT.md",
+      "docs/reviews/R0-A5-independent-review/REVIEW.md",
+      "docs/reviews/R0-A5-independent-review/frozen-source/docs/reviews/R0-A5-fix-report.md.snapshot.txt",
+      "docs/reviews/R0-B-fix-report.md",
+      "docs/reviews/R0-B-independent-review/IDE-R0-B1-PROMPT.md",
+      "docs/reviews/R0-B-independent-review/REVIEW.md",
+      "docs/reviews/R0-B1-fix-report.md",
+      "docs/reviews/R0-B1-independent-review/IDE-R0-B2-PROMPT.md",
+      "docs/reviews/R0-B1-independent-review/REVIEW.md",
+      "docs/reviews/R0-B2-fix-report.md",
+      "docs/reviews/R0-B2-independent-review/IDE-R0-B3-PROMPT.md",
+      "docs/reviews/R0-B2-independent-review/REVIEW.md",
+      "docs/reviews/R0-B3-fix-report.md",
+      "docs/reviews/R0-B3-independent-review/IDE-R0-C-PROMPT.md",
+      "docs/reviews/R0-B3-independent-review/REVIEW.md",
+      "docs/reviews/R0-C-fix-report.md",
+      "docs/reviews/R0-C-independent-review/IDE-R0-D-PROMPT.md",
+      "docs/reviews/R0-C-independent-review/REVIEW.md",
+      "docs/reviews/R0-D-fix-report.md",
+      "docs/reviews/R0-D-independent-review/IDE-R0-E-PROMPT.md",
+      "docs/reviews/R0-D-independent-review/REVIEW.md",
+      "docs/reviews/R0-E-fix-report.md",
+      "docs/reviews/R0-E-independent-review/IDE-R0-F-PROMPT.md",
+      "docs/reviews/R0-E-independent-review/REVIEW.md",
+      "docs/reviews/R0-F-fix-report.md",
+      "docs/reviews/R0-F-independent-review/IDE-R0-F1-PROMPT.md",
+      "docs/reviews/R0-F-independent-review/REVIEW.md",
+      "docs/reviews/R0-F1-fix-report.md",
+      "docs/reviews/R0-F1-independent-review/IDE-R0-F2-PROMPT.md",
+      "docs/reviews/R0-F1-independent-review/REVIEW.md",
+      "docs/reviews/R0-F2-fix-report.md",
+      "docs/reviews/R0-F2-independent-review/IDE-R0-G-PROMPT.md",
+      "docs/reviews/R0-F2-independent-review/REVIEW.md",
+      "docs/reviews/R0-G-fix-report.md",
+      "docs/reviews/R0-G-independent-review/IDE-R0-G1-PROMPT.md",
+      "docs/reviews/R0-G-independent-review/REVIEW.md",
+      "docs/reviews/R0-G1-fix-report.md",
+      "docs/reviews/R0-G1-independent-review/IDE-R0-H-PROMPT.md",
+      "docs/reviews/R0-G1-independent-review/REVIEW.md",
+      "docs/reviews/R0-H-fix-report.md",
+      "docs/reviews/R0-H-independent-review/IDE-R0-H1-PROMPT.md",
+      "docs/reviews/R0-H-independent-review/REVIEW.md",
+      "docs/reviews/R0-H1-fix-report.md",
+      "docs/reviews/R0-H1-independent-review/IDE-R0-H2-PROMPT.md",
+      "docs/reviews/R0-H1-independent-review/REVIEW.md",
+      "docs/reviews/R0-H2-fix-report.md",
+      "docs/reviews/R0-H2-independent-review/IDE-R0-I-PROMPT.md",
+      "docs/reviews/R0-H2-independent-review/REVIEW.md",
+      "docs/reviews/R0-I-fix-report.md",
+      "docs/reviews/R0-I-independent-review/IDE-R0-I1-PROMPT.md",
+      "docs/reviews/R0-I-independent-review/REVIEW.md",
+      "docs/reviews/R0-I1-fix-report.md",
+      "docs/reviews/R0-I1-independent-review/IDE-R0-I2-PROMPT.md",
+      "docs/reviews/R0-I1-independent-review/REVIEW.md",
+      "docs/reviews/R0-I2-archive-independent-review/REVIEW.md",
+      "docs/reviews/R0-I2-fix-report.md",
+      "docs/reviews/R0-I2-independent-review/IDE-R0-I2-ARCHIVE-PROMPT.md",
+      "docs/reviews/R0-I2-independent-review/REVIEW.md",
+      "docs/reviews/R0-J-fix-report.md",
+      "docs/reviews/R0-J-independent-review/IDE-R0-J1-PROMPT.md",
+      "docs/reviews/R0-J-independent-review/REVIEW.md",
+      "docs/reviews/R0-J1-fix-report.md",
+      "docs/reviews/R0-J1-independent-review/IDE-R0-J2-PROMPT.md",
+      "docs/reviews/R0-J1-independent-review/REVIEW.md",
+      "docs/reviews/R0-J2-fix-report.md",
+      "docs/reviews/R0-J2-independent-review/IDE-R0-J3-PROMPT.md",
+      "docs/reviews/R0-J2-independent-review/REVIEW.md",
+      "docs/reviews/R0-J3-fix-report.md",
+      "docs/reviews/R0-J3-independent-review/IDE-R0-J4-PROMPT.md",
+      "docs/reviews/R0-J3-independent-review/REVIEW.md",
+      "docs/reviews/R0-J4-fix-report.md",
+      "docs/reviews/R0-J4-independent-review/IDE-R0-J5-PROMPT.md",
+      "docs/reviews/R0-J4-independent-review/REVIEW.md",
+      "docs/reviews/R0-J5-fix-report.md",
+      "docs/reviews/R0-J5-independent-review/IDE-R0-J6-PROMPT.md",
+      "docs/reviews/R0-J5-independent-review/REVIEW.md",
+      "docs/reviews/R0-J6-fix-report.md",
+      "docs/reviews/R0-J6-independent-review/F14-PREFLIGHT.md",
+      "docs/reviews/R0-J6-independent-review/IDE-R0-K-PROMPT.md",
+      "docs/reviews/R0-J6-independent-review/REVIEW.md",
+      "docs/reviews/R0-K-fix-report.md",
+      "docs/reviews/R0-K-independent-review/IDE-R0-K1-PROMPT.md",
+      "docs/reviews/R0-K-independent-review/REVIEW.md",
+      "docs/reviews/R0-K1-fix-report.md",
+      "docs/reviews/R0-K1-followup-review/IDE-R0-K1-CLOSEOUT-PROMPT.md",
+      "docs/reviews/R0-K1-followup-review/REVIEW.md",
+      "docs/reviews/R0-K1-followup-review/delivery-report.snapshot.md",
+      "docs/reviews/R0-K1-implementation-review/IDE-R0-K1-REMAINING-PROMPT.md",
+      "docs/reviews/R0-K1-implementation-review/REVIEW.md",
+      "docs/reviews/R0-K1-independent-review/IDE-R0-K1-IMPLEMENTATION-PROMPT.md",
+      "docs/reviews/R0-K1-independent-review/REVIEW.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/01-A-F14.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/02-B-F15.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/03-A-F16.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/04-B-INTEGRATION.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/COMMON-RULES.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/HANDOFF-REGISTER.md",
+      "docs/reviews/R0-parallel-four-batches-2026-11-08/README.md",
+      "docs/reviews/activity-log-role-report.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/00-MASTER.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/05-A-PAYMENT-FACTS.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/06-B-QUOTE-BUDGET.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/07-A-SOURCE-REFUND-ENTITLEMENT.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/08-B-TASK-ATTEMPT-RECOVERY.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/09-A-ENTERPRISE-LIFECYCLE.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/10-B-FIRST-VALUE.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/11-A-OPERATIONS-READINESS.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/12-B-VALUE-COST-METRICS.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/13-A-INTEGRATION.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/14-B-FINAL-VERIFICATION.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/AGI-A-QUEUE.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/AGI-B-QUEUE.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/ALL-INSTRUCTIONS.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/COMMON-RULES.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/DECISION-GATES.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/HANDOFF-REGISTER.md",
+      "docs/reviews/full-plan-dispatch-2026-11-08/SCOPE-MAP.md"
+    ],
+    "previousAuditTestAlterations": [
+      {
+        "path": "byo-review.test.ts",
+        "oldSHA256": "1846eda31aa41514e2eebef7943d139128bcfa9dd7ce4d33557794b7c14383c9",
+        "currentSHA256": "09c3b2d939dc073b3edb6902f4d96c8f43e9867478fd36b20c027c6915f8580c"
+      },
+      {
+        "path": "init-diagnostics-review.test.ts",
+        "oldSHA256": "4c4c93d206084ec79a5505e04a4dac39290ab3722a3f92d358af12ef19430674",
+        "currentSHA256": "dc0a0351d095f680dda034f8e4fc41682f24a953f151116445440499a4b6b1cc"
+      },
+      {
+        "path": "login-review.test.ts",
+        "oldSHA256": "7dd99cbc08d3836cbd88860401bcb805b78cc88bcf051916ce8796e27ff78f47",
+        "currentSHA256": "2f7dda56223256b3131e9fa3c700f14ed9171f380908c306a4e6d7710565e911"
+      },
+      {
+        "path": "mailer-review.test.ts",
+        "oldSHA256": "d24f9b9604d508110400ba154cf8f703595ffa9e17272103800097685144628c",
+        "currentSHA256": "38dbb6d1ce5cdf85ea25be5d6e0161a7d446d33273a694ebea416fbcb9163ae3"
+      },
+      {
+        "path": "payment-review.test.ts",
+        "oldSHA256": "a48800046cf837dc31ac5cc978464d6ee8ea6e56bd57dbd3cdd073c72ed49032",
+        "currentSHA256": "964b6fdd6ed34cbace28030567f8d9a845bc30705e15cc0fb186f106ba6cc1d0"
+      },
+      {
+        "path": "pricing-review.test.ts",
+        "oldSHA256": "10497aa6ef6725b552172aa37e41d0b23c36b9595ea383605b802534dc07f6ae",
+        "currentSHA256": "7ef3643eb9217971484ffc6b90cdddfa91e4b5a46f58a879280e976f91a5a527"
+      },
+      {
+        "path": "reset-review.test.ts",
+        "oldSHA256": "56984e2476a0506f39f23ff5bb4eed789c8e72bdcaec42408d51a680ff7e39d4",
+        "currentSHA256": "1a92bf9712deb465f5796835df3eb0bdbef7e5d14b61a0dbdcaf4c72b49d5715"
+      },
+      {
+        "path": "security-review.test.ts",
+        "oldSHA256": "23aec733cff8948f6fe727897a95d75ee739d861a65824dfc1a533ccb1832a60",
+        "currentSHA256": "0e257382ed8411b96c84586240d0ad5a64e3d58f9ecce039e5892a0ea98301a5"
+      },
+      {
+        "path": "verification-review.test.ts",
+        "oldSHA256": "8a293cd894f5970e20d60a44a933825ea2899fbfcd38039d68ae80c76942b3cf",
+        "currentSHA256": "0d674d4ac45709a5407eb91c852e1d2f99e3fbc75454069f8555dcd8e757cbd6"
+      }
+    ]
+  },
+  "limits": [
+    "No real DB/write/migration/seed/model/SMTP/SMS/payment/cloud/deploy",
+    "No real customer files or real key use; fake keys and controlled delegates only",
+    "Payment tests do not prove official signature forgery or real MySQL locks",
+    "No browser or human business acceptance",
+    "Pending source and current executor report checked separately; modified prior review tests are not immutable evidence"
+  ]
+}

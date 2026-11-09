@@ -79,7 +79,29 @@ beforeEach(() => {
       return { count };
     },
   };
-  __setVerificationModelsForTest(budget, sms);
+  // [U02] 发送认领替身（真实唯一约束 + 条件状态转换）
+  const claims = new Map<string, any>();
+  const claimModel = {
+    create: async ({ data }: any) => {
+      if (claims.has(data.id)) throw err("P2002");
+      claims.set(data.id, { ...data, status: "PENDING" });
+      return { ...claims.get(data.id) };
+    },
+    findMany: async ({ where }: any) =>
+      [...claims.values()].filter((c) => match(c, where)).map((c) => ({ ...c })),
+    updateMany: async ({ where, data }: any) => {
+      let count = 0;
+      for (const [, c] of claims) if (match(c, where)) { apply(c, data); count++; }
+      return { count };
+    },
+    update: async ({ where, data }: any) => {
+      const c = claims.get(where.id);
+      if (!c) throw err("P2025");
+      apply(c, data);
+      return { ...c };
+    },
+  };
+  __setVerificationModelsForTest(budget, sms, claimModel);
   backend = new PrismaVerificationBackend();
   __setVerificationBackendForTest(backend);
 });

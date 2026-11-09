@@ -39,8 +39,10 @@ export async function storeEmailCode(
   key: string,
   code: string,
   type?: VerifyPurpose,
+  opts: { ip?: string; actorId?: string | null } = {},
 ): Promise<SendResult> {
-  return storeVerificationCode("email", key, type ?? "reset-password", code);
+  // [U02 §2.1.5] 可信 IP/已认证 actor 从实际入口传入生产预算
+  return storeVerificationCode("email", key, type ?? "reset-password", code, opts);
 }
 
 /** 核验邮箱验证码（不消费）。 */

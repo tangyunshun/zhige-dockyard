@@ -66,6 +66,91 @@ function receiptVerified(input: FulfillOrderInput, order: { amount?: unknown; cu
   return { ok: true };
 }
 
+/**
+ * [U04/G4] 持久收款事实（原子）：以 (渠道, 商户语境, 交易号) 认领行保存晚到账/终态订单收款。
+ * 主键唯一约束保证并发两笔到账各自独立落行、互不覆盖（不再读改写 metadata 造成丢事实）；
+ * 同笔重放 P2002 → 读回按事实幂等分类。
+ * 返回 replay=同一订单同一交易的重放；ownedByOrder=null 表示认领行不存在（创建成功）。
+ */
+async function persistTerminalReceiptFact(
+  billingModel: any,
+  input: FulfillOrderInput,
+  order: { userId: string; workspaceId?: string | null; amount?: unknown; currency?: unknown },
+  reason: string,
+): Promise<{ replay: boolean; ownedByOrder: string | null }> {
+  const claimId = receiptClaimId(input.paymentMethod, input.merchantContext, String(input.gatewayTransactionId));
+  try {
+    await billingModel.create({
+      data: {
+        id: claimId,
+        userId: order.userId,
+        workspaceId: order.workspaceId ?? null,
+        type: RECEIPT_CLAIM_TYPE,
+        title: "终态订单收款事实（待恢复）",
+        amount: Number(order.amount),
+        currency: (order.currency as string) ?? "CNY",
+        status: "PENDING_RECOVERY",
+        channel: input.paymentMethod,
+        metadata: {
+          orderNo: input.orderNo,
+          gatewayTransactionId: String(input.gatewayTransactionId),
+          gatewayAmountCents: input.gatewayAmountCents ?? null,
+          merchantContext: input.merchantContext ?? null,
+          recoverable: true,
+          reason,
+          recordedAt: new Date().toISOString(),
+        },
+      },
+    });
+    return { replay: false, ownedByOrder: null };
+  } catch (e: any) {
+    if (String(e?.code) !== "P2002") throw e;
+    const owner = await billingModel.findUnique({ where: { id: claimId } });
+    const ownerOrderNo = (owner?.metadata as any)?.orderNo ?? null;
+    return { replay: ownerOrderNo === input.orderNo, ownedByOrder: ownerOrderNo };
+  }
+}
+
+/**
+ * [U04/G3] 差异事实行：同一订单收到另一笔交易——每 (订单, 渠道, 交易号) 一行原子落库，
+ * 并发多笔互不覆盖、可追溯、不无限追加同一数组。返回 true 表示该差异事实已存在（重放）。
+ */
+async function persistReceiptDiffFact(
+  billingModel: any,
+  input: FulfillOrderInput,
+  order: { userId: string; workspaceId?: string | null; amount?: unknown; currency?: unknown },
+  reason: string,
+): Promise<boolean> {
+  const factId = `receipt-diff::${input.orderNo}::${input.paymentMethod}::${String(input.gatewayTransactionId)}`;
+  try {
+    await billingModel.create({
+      data: {
+        id: factId,
+        userId: order.userId,
+        workspaceId: order.workspaceId ?? null,
+        type: RECEIPT_CLAIM_TYPE,
+        title: "终态/成功订单差异收款事实",
+        amount: Number(order.amount),
+        currency: (order.currency as string) ?? "CNY",
+        status: "DIFF_FACT",
+        channel: input.paymentMethod,
+        metadata: {
+          orderNo: input.orderNo,
+          gatewayTransactionId: String(input.gatewayTransactionId),
+          gatewayAmountCents: input.gatewayAmountCents ?? null,
+          merchantContext: input.merchantContext ?? null,
+          reason,
+          recordedAt: new Date().toISOString(),
+        },
+      },
+    });
+    return false;
+  } catch (e: any) {
+    if (String(e?.code) === "P2002") return true; // 同笔差异事实已存在（重放）
+    throw e;
+  }
+}
+
 export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<FulfillOrderResult> {
   const billingModel = getBillingModel();
   if (!billingModel) return { ok: false, status: "REJECTED", error: "账单表不可用" };
@@ -74,8 +159,8 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
   if (!order) return { ok: false, status: "REJECTED", error: "订单不存在" };
 
   const orderType = (order.type || "TOKEN_RECHARGE") as string;
-  // 由本函数直接发放权益的类型（SEAT_ADDON 委托专门服务，其自身有事务级唯一履约权）。
-  const directGrant = orderType !== "SEAT_ADDON";
+  // 权益发放：RECHARGE/PLAN_UPGRADE 由本函数直接发放；SEAT_ADDON 委托专门服务，
+  // 但收款唯一认领已提前覆盖所有类型（不再按类型豁免）。
 
   // [U04/G1] 受控验签后的收款事实才带渠道/商户语境：有交易号时严格核对订单渠道与币种，
   // 拒绝「支付宝收款兑现微信订单」这类跨渠道串单，也拒绝非本系统支持的币种。
@@ -89,13 +174,11 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
   }
 
   // [U04/G1] 底层 REAL 门禁：精确金额必须是安全整数分且与订单一致，不依赖每个路由自觉；
-  // 直接发放权益的类型还必须有受控验签后的交易号（客户端 paid/备注/截图不构成收款事实）。
+  // **所有订单类型（含 SEAT_ADDON）** 的 REAL 都必须有受控验签后的交易号
+  // （客户端 paid/备注/截图不构成收款事实；席位不再豁免交易号唯一认领）。
   if (input.paymentMode === "REAL") {
     if (!isSafeAmountCents(input.gatewayAmountCents) || Number(order.amount) !== input.gatewayAmountCents) {
       return { ok: false, status: "REJECTED", error: "缺少合法且与订单一致的网关实付金额，拒绝入账" };
-    }
-    if (directGrant && (!input.gatewayTransactionId || !String(input.gatewayTransactionId).trim())) {
-      return { ok: false, status: "REJECTED", error: "缺少网关交易号，拒绝入账" };
     }
   }
 
@@ -103,6 +186,18 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
   if (order.status === "SUCCESS") {
     if (input.gatewayAmountCents != null && Number(order.amount) !== Number(input.gatewayAmountCents)) {
       return { ok: false, status: "REJECTED", error: "回调金额与订单金额不一致，拒绝入账" };
+    }
+    // [U04/G3] SUCCESS 订单收到**另一笔交易**：这是新收款事实，不得当普通重发 ACK 后丢弃。
+    // 按 (订单, 渠道, 交易号) 原子落差异事实行（并发互不覆盖、可追溯），不自动追加权益或退款；
+    // 同笔重放（事实行已存在）→ 幂等 ACK。
+    if (input.gatewayTransactionId) {
+      const meta = (order.metadata || {}) as Record<string, unknown>;
+      if (meta.gatewayTransactionId && String(meta.gatewayTransactionId) !== String(input.gatewayTransactionId)) {
+        const replay = await persistReceiptDiffFact(billingModel, input, order, "SUCCESS_ORDER_SECOND_TRANSACTION");
+        console.warn(`[fulfill] SUCCESS 订单 ${input.orderNo} 收到另一笔交易 ${input.gatewayTransactionId}，已${replay ? "幂等 ACK（事实已留存）" : "留存差异事实"}（未追加权益/未退款）`);
+        return { ok: true, status: "ALREADY_PROCESSED", workspaceId: order.workspaceId ?? null };
+      }
+      // 同笔交易重放（订单 metadata 的交易号一致）→ 普通幂等
     }
     return { ok: true, status: "ALREADY_PROCESSED", workspaceId: order.workspaceId ?? null };
   }
@@ -130,78 +225,23 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
   }
 
   // [R1] 取消/超时后确已收款：保留可信收款事实进入「待运营恢复」状态，不发放、不丢钱。
-  // 网关重试时返回成功 ACK（ok:true）以停止重发；资金发放交由第 11 批复用恢复服务处理。
+  // [U04/G4] 持久事实以 (渠道, 商户, 交易号) 认领行原子落库：并发两笔不同交易各自成行、
+  // 互不覆盖；同笔重放幂等 ACK。metadata 镜像仅作展示（best-effort），不再是唯一事实。
   if (order.status === "CANCELLED" || order.status === "EXPIRED") {
     const v = receiptVerified(input, order);
     if (!v.ok) return { ok: false, status: "REJECTED", error: v.error };
-    const meta = (order.metadata || {}) as Record<string, unknown>;
-    const existing = meta.pendingReceipt as { gatewayTransactionId?: string } | undefined;
-    if (existing?.gatewayTransactionId === input.gatewayTransactionId) {
+    const fact = await persistTerminalReceiptFact(billingModel, input, order, `TERMINAL_${order.status}`);
+    if (fact.ownedByOrder !== null && fact.ownedByOrder !== input.orderNo) {
+      // 该交易已被另一订单认领：本订单侧另存差异事实行（原子、可追溯），不覆盖、不发放
+      await persistReceiptDiffFact(billingModel, input, order, "DIFFERENT_TRANSACTION_CLAIMED_BY_OTHER_ORDER");
+      console.warn(`[fulfill] 交易 ${input.gatewayTransactionId} 已属订单 ${fact.ownedByOrder}，订单 ${input.orderNo} 的到账已留存差异事实`);
       return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
     }
-    // [U04/G5] 两笔不同交易不得覆盖单个 pendingReceipt：首笔保留为待恢复主事实，
-    // 后续冲突另存为差异列表供运营裁决，绝不静默覆盖、不发放。
-    if (existing?.gatewayTransactionId) {
-      const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
-      conflicts.push({
-        gatewayTransactionId: input.gatewayTransactionId,
-        gatewayAmountCents: input.gatewayAmountCents,
-        channel: input.paymentMethod,
-        recordedAt: new Date().toISOString(),
-        reason: "DIFFERENT_TRANSACTION_FOR_TERMINAL_ORDER",
-      });
-      await billingModel.update({
-        where: { id: input.orderNo },
-        data: { metadata: { ...meta, receiptConflicts: conflicts } },
-      });
-      console.warn(`[fulfill] 订单 ${input.orderNo} 收到与首笔不同的第二笔收款，已留存差异（未覆盖、未发放）`);
-      return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
-    }
-    await billingModel.update({
-      where: { id: input.orderNo },
-      data: {
-        metadata: {
-          ...meta,
-          pendingReceipt: {
-            gatewayTransactionId: input.gatewayTransactionId,
-            gatewayAmountCents: input.gatewayAmountCents,
-            channel: input.paymentMethod,
-            recordedAt: new Date().toISOString(),
-            recoverable: true,
-          },
-        },
-      },
-    });
-    console.warn(`[fulfill] 订单 ${input.orderNo} 已${order.status}，但收到已验收款，已留存待恢复事实（未发放）`);
-    return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
-  }
-
-  if (order.status !== "PENDING") {
-    return { ok: false, status: "REJECTED", error: `订单当前状态为 ${order.status}，不可入账` };
-  }
-  // 迟到回调：本地已过支付截止时间 → 条件关闭（仅仍为 PENDING 的记录可置 EXPIRED）并拒绝。
-  // [R0-B1 F1] 禁止按旧读直接按 id 把订单改为 EXPIRED：条件更新 count=0 说明另一请求刚提交
-  // SUCCESS（或状态已被其他终态处理），按最新状态分类，不覆盖已完成权益。
-  // [R1] 若迟到回调确已收款（交易号+金额一致），优先留存待恢复事实而非直接拒绝丢钱。
-  if (isOrderExpired(order as { status: string; expiresAt?: Date | null })) {
-    const v = receiptVerified(input, order);
-    if (v.ok) {
+    // metadata 镜像（best-effort，仅展示；并发覆盖不影响已持久化的事实行）
+    try {
       const meta = (order.metadata || {}) as Record<string, unknown>;
       const existing = meta.pendingReceipt as { gatewayTransactionId?: string } | undefined;
-      if (existing?.gatewayTransactionId && existing.gatewayTransactionId !== input.gatewayTransactionId) {
-        const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
-        conflicts.push({
-          gatewayTransactionId: input.gatewayTransactionId,
-          gatewayAmountCents: input.gatewayAmountCents,
-          channel: input.paymentMethod,
-          recordedAt: new Date().toISOString(),
-          reason: "DIFFERENT_TRANSACTION_FOR_EXPIRED_ORDER",
-        });
-        await billingModel.update({
-          where: { id: input.orderNo },
-          data: { metadata: { ...meta, receiptConflicts: conflicts } },
-        });
-      } else if (!existing?.gatewayTransactionId) {
+      if (!existing?.gatewayTransactionId) {
         await billingModel.update({
           where: { id: input.orderNo },
           data: {
@@ -217,8 +257,105 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
             },
           },
         });
+      } else if (existing.gatewayTransactionId !== input.gatewayTransactionId) {
+        const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
+        if (conflicts.length < 10 && !conflicts.some((c: any) => c?.gatewayTransactionId === input.gatewayTransactionId)) {
+          conflicts.push({
+            gatewayTransactionId: input.gatewayTransactionId,
+            gatewayAmountCents: input.gatewayAmountCents,
+            channel: input.paymentMethod,
+            recordedAt: new Date().toISOString(),
+            reason: "DIFFERENT_TRANSACTION_FOR_TERMINAL_ORDER",
+          });
+          await billingModel.update({
+            where: { id: input.orderNo },
+            data: { metadata: { ...meta, receiptConflicts: conflicts } },
+          });
+        }
       }
-      console.warn(`[fulfill] 订单 ${input.orderNo} 已超时但收到已验收款，已留存待恢复事实（未发放）`);
+    } catch (mirrorErr) {
+      console.warn(`[fulfill] 订单 ${input.orderNo} metadata 镜像更新失败（事实行已持久）:`, (mirrorErr as Error)?.message);
+    }
+    if (fact.replay) {
+      // 重放时重读最新状态分类：若并发路径已完成履约（SUCCESS），按已处理返回而非待恢复
+      const latest = await billingModel.findUnique({ where: { id: input.orderNo } });
+      if (latest?.status === "SUCCESS") {
+        return { ok: true, status: "ALREADY_PROCESSED", workspaceId: order.workspaceId ?? null };
+      }
+      console.log(`[fulfill] 订单 ${input.orderNo} 同笔交易重放，幂等 ACK（事实行已存在）`);
+    } else {
+      console.warn(`[fulfill] 订单 ${input.orderNo} 已${order.status}，但收到已验收款，已留存待恢复事实（未发放）`);
+    }
+    return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
+  }
+
+  if (order.status !== "PENDING") {
+    return { ok: false, status: "REJECTED", error: `订单当前状态为 ${order.status}，不可入账` };
+  }
+  // 迟到回调：本地已过支付截止时间 → 条件关闭（仅仍为 PENDING 的记录可置 EXPIRED）并拒绝。
+  // [R0-B1 F1] 禁止按旧读直接按 id 把订单改为 EXPIRED：条件更新 count=0 说明另一请求刚提交
+  // SUCCESS（或状态已被其他终态处理），按最新状态分类，不覆盖已完成权益。
+  // [R1] 若迟到回调确已收款（交易号+金额一致），优先留存待恢复事实而非直接拒绝丢钱。
+  if (isOrderExpired(order as { status: string; expiresAt?: Date | null })) {
+    const v = receiptVerified(input, order);
+    if (v.ok) {
+      // [U04/G4] 与终态分支同一原子事实协议：认领行持久（并发互不覆盖），metadata 仅镜像
+      const fact = await persistTerminalReceiptFact(billingModel, input, order, "EXPIRED_WITH_PAID_RECEIPT");
+      if (fact.ownedByOrder !== null && fact.ownedByOrder !== input.orderNo) {
+        await persistReceiptDiffFact(billingModel, input, order, "DIFFERENT_TRANSACTION_CLAIMED_BY_OTHER_ORDER");
+        console.warn(`[fulfill] 交易 ${input.gatewayTransactionId} 已属订单 ${fact.ownedByOrder}，超时订单 ${input.orderNo} 的到账已留存差异事实`);
+        return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
+      }
+      try {
+        const meta = (order.metadata || {}) as Record<string, unknown>;
+        const existing = meta.pendingReceipt as { gatewayTransactionId?: string } | undefined;
+        if (!existing?.gatewayTransactionId) {
+          await billingModel.update({
+            where: { id: input.orderNo },
+            data: {
+              metadata: {
+                ...meta,
+                pendingReceipt: {
+                  gatewayTransactionId: input.gatewayTransactionId,
+                  gatewayAmountCents: input.gatewayAmountCents,
+                  channel: input.paymentMethod,
+                  recordedAt: new Date().toISOString(),
+                  recoverable: true,
+                },
+              },
+            },
+          });
+        } else if (existing.gatewayTransactionId !== input.gatewayTransactionId) {
+          const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
+          if (conflicts.length < 10 && !conflicts.some((c: any) => c?.gatewayTransactionId === input.gatewayTransactionId)) {
+            conflicts.push({
+              gatewayTransactionId: input.gatewayTransactionId,
+              gatewayAmountCents: input.gatewayAmountCents,
+              channel: input.paymentMethod,
+              recordedAt: new Date().toISOString(),
+              reason: "DIFFERENT_TRANSACTION_FOR_EXPIRED_ORDER",
+            });
+            await billingModel.update({
+              where: { id: input.orderNo },
+              data: { metadata: { ...meta, receiptConflicts: conflicts } },
+            });
+          }
+        }
+      } catch (mirrorErr) {
+        console.warn(`[fulfill] 订单 ${input.orderNo} metadata 镜像更新失败（事实行已持久）:`, (mirrorErr as Error)?.message);
+      }
+      // [U04] 超时订单已收到已验收款：事实已持久；同时条件关闭订单（PENDING→EXPIRED），
+      // 防止后续路径再走正常履约；重放时重读最新状态分类（不掩盖并发完成的履约）。
+      if (fact.replay) {
+        const latest = await billingModel.findUnique({ where: { id: input.orderNo } });
+        if (latest?.status === "SUCCESS") {
+          return { ok: true, status: "ALREADY_PROCESSED", workspaceId: order.workspaceId ?? null };
+        }
+        console.log(`[fulfill] 订单 ${input.orderNo} 同笔交易重放，幂等 ACK（事实行已存在）`);
+      } else {
+        await billingModel.updateMany({ where: { id: input.orderNo, status: "PENDING" }, data: { status: "EXPIRED", updatedAt: new Date() } });
+        console.warn(`[fulfill] 订单 ${input.orderNo} 已超时但收到已验收款，已留存待恢复事实并关单（未发放）`);
+      }
       return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
     }
     const expired = await billingModel.updateMany({
@@ -246,11 +383,18 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
     return { ok: false, status: "REJECTED", error: "回调金额与订单金额不一致，拒绝入账" };
   }
 
-  // [U04/G3] 持久原子唯一认领：以 (渠道, 商户语境, 交易号) 为 billingrecord 主键落一条认领行。
+  // [U04/G3/G1] 持久原子唯一认领：以 (渠道, 商户语境, 交易号) 为 billingrecord 主键落一条认领行。
   // 依赖数据库主键唯一约束（P2002）裁决并发，findFirst「查不到再 grant」无法防并发；
   // 认领键含渠道，同字符串不同渠道是合法的不同收款，不误冲突。
-  // SEAT_ADDON 由 fulfillSeatAddonOrder 在自己的事务写边界裁决唯一履约权，此处不重复落行。
-  if (directGrant && input.gatewayTransactionId) {
+  // [U04/原5] 认领覆盖**所有订单类型（含 SEAT_ADDON）**：席位的订单 CAS 只管同一订单，
+  // 不能管同交易跨订单——一笔收款最多支撑一次权益，先认领成功再委托席位履约。
+  // [U04/原5] REAL 履约（含席位）必须有受控验签后的交易号——放在终态/超时留证分支之后，
+  // 使「无交易号的过期/取消回调」仍可完成关单与事实留存，不被门禁误挡。
+  if (input.paymentMode === "REAL" && (!input.gatewayTransactionId || !String(input.gatewayTransactionId).trim())) {
+    return { ok: false, status: "REJECTED", error: "缺少网关交易号，拒绝入账" };
+  }
+
+  if (input.gatewayTransactionId) {
     const claimId = receiptClaimId(input.paymentMethod, input.merchantContext, String(input.gatewayTransactionId));
     try {
       await billingModel.create({
@@ -283,7 +427,7 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
         console.warn(`[fulfill] 交易号 ${input.gatewayTransactionId} 已由订单 ${ownerOrderNo} 认领，拒绝订单 ${input.orderNo} 重复履约`);
         return { ok: false, status: "REJECTED", error: "该渠道交易号已被其他订单认领，拒绝重复履约" };
       }
-      // 同一订单：允许继续，权益发放由 grantPoints 的 orderNo 幂等键保证不重复。
+      // 同一订单：允许继续，权益发放由 grantPoints 的 orderNo 幂等键/席位订单 CAS 保证不重复。
     }
   }
 

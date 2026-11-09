@@ -1,0 +1,107 @@
+{
+  "capturedAtReal": "2026-11-09T23:10:28+08:00",
+  "baseHead": "6d9f68b403798a8243f11eeb36a587916c4deb13",
+  "purpose": "Remaining unified closeout start baseline",
+  "files": {
+    "src/lib/payment/fulfill.ts": {
+      "sha256Start": "2251f91256d4896bc84231e468935fbaca8c947691f74a391dcd0a35ff55c1f8",
+      "bytes": 18084,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__payment__fulfill.ts.snapshot.txt"
+    },
+    "src/lib/payment/seat-addon-fulfill.ts": {
+      "sha256Start": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+      "bytes": 23330,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__payment__seat-addon-fulfill.ts.snapshot.txt"
+    },
+    "src/lib/payment/receipt.ts": {
+      "sha256Start": "de1d3c851675496515f32c53954c84a4ecde9fe8dd683e6d20c6b99a19b33bea",
+      "bytes": 2052,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__payment__receipt.ts.snapshot.txt"
+    },
+    "src/lib/verification-backend.ts": {
+      "sha256Start": "e4b8e835051a67482b410b2d5eca9e1270eb3c1f8f8fcc6ffc9cb5f5f979b438",
+      "bytes": 26783,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__verification-backend.ts.snapshot.txt"
+    },
+    "src/lib/verification-codes.ts": {
+      "sha256Start": "03b7c171256291c314fc7bb9c41647326de4ac56208cc4ed3ced95d086313800",
+      "bytes": 4287,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__verification-codes.ts.snapshot.txt"
+    },
+    "src/lib/mailer.ts": {
+      "sha256Start": "35b0bce53198f109b911653640c0a91563c9d2c484169999906cadf0ca84e123",
+      "bytes": 8835,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__mailer.ts.snapshot.txt"
+    },
+    "src/app/api/auth/reset-password/route.ts": {
+      "sha256Start": "9fe9dd8842ba5829ff502d7c45061a18923229de7958108d71a8b4c4efcc6590",
+      "bytes": 4812,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__app__api__auth__reset-password__route.ts.snapshot.txt"
+    },
+    "src/app/api/webhooks/route.ts": {
+      "sha256Start": "f2241652fba93f2b37b11edc3dfefb09b0b7396f8123ac245eaf6bbf5daa7699",
+      "bytes": 13976,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__app__api__webhooks__route.ts.snapshot.txt"
+    },
+    "src/app/api/admin/model-pricing/global-markup/route.ts": {
+      "sha256Start": "a7b638afa8aaf731599e8ce004d38e56eaea43a2992d57c58b425c28dd481f55",
+      "bytes": 6495,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__app__api__admin__model-pricing__global-markup__route.ts.snapshot.txt"
+    },
+    "src/app/api/workspace/byo-model/test/route.ts": {
+      "sha256Start": "5bafccc7e94530a8c7b240441b0bb6187df73258cb723236b163f5ef5c8a8de9",
+      "bytes": 5191,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__app__api__workspace__byo-model__test__route.ts.snapshot.txt"
+    },
+    "src/lib/parse-admission.ts": {
+      "sha256Start": "9782159b11a5fa0d9d1ec301847e922cccafee798a4947b9f3d2cbcbbcb7621f",
+      "bytes": 16184,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__parse-admission.ts.snapshot.txt"
+    },
+    "src/lib/parse-runner.ts": {
+      "sha256Start": "b6abb315fa52d80d3db72b2696657438115df53585ef06d71da5398bc84069bc",
+      "bytes": 9708,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__parse-runner.ts.snapshot.txt"
+    },
+    "src/app/api/studio/extract-text/route.ts": {
+      "sha256Start": "fe34f4da3038f0d738237bb9e145b47d11da146ad458a9a17e93fd2881f8a39c",
+      "bytes": 7391,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__app__api__studio__extract-text__route.ts.snapshot.txt"
+    },
+    "src/lib/billing/cost-reservation.ts": {
+      "sha256Start": "13c7e590a078bdc88a7fbe67b0278dcd7b93cc57b9241eb3a1df42d17f26a3a3",
+      "bytes": 13862,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__billing__cost-reservation.ts.snapshot.txt"
+    },
+    "src/lib/billing/execution-orchestration.ts": {
+      "sha256Start": "f7c342725abb87f9a7fa9f6f19da78040b1aec32ce55d26fd1002322617779b1",
+      "bytes": 7472,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__billing__execution-orchestration.ts.snapshot.txt"
+    },
+    "src/lib/billing/refund-basis.ts": {
+      "sha256Start": "5f8cdfd2ff230946333e15b815a6bca4ec4a2ae930408b443e27fb5405455061",
+      "bytes": 5528,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__billing__refund-basis.ts.snapshot.txt"
+    },
+    "src/lib/credit-service.ts": {
+      "sha256Start": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+      "bytes": 73836,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__credit-service.ts.snapshot.txt"
+    },
+    "src/lib/operations/ops-readiness.ts": {
+      "sha256Start": "9dc71328ece201c41b0db842a071ca3b3c7208949b11b9cb22792e5f4a28263f",
+      "bytes": 8892,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__operations__ops-readiness.ts.snapshot.txt"
+    },
+    "src/lib/metrics/value-cost-metrics.ts": {
+      "sha256Start": "8f2e7a7973e89b432f2e23760bfc9fed351c28e4c76d8a03621f039fc4e9f504",
+      "bytes": 11644,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/src__lib__metrics__value-cost-metrics.ts.snapshot.txt"
+    },
+    "prisma/schema.prisma": {
+      "sha256Start": "6e426011cf7bb3887922766310f7ad2f530e5d512fd4e765ebf1ce1e84c19a0a",
+      "bytes": 101985,
+      "snapshotCopy": "docs/reviews/remaining-closeout-fix-2026-11-09/snapshot/frozen-source/prisma__schema.prisma.snapshot.txt"
+    }
+  }
+}

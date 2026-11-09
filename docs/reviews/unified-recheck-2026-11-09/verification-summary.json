@@ -1,0 +1,426 @@
+{
+  "capturedAt": "2026-11-09T11:41:48.015Z",
+  "head": "67243457064f645a3a4af1a2e8b4b1d012a85d2d",
+  "previousReviewedHead": "5162e5b12b105c71ca71fb628854d32f7201f371",
+  "sourceCompared": 1058,
+  "sourceChangesDuringReview": [],
+  "formal": {
+    "files": 32,
+    "total": 732,
+    "passed": 732,
+    "failed": 0,
+    "start": "2026-11-09T11:26:18.011Z",
+    "targets": "test-targets.json",
+    "output": "formal-results.json"
+  },
+  "typecheck": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 0,
+    "output": "typecheck.txt"
+  },
+  "node": {
+    "command": "node node_modules/tsx/dist/cli.mjs --test --test-timeout=8000 src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts",
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "cancelled": 0,
+    "output": "node-tests.txt"
+  },
+  "workerSyntax": {
+    "exitCode": 0,
+    "stderr": ""
+  },
+  "independent": {
+    "files": 11,
+    "total": 57,
+    "passed": 57,
+    "failed": 0,
+    "positive": 32,
+    "confirmedDefectCharacterizations": 25,
+    "meaning": "Passing defect characterizations confirm defects still exist; they are not repair acceptance.",
+    "cases": [
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: concurrent sweep returns counters once and full weight",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: weighted release now returns two units, repeats return none",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: twelve completed expiry accounting cycles leave no units",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: thrown counter fault rolls back expiry and retry recovers",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: release uses persisted weight even if caller weight differs",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: zero-row counter update rolls back RELEASED",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates DEFECT: elapsed age alone releases QUARANTINED lease without exit evidence",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "admission-review.test.ts",
+        "name": "Current actual Prisma algorithm with condition-aware rollback delegates DEFECT: expired ACTIVE sweep commits terminal state despite zero-row counter miss",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "POSITIVE: legitimate 20000 bps now remains unchanged",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: same key with different tenant and input receives original successful reservation",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: prepaid receipts are all reported as consumed service",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: unknown fixed cost is omitted from profit incompleteness flag",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "business-modules-review.test.ts",
+        "name": "DEFECT IN UNWIRED MODULE: no cross-tenant permission with null scope returns other tenant records",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "POSITIVE: different host no longer receives saved key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "POSITIVE: exact same endpoint and protocol may reuse saved key",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "DEFECT: case-sensitive path change is normalized into same destination and reuses old key",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "byo-review.test.ts",
+        "name": "DEFECT: HTTPS to HTTP scheme change is normalized into same destination before downstream checks",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "init-diagnostics-review.test.ts",
+        "name": "POSITIVE: no initialization credential now denies administrator creation",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-diagnostics-review.test.ts",
+        "name": "POSITIVE: concurrent valid fixture authorization gives at most one creation under unique transactional delegate",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "init-diagnostics-review.test.ts",
+        "name": "DEFECT: existing wizard setup validation succeeds but its create payload cannot satisfy new initToken contract",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "init-diagnostics-review.test.ts",
+        "name": "POSITIVE: denied health debug performs no private-data query",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "login-review.test.ts",
+        "name": "POSITIVE: sequential replay after login is denied",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "login-review.test.ts",
+        "name": "DEFECT: concurrent requests both validate then delete the same login challenge and both issue sessions",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "POSITIVE: transport rejection without known SMTP response now stays unknown",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "mailer-review.test.ts",
+        "name": "DEFECT: resolved transport result with empty accepted list is still reported accepted",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-A 微信回调：收款事实必需字段 SUCCESS + 交易号 + 金额齐全 → 入账成功，履约收到交易号与金额",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-A 微信回调：收款事实必需字段 解密后缺金额 → 拒绝（400 FAIL），绝不入账",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-A 微信回调：收款事实必需字段 解密后缺交易号 → 拒绝（400 FAIL），绝不入账",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-A 微信回调：收款事实必需字段 非 SUCCESS（如 CLOSED）→ 确认收到但不入账，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-B 支付宝回调：透传 trade_no 作为网关交易号 trade_no + 金额齐全 → 入账成功，履约收到 trade_no",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-B 支付宝回调：透传 trade_no 作为网关交易号 缺 trade_no → 拒绝（400 fail），零入账",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-B 支付宝回调：透传 trade_no 作为网关交易号 缺 total_amount（金额不可解析）→ 拒绝（400 fail），零入账",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-C fulfill：同交易号跨订单唯一约束 交易号已被其他 SUCCESS 订单占用 → 后续订单拒绝重复履约",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-C fulfill：同交易号跨订单唯一约束 同单重复通知 → 首次入账，二次幂等返回已处理，仅一次发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-D 取消/超时后收到已验收款：留存待恢复事实，不发放不丢钱 已 CANCELLED 且收款事实齐备 → RECEIPT_PENDING_RECOVERY，零发放，写入 pendingReceipt",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-D 取消/超时后收到已验收款：留存待恢复事实，不发放不丢钱 已 EXPIRED 且收款事实齐备 → RECEIPT_PENDING_RECOVERY，零发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-D 取消/超时后收到已验收款：留存待恢复事实，不发放不丢钱 已 CANCELLED 但缺交易号 → 拒绝且不留存（不接收不可核验的收款）",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-D 取消/超时后收到已验收款：留存待恢复事实，不发放不丢钱 网关重试同笔已留存收款 → 幂等仍为 RECEIPT_PENDING_RECOVERY，不重复写入、不发放",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-E 席位类型：真实收款透传交易号给席位履约 SEAT_ADDON 真实回调 → 席位履约收到 gatewayTransactionId",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "R1-F 订单查询只读：零业务写、零发放 GET /payments/order 返回订单信息，不触发任何入账",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent defect characterizations: payment facts DEFECT: concurrent different orders using same transaction both fulfill",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent defect characterizations: payment facts DEFECT: channel mismatch ALIPAY receipt fulfills WECHAT_PAY order",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent defect characterizations: payment facts DEFECT: pending REAL recharge without transaction or amount still fulfills",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent defect characterizations: payment facts DEFECT: signed-source decimal with extra precision is rounded into an accepted amount",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "payment-review.test.ts",
+        "name": "Independent defect characterizations: payment facts DEFECT: later receipt overwrites earlier pending receipt for a cancelled order",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "pricing-review.test.ts",
+        "name": "POSITIVE: successful global update now reports actual row counts",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "pricing-review.test.ts",
+        "name": "DEFECT: audit failure returns 500 after separate price transaction has already committed",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "reset-review.test.ts",
+        "name": "POSITIVE: same reset token cannot be used twice without a new challenge",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "reset-review.test.ts",
+        "name": "DEFECT: old already-used signed reset token becomes reusable after a new unverified challenge is issued",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "security-review.test.ts",
+        "name": "DEFECT: platform guard resurrects session rejected by full validation",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "security-review.test.ts",
+        "name": "DEFECT: valid API key returns owner without consulting disabled account state",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "POSITIVE: sequential resend now enforces sixty seconds",
+        "status": "passed",
+        "classification": "POSITIVE_REGRESSION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: first creation race admits two sends but records only one in platform and target budgets",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: five wrong attempts do not lock verification of correct code",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: expired challenge is still consumable",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: expired daily counter is incremented instead of reset, so next day only one send succeeds",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      },
+      {
+        "file": "verification-review.test.ts",
+        "name": "DEFECT: repeated outcome rollback decrements same send budget below zero",
+        "status": "passed",
+        "classification": "CONFIRMED_DEFECT_CHARACTERIZATION"
+      }
+    ]
+  },
+  "staticData": {
+    "generatedClient": {
+      "model": "VerificationBudget",
+      "fields": [
+        "id",
+        "count",
+        "windowStart",
+        "version",
+        "updatedAt"
+      ]
+    },
+    "migrationMentions": [
+      {
+        "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+        "line": 1,
+        "text": "-- 离线迁移：VerificationBudget 增加 60s 间隔与失败锁定所需字段"
+      },
+      {
+        "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+        "line": 6,
+        "text": "ALTER TABLE `VerificationBudget`"
+      },
+      {
+        "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+        "line": 10,
+        "text": "ALTER TABLE `VerificationBudget`"
+      },
+      {
+        "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+        "line": 14,
+        "text": "ALTER TABLE `VerificationBudget`"
+      }
+    ]
+  },
+  "limits": [
+    "Isolated delegates and fake credentials; no real DB/model/SMTP/SMS/payment/cloud/deploy",
+    "Prisma static DMMF inspected without constructing a DB client or connecting",
+    "No browser journey, production lock/channel interoperability or human business acceptance",
+    "Current executor reports are evidence inputs, not independent acceptance"
+  ]
+}

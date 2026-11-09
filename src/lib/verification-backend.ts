@@ -65,6 +65,20 @@ export interface AdmitResult {
   status?: number;
   /** 还需等待的秒数（限流间隔） */
   waitSeconds?: number;
+  /** [U02] 本次发送的稳定身份（回填幂等绑定）：failed 回填须携带，重复回填零效果 */
+  sendId?: string;
+}
+
+/**
+ * [U02 §2.1.3] 后端结构/服务不可用：与「锁记录不存在」严格区分。
+ * lookup/consume 等核验与敏感消费路径遇到本错误必须 fail-closed（503/拒绝），
+ * 不得吞成 null/ok 继续放行。
+ */
+export class VerificationBackendUnavailableError extends Error {
+  constructor(message = "验证服务暂不可用") {
+    super(message);
+    this.name = "VerificationBackendUnavailableError";
+  }
 }
 
 export interface IssueArgs extends AdmitArgs {
@@ -100,8 +114,13 @@ export interface VerificationBackend {
   consume(args: AdmitArgs): Promise<AdmitResult>;
   /** 删除有效码（注册成功后调用）。 */
   delete(args: AdmitArgs): Promise<void>;
-  /** 发送结果回填：failed 返还额度；unknown 不返还（防盲目重发）；accepted 不动。 */
-  onSendResult(args: AdmitArgs, outcome: SendOutcome): Promise<void>;
+  /**
+   * 发送结果回填：failed 返还额度；unknown 不返还（防盲目重发）；accepted 置终态。
+   * [U02] 携带 admitSend 返回的 sendId 时按「预约身份绑定」幂等回退：
+   * 同一次 failed 重复回填只退一次，A 的重复回填不会退掉 B 的占用；
+   * 跨窗口迟到回填只标 OBSOLETE，不动新窗口计数。不带 sendId（旧调用）保持旧语义。
+   */
+  onSendResult(args: AdmitArgs, outcome: SendOutcome, sendId?: string): Promise<void>;
 }
 
 /** 生成 6 位安全数字验证码（密码学随机，替代 Math.random） */
@@ -162,6 +181,8 @@ export class MemoryVerificationBackend implements VerificationBackend {
   private platformCount = 0;
   private platformWindowStart = Date.now();
   private ipCount = new Map<string, { count: number; windowStart: number }>();
+  // [U02] 发送预约身份绑定：`${sendId}:${scope}` -> { scope, key, windowStart, status }
+  private sendClaims = new Map<string, { scope: string; key: string; windowStart: number; status: string }>();
 
   private tkey(channel: Channel, target: string, purpose: VerifyPurpose) {
     return `${channel}:${target}:${purpose}`;
@@ -226,7 +247,15 @@ export class MemoryVerificationBackend implements VerificationBackend {
       st.lastSentAt = now;
       this.platformCount += 1;
       this.targetState.set(k, st);
-      return { ok: true };
+      // [U02] 发送预约身份绑定：记录本次占用的各维度与窗口，供 failed 幂等回退
+      const sendId = `vs_${randomBytes(12).toString("hex")}`;
+      const claims: Array<{ scope: string; key: string; windowStart: number }> = [
+        { scope: "target", key: k, windowStart: st.dailyWindowStart },
+        { scope: "platform", key: "platform", windowStart: this.platformWindowStart },
+      ];
+      if (args.ip) claims.push({ scope: "ip", key: args.ip, windowStart: this.ipCount.get(args.ip)?.windowStart ?? now });
+      for (const c of claims) this.sendClaims.set(`${sendId}:${c.scope}`, { ...c, status: "PENDING" });
+      return { ok: true, sendId };
     });
   }
 
@@ -286,6 +315,12 @@ export class MemoryVerificationBackend implements VerificationBackend {
 
   consume(args: AdmitArgs): Promise<AdmitResult> {
     return this.run(async () => {
+      // [U02 §2.1.2] 消费端与 lookup 使用同一失败锁定事实：锁定期间即使持有效码/凭证也不得消费
+      const bk = `${args.channel}:${args.target}`;
+      const bst = this.targetState.get(bk);
+      if (bst && bst.lockedUntil > Date.now()) {
+        return { ok: false, error: "验证码错误次数过多，请稍后再试", status: 429 };
+      }
       const key = this.tkey(args.channel, args.target, args.purpose);
       const r = this.codes.get(key);
       if (!r) return { ok: false, error: "请先获取验证码", status: 400 };
@@ -310,11 +345,26 @@ export class MemoryVerificationBackend implements VerificationBackend {
     });
   }
 
-  onSendResult(args: AdmitArgs, outcome: SendOutcome): Promise<void> {
-    if (outcome === "failed") {
-      // 返还额度（仅本次发送占用的目标日限/平台/IP）
-      return this.run(async () => {
-        const now = Date.now();
+  onSendResult(args: AdmitArgs, outcome: SendOutcome, sendId?: string): Promise<void> {
+    return this.run(async () => {
+      if (sendId) {
+        // [U02] 按预约身份幂等回退：每维度认领只退一次；跨窗口迟到回填只标 OBSOLETE
+        const scopes = ["target", "platform", "ip"];
+        for (const scope of scopes) {
+          const claim = this.sendClaims.get(`${sendId}:${scope}`);
+          if (!claim || claim.status !== "PENDING") continue; // 重复回填/已终态 → 零效果
+          if (outcome === "failed") {
+            const released = this.releaseClaimedCount(claim);
+            claim.status = released ? "REFUNDED" : "OBSOLETE";
+          } else if (outcome === "accepted") {
+            claim.status = "SETTLED";
+          }
+          // unknown：保持 PENDING（不返还也不终态，保留可诊断事实）
+        }
+        return;
+      }
+      if (outcome === "failed") {
+        // 旧调用（无 sendId）：保持旧语义返还（仅本次发送占用的目标日限/平台/IP）
         const k = `${args.channel}:${args.target}`;
         const st = this.targetState.get(k);
         if (st && st.dailyCount > 0) st.dailyCount -= 1;
@@ -324,11 +374,27 @@ export class MemoryVerificationBackend implements VerificationBackend {
           const ipSt = this.ipCount.get(ip);
           if (ipSt && ipSt.count > 0) ipSt.count -= 1;
         }
-        void now;
-      });
+      }
+    });
+  }
+
+  /** [U02] 仅当预算仍在认领时的窗口内且 count>0 才返还；窗口已翻新 → 返回 false（标 OBSOLETE） */
+  private releaseClaimedCount(claim: { scope: string; key: string; windowStart: number }): boolean {
+    if (claim.scope === "target") {
+      const st = this.targetState.get(claim.key);
+      if (!st || st.dailyWindowStart !== claim.windowStart || st.dailyCount <= 0) return false;
+      st.dailyCount -= 1;
+      return true;
     }
-    // unknown / accepted：不返还（unknown 防盲目重发）
-    return Promise.resolve();
+    if (claim.scope === "platform") {
+      if (this.platformWindowStart !== claim.windowStart || this.platformCount <= 0) return false;
+      this.platformCount -= 1;
+      return true;
+    }
+    const ipSt = this.ipCount.get(claim.key);
+    if (!ipSt || ipSt.windowStart !== claim.windowStart || ipSt.count <= 0) return false;
+    ipSt.count -= 1;
+    return true;
   }
 }
 
@@ -366,16 +432,28 @@ export function getSmsCodeModel(): any {
   return m;
 }
 
+let testClaimModel: any = null;
+
+/** [U02] 发送认领模型访问（结构未部署时抛 NOT_READY 口径错误） */
+export function getClaimModel(): any {
+  if (testClaimModel !== null) return testClaimModel;
+  const m = (prisma as unknown as { verificationSendClaim?: any }).verificationSendClaim;
+  if (!m) throw new VerificationBackendUnavailableError("发送认领表未就绪");
+  return m;
+}
+
 /** 测试注入：用替身模型运行真实生产算法（不连真实库）。生产代码不得调用。 */
-export function __setVerificationModelsForTest(budget: any | null, smscode: any | null): void {
+export function __setVerificationModelsForTest(budget: any | null, smscode: any | null, claim?: any | null): void {
   testBudgetModel = budget;
   testSmsCodeModel = smscode;
+  testClaimModel = claim ?? null;
 }
 
 /** 重置数据访问层为生产 prisma 客户端（测试清理用） */
 export function __resetVerificationModels(): void {
   testBudgetModel = null;
   testSmsCodeModel = null;
+  testClaimModel = null;
 }
 
 const CAS_RETRIES = 32;
@@ -392,15 +470,39 @@ export class PrismaVerificationBackend implements VerificationBackend {
   }
 
   private async budgetRow(id: string): Promise<any | null> {
+    // [U02 §2.1.3] 结构/服务故障与「锁记录不存在」严格区分：
+    // 表未部署（P2021）等读取失败 → 抛 VerificationBackendUnavailableError（调用方 fail-closed），
+    // 不再吞成 null 当"没有锁"继续放行。
     try {
       return await getBudgetModel().findUnique({ where: { id } });
-    } catch {
-      return null;
+    } catch (e: any) {
+      if (String(e?.code) === "P2021" || String(e?.message || "").includes("does not exist")) {
+        throw new VerificationBackendUnavailableError();
+      }
+      throw new VerificationBackendUnavailableError((e as Error)?.message);
     }
   }
 
+  /** [U02 §2.1.2] 读取失败锁定事实（lookup/consume 同一口径）；失败按不可用抛出 */
+  private async failLockedUntil(id: string, now: number): Promise<number> {
+    const row = await this.budgetRow(id);
+    return row && Number(row.lockedUntil) > now ? Number(row.lockedUntil) : 0;
+  }
+
   /** 原子预约一次发送额度：检查失败锁定、60s 间隔、日窗口/日限；用 version CAS 防并发，失败回滚。 */
-  private async reserveBudget(id: string, limit: number, now: number, enforceInterval: boolean): Promise<AdmitResult> {
+  private async reserveBudget(id: string, limit: number, now: number, enforceInterval: boolean): Promise<AdmitResult & { windowStart?: number }> {
+    try {
+      return await this.reserveBudgetInner(id, limit, now, enforceInterval);
+    } catch (e: any) {
+      // [U02 §2.1.3] 结构/服务不可用 → 稳定 503（不在发送前内存放行）
+      if (e instanceof VerificationBackendUnavailableError) {
+        return { ok: false, error: "发送预算服务不可用", status: 503 };
+      }
+      throw e;
+    }
+  }
+
+  private async reserveBudgetInner(id: string, limit: number, now: number, enforceInterval: boolean): Promise<AdmitResult & { windowStart?: number }> {
     for (let attempt = 0; attempt < CAS_RETRIES; attempt++) {
       const row = await this.budgetRow(id);
       if (!row) {
@@ -418,7 +520,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
               version: 1,
             },
           });
-          return { ok: true };
+          return { ok: true, windowStart: now };
         } catch (e: any) {
           if (String(e?.code) === "P2002") continue; // 他人已创建，重试读取后增量
           return { ok: false, error: "发送预算服务不可用", status: 503 };
@@ -439,7 +541,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
             where: { id, version: Number(row.version) },
             data: { count: 1, windowStart: now, lastSentAt: now, version: { increment: 1 } },
           });
-          return { ok: true };
+          return { ok: true, windowStart: now };
         } catch (e: any) {
           if (String(e?.code) === "P2025") continue; // version 冲突，重试
           return { ok: false, error: "发送预算服务不可用", status: 503 };
@@ -457,7 +559,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
             version: { increment: 1 },
           },
         });
-        return { ok: true };
+        return { ok: true, windowStart: Number(row.windowStart) };
       } catch (e: any) {
         if (String(e?.code) === "P2025") continue; // version 冲突，重试
         return { ok: false, error: "发送预算服务不可用", status: 503 };
@@ -466,15 +568,18 @@ export class PrismaVerificationBackend implements VerificationBackend {
     return { ok: false, error: "发送预算服务繁忙，请稍后重试", status: 429 };
   }
 
-  private async releaseBudget(id: string): Promise<void> {
+  private async releaseBudget(id: string, expectedWindowStart?: number): Promise<void> {
     try {
-      // 条件 decrement：仅当 count>0 才减，杜绝重复回填/退款把计数打到负数；不无条件 decrement。
+      // [U02] 条件 decrement：count>0 且（提供窗口判据时）窗口仍为预约时窗口——
+      // 旧窗口迟到回填不污染新窗口计数；无判据（旧调用）仅 count>0 防负。
+      const where: any = { id, count: { gt: 0 } };
+      if (expectedWindowStart !== undefined) where.windowStart = expectedWindowStart;
       await getBudgetModel().update({
-        where: { id, count: { gt: 0 } },
+        where,
         data: { count: { decrement: 1 } },
       });
     } catch {
-      /* 未命中（已为 0 或不存在）时不回滚；下一日窗口自愈 */
+      /* 未命中（已为 0 / 窗口已翻新 / 不存在）时不回滚 */
     }
   }
 
@@ -487,6 +592,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
     const plat = await this.reserveBudget(platId, VERIFY_POLICY.platformLimit, now, false);
     if (!plat.ok) return plat;
     let ipReserved = false;
+    let ipWindowStart = 0;
     if (ipId) {
       const ipRes = await this.reserveBudget(ipId, VERIFY_POLICY.ipLimit, now, false);
       if (!ipRes.ok) {
@@ -494,6 +600,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
         return ipRes;
       }
       ipReserved = true;
+      ipWindowStart = ipRes.windowStart ?? 0;
     }
     const tgt = await this.reserveBudget(tgtId, VERIFY_POLICY.dailyLimit, now, true);
     if (!tgt.ok) {
@@ -501,25 +608,75 @@ export class PrismaVerificationBackend implements VerificationBackend {
       if (ipReserved) await this.releaseBudget(ipId!);
       return tgt;
     }
-    return { ok: true };
+    // [U02 §2.1.1] 发送预约身份绑定：为各维度持久化 PENDING 认领（含窗口起点），
+    // failed 回填凭 sendId 幂等回退——重复回填 count=0 零效果、A 重复回填不动 B、
+    // 跨窗口迟到回填标 OBSOLETE。认领写失败 → 释放本次占用并 503（无认领不发送）。
+    const sendId = `vs_${randomBytes(12).toString("hex")}`;
+    const claims: Array<{ scope: string; budgetKey: string; windowStart: number }> = [
+      { scope: "target", budgetKey: tgtId, windowStart: tgt.windowStart! },
+      { scope: "platform", budgetKey: platId, windowStart: plat.windowStart! },
+    ];
+    if (ipId && ipReserved) claims.push({ scope: "ip", budgetKey: ipId, windowStart: ipWindowStart });
+    try {
+      const claimModel = getClaimModel();
+      for (const c of claims) {
+        await claimModel.create({
+          data: {
+            id: `${sendId}:${c.scope}`,
+            sendId,
+            scope: c.scope,
+            budgetKey: c.budgetKey,
+            windowStart: c.windowStart,
+          },
+        });
+      }
+    } catch {
+      await this.releaseBudget(tgtId);
+      await this.releaseBudget(platId);
+      if (ipReserved && ipId) await this.releaseBudget(ipId);
+      return { ok: false, error: "发送预约服务不可用", status: 503 };
+    }
+    return { ok: true, sendId };
   }
 
   async issue(args: IssueArgs): Promise<AdmitResult> {
     try {
-      // 取代旧有效码：先标记旧码 used
-      await getSmsCodeModel().updateMany({
-        where: { phone: args.target, type: args.purpose, used: false },
-        data: { used: true, usedAt: new Date() },
-      });
-      await getSmsCodeModel().create({
-        data: {
-          id: `vc_${randomBytes(12).toString("hex")}`,
-          phone: args.target,
-          code: args.codeHash,
-          type: args.purpose,
-          used: false,
-        },
-      });
+      // [U02 §2.1.6] 原子签发：旧码标用与新码创建在同一事务——中断不会出现"旧码已废而新码未建"的空窗。
+      // 生产：真实库交互事务；测试替身：prisma.$transaction 不可用时按注入模型顺序执行（等价语义由替身保证）。
+      const prismaAny = prisma as any;
+      if (typeof prismaAny?.$transaction === "function" && !testSmsCodeModel) {
+        await prismaAny.$transaction(async (tx: any) => {
+          const m = tx.smscode ?? getSmsCodeModel();
+          await m.updateMany({
+            where: { phone: args.target, type: args.purpose, used: false },
+            data: { used: true, usedAt: new Date() },
+          });
+          await m.create({
+            data: {
+              id: `vc_${randomBytes(12).toString("hex")}`,
+              phone: args.target,
+              code: args.codeHash,
+              type: args.purpose,
+              used: false,
+            },
+          });
+        });
+      } else {
+        const m = getSmsCodeModel();
+        await m.updateMany({
+          where: { phone: args.target, type: args.purpose, used: false },
+          data: { used: true, usedAt: new Date() },
+        });
+        await m.create({
+          data: {
+            id: `vc_${randomBytes(12).toString("hex")}`,
+            phone: args.target,
+            code: args.codeHash,
+            type: args.purpose,
+            used: false,
+          },
+        });
+      }
       return { ok: true };
     } catch {
       return { ok: false, error: "验证服务不可用", status: 503 };
@@ -527,40 +684,46 @@ export class PrismaVerificationBackend implements VerificationBackend {
   }
 
   async lookup(args: AdmitArgs): Promise<VerifyRecord | null> {
-    try {
-      // 失败锁定先于核验：锁定期间任何码都不可验证（挡住「5 次失败后正确码仍 valid」）
-      const bRow = await this.budgetRow(`target:${args.channel}:${args.target}`);
-      if (bRow && Number(bRow.lockedUntil) > Date.now()) return null;
-      const row = await getSmsCodeModel().findFirst({
-        where: { phone: args.target, type: args.purpose, used: false },
-        orderBy: { createdAt: "desc" },
-      });
-      if (!row) return null;
-      const created = (row as any).createdAt?.getTime?.() ?? Date.now();
-      if (created + VERIFY_POLICY.codeExpiryMs <= Date.now()) return null;
-      return {
-        codeHash: (row as any).code,
-        expiresAt: created + VERIFY_POLICY.codeExpiryMs,
-        used: false,
-        usedAt: null,
-        failCount: 0,
-        lockedUntil: 0,
-        challengeId: deriveChallengeId((row as any).code),
-      };
-    } catch {
-      return null;
-    }
+    // 失败锁定先于核验：锁定期间任何码都不可验证（挡住「5 次失败后正确码仍 valid」）。
+    // [U02 §2.1.3] 锁服务读取失败 → 抛 VerificationBackendUnavailableError（fail-closed），
+    // 不再吞成 null 当"没有锁"继续放行。
+    const lockedUntil = await this.failLockedUntil(`target:${args.channel}:${args.target}`, Date.now());
+    if (lockedUntil > 0) return null;
+    const row = await getSmsCodeModel().findFirst({
+      where: { phone: args.target, type: args.purpose, used: false },
+      orderBy: { createdAt: "desc" },
+    });
+    if (!row) return null;
+    const created = (row as any).createdAt?.getTime?.() ?? Date.now();
+    if (created + VERIFY_POLICY.codeExpiryMs <= Date.now()) return null;
+    return {
+      codeHash: (row as any).code,
+      expiresAt: created + VERIFY_POLICY.codeExpiryMs,
+      used: false,
+      usedAt: null,
+      failCount: 0,
+      lockedUntil: 0,
+      challengeId: deriveChallengeId((row as any).code),
+    };
   }
 
   async recordFailure(args: AdmitArgs): Promise<void> {
     const id = `target:${args.channel}:${args.target}`;
     for (let attempt = 0; attempt < CAS_RETRIES; attempt++) {
-      const row = await this.budgetRow(id);
+      let row: any = null;
+      try {
+        row = await this.budgetRow(id);
+      } catch {
+        // [U02 §2.1.3] 结构/服务不可用：失败计数无法持久（锁定保护失效风险），记录诊断日志。
+        // 不阻断本次「验证码错误」的拒绝结果；服务恢复后再次失败会重新累计。
+        console.error("[verification] 失败计数写入不可用（锁定保护暂时失效）:", id);
+        return;
+      }
       if (!row) {
+        // [U02 §2.1.4] 首次创建并发安全：create + P2002 重试读改（不再 upsert update={} 丢增量）
         try {
-          await getBudgetModel().upsert({
-            where: { id },
-            create: {
+          await getBudgetModel().create({
+            data: {
               id,
               count: 0,
               windowStart: Date.now(),
@@ -569,11 +732,11 @@ export class PrismaVerificationBackend implements VerificationBackend {
               lockedUntil: 0,
               version: 1,
             },
-            update: {},
           });
           return;
         } catch (e: any) {
           if (String(e?.code) === "P2002") continue;
+          console.error("[verification] 失败计数创建失败:", (e as Error)?.message);
           return;
         }
       }
@@ -588,6 +751,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
         return;
       } catch (e: any) {
         if (String(e?.code) === "P2025") continue;
+        console.error("[verification] 失败计数更新失败:", (e as Error)?.message);
         return;
       }
     }
@@ -595,6 +759,12 @@ export class PrismaVerificationBackend implements VerificationBackend {
 
   async consume(args: AdmitArgs): Promise<AdmitResult> {
     try {
+      // [U02 §2.1.2] 消费端与 lookup 使用同一失败锁定事实：
+      // 已锁定的 challenge 即使持有效 token/凭证也不得越过锁消费敏感效果。
+      const lockedUntil = await this.failLockedUntil(`target:${args.channel}:${args.target}`, Date.now());
+      if (lockedUntil > 0) {
+        return { ok: false, error: "验证码错误次数过多，请稍后再试", status: 429 };
+      }
       // 先定位未用码并核对过期，过期则标记清理并拒绝（挡住「过期码仍可消费」）
       const row = await getSmsCodeModel().findFirst({
         where: { phone: args.target, type: args.purpose, used: false },
@@ -630,7 +800,11 @@ export class PrismaVerificationBackend implements VerificationBackend {
         return { ok: false, error: "验证码已使用", status: 400 };
       }
       return { ok: true };
-    } catch {
+    } catch (e: any) {
+      // [U02 §2.1.3] 结构/服务不可用 → fail-closed 503，绝不在敏感消费端内存放行
+      if (e instanceof VerificationBackendUnavailableError) {
+        return { ok: false, error: "验证服务暂不可用，请稍后重试", status: 503 };
+      }
       return { ok: false, error: "验证服务不可用", status: 503 };
     }
   }
@@ -646,8 +820,49 @@ export class PrismaVerificationBackend implements VerificationBackend {
     }
   }
 
-  async onSendResult(args: AdmitArgs, outcome: SendOutcome): Promise<void> {
+  async onSendResult(args: AdmitArgs, outcome: SendOutcome, sendId?: string): Promise<void> {
+    if (sendId) {
+      // [U02 §2.1.1] 按预约身份幂等回退：每维度认领 PENDING→(REFUNDED|SETTLED|OBSOLETE) 只转一次
+      let claims: Array<{ id: string; scope: string; budgetKey: string; windowStart: any; status: string }> = [];
+      try {
+        claims = await getClaimModel().findMany({ where: { sendId } });
+      } catch {
+        // 认领不可读（结构未部署等）：无可回退依据 → 不做无绑定返还，记录诊断
+        console.error("[verification] 发送认领不可读，跳过回退（sendId=", sendId, "）");
+        return;
+      }
+      for (const c of claims) {
+        if (c.status !== "PENDING") continue; // 重复回填/已终态 → 零效果
+        if (outcome === "failed") {
+          const claimedWindow = Number(c.windowStart ?? 0);
+          const res = await getClaimModel().updateMany({
+            where: { id: c.id, status: "PENDING" },
+            data: { status: "REFUNDED" },
+          });
+          if ((res as any).count === 1) {
+            // 仅当预算仍处预约时窗口才真正返还；窗口已翻新 → 标 OBSOLETE
+            const row = await this.budgetRow(c.budgetKey).catch(() => null);
+            if (row && Number(row.windowStart) === claimedWindow) {
+              await this.releaseBudget(c.budgetKey, claimedWindow);
+            } else {
+              await getClaimModel().updateMany({
+                where: { id: c.id, status: "REFUNDED" },
+                data: { status: "OBSOLETE" },
+              });
+            }
+          }
+        } else if (outcome === "accepted") {
+          await getClaimModel().updateMany({
+            where: { id: c.id, status: "PENDING" },
+            data: { status: "SETTLED" },
+          });
+        }
+        // unknown：保持 PENDING（不返还也不终态）
+      }
+      return;
+    }
     if (outcome === "failed") {
+      // 旧调用（无 sendId）：保持旧语义
       await this.releaseBudget(`target:${args.channel}:${args.target}`);
       await this.releaseBudget("platform");
       if (args.ip) await this.releaseBudget(`ip:${args.ip}`);

@@ -1,0 +1,22 @@
+import{it,expect,vi,beforeEach,afterEach}from 'vitest';
+import{NextRequest}from 'next/server';
+const h=vi.hoisted(()=>({writes:0}));
+vi.mock('@/lib/prisma',()=>({prisma:{user:{findFirst:vi.fn(async()=>({id:'u'})),update:vi.fn(async()=>{h.writes++;return{};})}}}));
+vi.mock('@/lib/auth',()=>({hashPassword:vi.fn(async()=> 'fake-hash')}));
+vi.mock('@/lib/jwt-config',()=>({getJwtSecretKey:()=>new Uint8Array(32).fill(7)}));
+import{prisma}from '@/lib/prisma';
+import{MemoryVerificationBackend,__setVerificationBackendForTest,__resetVerificationBackend}from '@/lib/verification-backend';
+import{storeVerificationCode}from '@/lib/verification-codes';
+import{POST as verify}from '@/app/api/auth/verify-email-code/route';
+import{POST as reset}from '@/app/api/auth/reset-password/route';
+const req=(body:unknown)=>new NextRequest('http://audit/auth',{method:'POST',body:JSON.stringify(body)});
+beforeEach(()=>{h.writes=0;__setVerificationBackendForTest(new MemoryVerificationBackend());});
+afterEach(()=>__resetVerificationBackend());
+it('DEFECT: password write failure irreversibly consumes authorization and leaves no resumable success',async()=>{
+ await storeVerificationCode('email','fixture@example.com','reset-password','123456');
+ const token=(await(await verify(req({email:'fixture@example.com',code:'123456'}))).json()).resetToken;
+ vi.mocked(prisma.user.update).mockRejectedValueOnce(new Error('fixture password persist failed'));
+ const a=await reset(req({resetToken:token,newPassword:'fixture-password'}));
+ const b=await reset(req({resetToken:token,newPassword:'fixture-password'}));
+ expect([a.status,b.status]).toEqual([500,400]);expect(h.writes).toBe(0);
+});

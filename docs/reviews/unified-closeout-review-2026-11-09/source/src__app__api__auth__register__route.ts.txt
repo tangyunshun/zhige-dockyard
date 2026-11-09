@@ -1,0 +1,487 @@
+import { NextRequest, NextResponse } from "next/server";
+// Refresh Turbopack compilation cache
+import { prisma } from "@/lib/prisma";
+import { grantNewUserGift } from "@/lib/credit-service";
+import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-models";
+import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
+import { hashPassword } from "@/lib/auth";
+import { verifySmsCode, consumeSmsCode } from "@/lib/sms-store";
+import { verifyEmailCode, consumeEmailCode } from "@/lib/email-code-store";
+import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
+import crypto from "crypto";
+
+/**
+ * 注册成功处理：向审计日志表写入新用户注册记录，不预设会话字段（保持纯净未登录态，交由登录中心签发真实会话）
+ */
+async function respondRegistrationSuccess(
+  userId: string,
+  userName?: string | null,
+  phone?: string | null,
+  email?: string | null,
+  accountType?: string,
+  role = "user",
+  clientIp = "127.0.0.1"
+) {
+  // 记录新用户注册审计日志
+  try {
+    await prisma.operationlog.create({
+      data: {
+        id: "op_" + Date.now() + "_" + Math.random().toString(36).substring(2, 11),
+        userId,
+        action: "USER_REGISTER",
+        resource: "user",
+        ipAddress: clientIp,
+        details: JSON.stringify({
+          accountType: accountType || "standard",
+          userName: userName || "新用户",
+          phone: phone || undefined,
+          email: email || undefined,
+          message: "新用户自主注册成功，已自动开通默认个人工作空间",
+        }),
+      },
+    });
+  } catch (logErr) {
+    console.warn("[register] 写入注册审计日志非致命异常:", logErr);
+  }
+
+  const response = NextResponse.json({
+    success: true,
+    message: "注册成功，请登录",
+    user: { id: userId, email: email || undefined, role },
+    redirectUrl: "/auth/login",
+  });
+
+  return response;
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const clientIp =
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      request.headers.get("x-real-ip") ||
+      "127.0.0.1";
+
+    const { phone, username, email, smsCode, password, accountType } =
+      await request.json();
+
+    // 手机号注册
+    if (accountType === "phone") {
+      // 验证手机号
+      if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+        return NextResponse.json(
+          { message: "请输入正确的手机号" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      if (!smsCode || smsCode.length !== 6) {
+        return NextResponse.json(
+          { message: "请输入正确的验证码" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      const smsVerification = await verifySmsCode(phone, smsCode, "register");
+      if (!smsVerification.valid) {
+        return NextResponse.json(
+          {
+            message: smsVerification.error === "请先获取验证码"
+              ? "验证码已失效，请重新获取"
+              : smsVerification.error || "验证码错误",
+            field: "smsCode",
+          },
+          { status: 400 },
+        );
+      }
+
+      // [U02/B5] 原子取得唯一消费权：并发注册只有一方能继续创建账号；
+      // 消费失败绝不创建账号/空间/权益，也不靠无返回值 delete 宣称已消费。
+      const phoneConsume = await consumeSmsCode(phone, "register", smsVerification.challengeId);
+      if (!phoneConsume.ok) {
+        return NextResponse.json(
+          { message: phoneConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: phoneConsume.status === 503 ? 503 : 400 },
+        );
+      }
+
+      // 检查用户是否已存在
+      const existingUser = await prisma.user.findUnique({
+        where: { phone },
+      });
+
+      if (existingUser) {
+        return NextResponse.json(
+          { message: "该手机号已注册" },
+          { status: 400 },
+        );
+      }
+
+      // 加密密码
+      const hashedPassword = await hashPassword(password);
+
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: `用户${phone.slice(-4)}`, // 用户名为手机号后 4 位
+          role: "user",
+          status: "active",
+        },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      });
+
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
+
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
+
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "phone",
+        user.role,
+        clientIp
+      );
+    } else if (accountType === "username") {
+      // 用户名注册
+      if (!username || !/^[a-zA-Z0-9_@#\-]{3,20}$/.test(username)) {
+        return NextResponse.json(
+          {
+            message:
+              "用户名格式不正确，请使用 3-20 位字母、数字或特殊字符",
+          },
+          { status: 400 },
+        );
+      }
+
+      if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+        return NextResponse.json(
+          { message: "请输入正确的手机号" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      if (!smsCode || smsCode.length !== 6) {
+        return NextResponse.json(
+          { message: "请输入正确的验证码" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      const smsVerification = await verifySmsCode(phone, smsCode, "register");
+      if (!smsVerification.valid) {
+        return NextResponse.json(
+          {
+            message: smsVerification.error || "验证码错误",
+            field: "smsCode",
+          },
+          { status: 400 },
+        );
+      }
+
+      // [U02/B5] 原子取得唯一消费权，消费失败不创建账号/空间/权益。
+      const usernameConsume = await consumeSmsCode(phone, "register", smsVerification.challengeId);
+      if (!usernameConsume.ok) {
+        return NextResponse.json(
+          { message: usernameConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: usernameConsume.status === 503 ? 503 : 400 },
+        );
+      }
+
+      // 检查用户名是否已存在
+      const existingUserByUsername = await prisma.user.findFirst({
+        where: { name: username },
+      });
+
+      if (existingUserByUsername) {
+        return NextResponse.json(
+          { message: "用户名已存在" },
+          { status: 400 },
+        );
+      }
+
+      // 检查手机号是否已存在
+      const existingUserByPhone = await prisma.user.findUnique({
+        where: { phone },
+      });
+
+      if (existingUserByPhone) {
+        return NextResponse.json(
+          { message: "该手机号已注册" },
+          { status: 400 },
+        );
+      }
+
+      // 加密密码
+      const hashedPassword = await hashPassword(password);
+
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: username,
+          role: "user",
+          status: "active",
+        },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      });
+
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
+
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
+
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "username",
+        user.role,
+        clientIp
+      );
+    } else if (accountType === "email") {
+      // 邮箱注册
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return NextResponse.json(
+          { message: "请输入正确的邮箱地址" },
+          { status: 400 },
+        );
+      }
+
+      if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+        return NextResponse.json(
+          { message: "请输入正确的手机号" },
+          { status: 400 },
+        );
+      }
+
+      // 验证验证码
+      if (!smsCode || smsCode.length !== 6) {
+        return NextResponse.json(
+          { message: "请输入正确的验证码" },
+          { status: 400 },
+        );
+      }
+
+      // 验证邮箱验证码（邮箱注册走邮箱验证码，而非手机号短信验证码）
+      const emailVerification = await verifyEmailCode(email, smsCode, "register");
+      if (!emailVerification.valid) {
+        return NextResponse.json(
+          {
+            message: emailVerification.error || "验证码错误",
+            field: "smsCode",
+          },
+          { status: 400 },
+        );
+      }
+
+      // [U02/B5] 原子取得唯一消费权，消费失败不创建账号/空间/权益。
+      const emailConsume = await consumeEmailCode(email, "register", emailVerification.challengeId);
+      if (!emailConsume.ok) {
+        return NextResponse.json(
+          { message: emailConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: emailConsume.status === 503 ? 503 : 400 },
+        );
+      }
+
+      // 检查邮箱是否已存在
+      const existingUserByEmail = await prisma.user.findFirst({
+        where: { email },
+      });
+
+      if (existingUserByEmail) {
+        return NextResponse.json({ message: "邮箱已被注册" }, { status: 400 });
+      }
+
+      // 检查手机号是否已存在
+      const existingUserByPhone = await prisma.user.findUnique({
+        where: { phone },
+      });
+
+      if (existingUserByPhone) {
+        return NextResponse.json(
+          { message: "该手机号已注册" },
+          { status: 400 },
+        );
+      }
+
+      // 加密密码
+      const hashedPassword = await hashPassword(password);
+
+      // 使用 Prisma 创建用户
+      const user = await prisma.user.create({
+        data: {
+          phone,
+          password: hashedPassword,
+          name: email.split("@")[0], // 用户名为邮箱前缀
+          email,
+          role: "user",
+          status: "active",
+        },
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      });
+
+      // 自动开通默认个人工作空间
+      await createDefaultWorkspace(user.id, user.name, user.phone, user.email);
+
+      // 新用户注册成功后注入默认欢迎通知
+      await seedDefaultWelcomeNotifications(user.id).catch((e) => {
+        console.error("[register] 注入默认通知失败:", e);
+      });
+
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
+
+      // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
+      return await respondRegistrationSuccess(
+        user.id,
+        user.name,
+        user.phone,
+        user.email,
+        "email",
+        user.role,
+        clientIp
+      );
+    } else {
+      return NextResponse.json(
+        { message: "不支持的注册方式" },
+        { status: 400 },
+      );
+    }
+  } catch (error) {
+    console.error("Register error:", error);
+    return NextResponse.json({ message: "服务器内部错误" }, { status: 500 });
+  }
+}
+
+async function createDefaultWorkspace(userId: string, userName?: string | null, phone?: string | null, email?: string | null) {
+  try {
+    const workspaceName = `个人空间 - ${userName || phone || email || '用户'}`;
+    const workspaceId = `ws-personal-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    const now = new Date();
+
+    // 创建 workspace，自动把注册时填写的手机号与邮箱写入 contactPhone 和 contactEmail
+    const workspace = await prisma.workspace.create({
+      data: {
+        id: workspaceId,
+        name: workspaceName,
+        type: 'PERSONAL',
+        ownerId: userId,
+        description: `${userName || '用户'}的个人工作空间`,
+        contactPhone: phone || null,
+        contactEmail: email || null,
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+
+    // 创建 WorkspaceMember 记录
+    const memberId = `wsm-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+    await prisma.workspacemember.create({
+      data: {
+        id: memberId,
+        userId,
+        workspaceId: workspace.id,
+        role: 'OWNER',
+        joinedAt: now,
+      },
+    });
+
+    // 获取用户对应的会员等级并同步为该个人空间创建 Quota 记录
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { membershipLevel: true }
+    });
+    const membershipLevel = user?.membershipLevel || "FREE";
+
+    let ml = await prisma.membershiplevel.findUnique({
+      where: { id: membershipLevel }
+    });
+    if (!ml) {
+      ml = await prisma.membershiplevel.findFirst();
+    }
+    const mlId = ml?.id || "FREE";
+
+    // 新空间算力 0 起步：不预置任何免费额度（注册福利统一由 grantNewUserGift 按“3 个月每月 100”发放），
+    // 用尽后须自费充值，杜绝“注册即送/月度补足”式白送
+    await prisma.workspacequota.create({
+      data: {
+        id: crypto.randomUUID(),
+        workspaceId: workspace.id,
+        membershipLevelId: mlId,
+        tokenBalance: BigInt(0),
+        updatedAt: now
+      }
+    });
+
+    // 平台默认模型池：新空间自动继承「默认初始模型」，保证用户注册后立即可用
+    await inheritFreeDefaultModelsForNewWorkspace(workspace.id).catch((e) =>
+      console.warn("[注册] 继承平台默认初始模型非致命提示:", e),
+    );
+
+    // 新空间体验额度：按后台配置发放一次性体验额度（可配开关 / 数值 / 有效期，独立于注册福利）
+    await grantNewSpaceTrialQuota({
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      operatorId: userId,
+    }).catch((e) => console.warn("[注册] 发放新空间体验额度非致命提示:", e));
+
+    // 注册福利：注册当月自动发放首月 100 点（连续 3 个自然月、当月有效月底清零，幂等）
+    await grantNewUserGift({
+      userId,
+      workspaceId: workspace.id,
+      workspaceName: workspace.name,
+      userEmail: email || null,
+    }).catch((e) => console.warn("[注册] 发放注册福利非致命提示:", e));
+
+    // 更新用户的 lastWorkspaceId
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        lastWorkspaceId: workspace.id,
+      },
+    });
+
+    console.log(`[注册] 成功为用户 ${userId} 创建默认个人空间并赋予配额: ${workspaceId}`);
+  } catch (error) {
+    console.error(`[注册] 为用户 ${userId} 创建默认个人空间失败:`, error);
+  }
+}

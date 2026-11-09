@@ -288,3 +288,61 @@ describe("U04 两条 notify 路由的金额与字段门禁", () => {
     expect(state.grantCalls).toBe(1);
   });
 });
+
+
+describe("U04/原5 交易唯一认领覆盖所有订单类型", () => {
+  it("同一交易并发两个不同席位订单：最多一次合法权益（认领唯一裁决，不复制席位发放）", async () => {
+    seed("S1");
+    state.orders["S1"].type = "SEAT_ADDON";
+    seed("S2");
+    state.orders["S2"].type = "SEAT_ADDON";
+    const [r1, r2] = await Promise.all([
+      fulfillPaidOrder(real("S1")),
+      fulfillPaidOrder(real("S2")),
+    ]);
+    const fulfilled = [r1, r2].filter((r) => r.status === "FULFILLED");
+    const rejected = [r1, r2].filter((r) => r.status === "REJECTED");
+    expect(fulfilled.length).toBe(1); // 一笔收款最多一次权益
+    expect(rejected.length).toBe(1); // 败者被认领唯一性拒绝（不静默吞）
+    console.log("[DBG]", JSON.stringify([r1, r2].map(r=>r.status)), "grant=", state.grantCalls, Object.keys(state.orders));
+    expect(state.grantCalls).toBe(0); // 席位走专用服务，无点数发放
+  });
+
+  it("REAL 席位缺交易号 → 拒绝，零权益（席位不再豁免交易号唯一认领）", async () => {
+    seed("S3");
+    state.orders["S3"].type = "SEAT_ADDON";
+    const r = await fulfillPaidOrder(real("S3", { gatewayTransactionId: null }));
+    expect(r.ok).toBe(false);
+    expect(r.status).toBe("REJECTED");
+  });
+
+  it("SUCCESS 订单收到另一笔交易：原子留存差异事实并 ACK，不追加权益不退款", async () => {
+    seed("D1");
+    await fulfillPaidOrder(real("D1")); // TXN-1 → SUCCESS
+    const grantBefore = state.grantCalls;
+    const r = await fulfillPaidOrder(real("D1", { gatewayTransactionId: "TXN-2" }));
+    expect(r.ok).toBe(true);
+    expect(r.status).toBe("ALREADY_PROCESSED");
+    expect(state.grantCalls).toBe(grantBefore); // 不追加权益
+    // 差异事实行已持久（每 (订单,交易) 一行，可追溯）
+    const diffId = "receipt-diff::D1::WECHAT_PAY::TXN-2";
+    expect(state.orders[diffId]).toBeTruthy();
+    expect(state.orders[diffId].status).toBe("DIFF_FACT");
+  });
+
+  it("终态订单两笔不同交易并发到账：两笔事实都可追溯（原子落行，互不覆盖）", async () => {
+    seed("A", { status: "CANCELLED" });
+    const [f1, f2] = await Promise.all([
+      fulfillPaidOrder(real("A", { gatewayTransactionId: "T1" })),
+      fulfillPaidOrder(real("A", { gatewayTransactionId: "T2" })),
+    ]);
+    expect(f1.status).toBe("RECEIPT_PENDING_RECOVERY");
+    expect(f2.status).toBe("RECEIPT_PENDING_RECOVERY");
+    // 两笔事实行各自持久
+    const c1 = "receipt-claim::WECHAT_PAY::default::T1";
+    const c2 = "receipt-claim::WECHAT_PAY::default::T2";
+    expect(state.orders[c1]?.status).toBe("PENDING_RECOVERY");
+    expect(state.orders[c2]?.status).toBe("PENDING_RECOVERY");
+    expect(state.grantCalls).toBe(0);
+  });
+});

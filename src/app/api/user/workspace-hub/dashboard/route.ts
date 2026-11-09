@@ -19,18 +19,13 @@ export async function GET(request: NextRequest) {
     let userId: string | null = null;
     let userRole = "user";
 
-    // 优先从中间件注入的 x-user-id 获取
-    userId = request.headers.get("x-user-id");
-
-    // 如果没有 x-user-id，尝试从 Authorization header 获取
-    if (!userId) {
-      const authHeader = request.headers.get("authorization");
-      if (authHeader && authHeader !== "Bearer null" && authHeader !== "Bearer ") {
-        const authResult = await validateUser(authHeader);
-        if (authResult.valid) {
-          userId = authResult.user!.id;
-          userRole = authResult.user!.role || "user";
-        }
+    // [U05/原9] 一律完整 validateUser（会话/封禁/强制下线/到期一致校验）：
+    // 中间件验签的 x-user-id 不等于有效会话，不得跳过完整拒绝语义
+    {
+      const authResult = await validateUser(request.headers.get("authorization"), request);
+      if (authResult.valid && authResult.user) {
+        userId = authResult.user!.id;
+        userRole = authResult.user!.role || "user";
       }
     }
 

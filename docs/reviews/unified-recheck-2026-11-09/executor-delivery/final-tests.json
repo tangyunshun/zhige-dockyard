@@ -1,0 +1,61 @@
+{
+  "note": "缺陷成功复现不等于修复通过；以下为本批次实际修复后的正确结果断言，非缺陷复现统计。",
+  "mockScope": "全部外部 IO 用隔离替身（prisma/mailer/网络/支付/模型均 stub），无真实库写、无真实网络",
+  "suites": [
+    {
+      "file": "src/app/api/__tests__/r0l-verification.test.ts",
+      "runner": "node node_modules/vitest/vitest.mjs run",
+      "tests": 14,
+      "passed": 14,
+      "covers": [
+        "resetToken 第2次/并发使用最多一次密码提交",
+        "验证消费后端 503 密码/绑定/登录敏感效果为 0",
+        "正确 verificationBudget delegate 真实走生产算法；缺失 503",
+        "立即重发与 5 次失败真实生效",
+        "login/register/binding 用途正确",
+        "SMTP unknown 不返还后盲重发",
+        "日志/响应无验证码"
+      ]
+    },
+    {
+      "file": "src/app/api/__tests__/r0l2-verification-production.test.ts",
+      "runner": "node node_modules/vitest/vitest.mjs run",
+      "tests": 10,
+      "passed": 10,
+      "covers": [
+        "真实 Prisma 算法：60s 间隔/日限/失败锁 via 注入替身",
+        "并发同目标日限计数正确、不穿限（CAS 不丢增量）",
+        "跨用途隔离",
+        "ready() 反映真实 delegate",
+        "未就绪 503 且 send=0"
+      ]
+    },
+    {
+      "file": "src/app/api/__tests__/r08-billing-quota.test.ts",
+      "runner": "node node_modules/vitest/vitest.mjs run",
+      "tests": 4,
+      "passed": 4,
+      "covers": [
+        "合法 20000 bps 原值保留，无自动 ÷10",
+        "合法 2000 bps 保持 2000",
+        "FREE 查询只读、不写库、不写死 100"
+      ]
+    }
+  ],
+  "totalPassed": 28,
+  "totalFailed": 0,
+  "tsc": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json -> 0 错误（本批次改动）",
+  "stillFailingScenariosNotCovered": [
+    "两订单并发同交易仅一次履约（U04）",
+    "支付渠道不匹配/REAL 缺金额/非法精度（U04）",
+    "完整身份已拒绝平台 fallback 不放行（U05-1）",
+    "API Key 所属账号不可用（U05-2）",
+    "无 exit 仅过 100 秒不腾槽（U07）",
+    "ACTIVE sweep 计数命中 0 回滚（U07）",
+    "同预约键换空间/输入拒绝（U01/U10）",
+    "预付收款与消费严格分栏（U10）",
+    "固定成本未知不宣称利润（U10/U12）",
+    "无 tenant scope 不跨租户（U09/U10）",
+    "实际批量改价/审计失败真实计数（U09-6 已修代码，缺独立测试）"
+  ]
+}

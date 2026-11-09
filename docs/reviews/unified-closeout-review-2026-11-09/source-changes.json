@@ -1,0 +1,174 @@
+[
+  {
+    "path": "src/app/api/admin/model-pricing/global-markup/route.ts",
+    "sha256": "a7b638afa8aaf731599e8ce004d38e56eaea43a2992d57c58b425c28dd481f55"
+  },
+  {
+    "path": "src/app/api/admin/settings/route.ts",
+    "sha256": "b08554c00d0c8fbe21caeaffa25b94fa5e0980d04fa3f2c66f086407d8814afa"
+  },
+  {
+    "path": "src/app/api/auth/init-admin/route.ts",
+    "sha256": "f567ff4e61efbf87da238b4b857fe6fe4789d0aba7e8147700f3d4e2fd5270e2"
+  },
+  {
+    "path": "src/app/api/auth/login-sms/route.ts",
+    "sha256": "ee9358365c9502e1a4de3b764b74aceff360d20a8c90003abec97971b65b4076"
+  },
+  {
+    "path": "src/app/api/auth/register/route.ts",
+    "sha256": "cd9da94ccc4b732a9754b53475008f23095936d581d859c49c02b65b63936cd9"
+  },
+  {
+    "path": "src/app/api/auth/reset-password/route.ts",
+    "sha256": "9fe9dd8842ba5829ff502d7c45061a18923229de7958108d71a8b4c4efcc6590"
+  },
+  {
+    "path": "src/app/api/auth/verify-email-code/route.ts",
+    "sha256": "79dc5884b9285dbf5f85e50a8cea87d78cfca615d1d41d32f9e950708a26ef55"
+  },
+  {
+    "path": "src/app/api/auth/verify-setup-token/route.ts",
+    "sha256": "f247e60f2197808761d4d1a3a25878e3fae9795962e248e40e83d2a29303e8d0"
+  },
+  {
+    "path": "src/app/api/auth/verify-sms-code/route.ts",
+    "sha256": "7ce500a7f8d3f174ef074dbdf2b18e0eb036cf70d2960f322db08064de77ed51"
+  },
+  {
+    "path": "src/app/api/payments/notify/alipay/route.ts",
+    "sha256": "2e2194bcc79ca159479869afafc0a7efa1a82bca630259dd8eff22042f44f4b8"
+  },
+  {
+    "path": "src/app/api/payments/notify/wechat/route.ts",
+    "sha256": "a6cf67d6f736501b4f3d2c289c3f7a590636c5d6ec698ea9062b09935ac71e72"
+  },
+  {
+    "path": "src/app/api/user/profile/route.ts",
+    "sha256": "662dcde617fc5cd8c100d88d8d66f88a170497d63a6371c15c20b0cb7b6037f4"
+  },
+  {
+    "path": "src/app/api/webhooks/route.ts",
+    "sha256": "f2241652fba93f2b37b11edc3dfefb09b0b7396f8123ac245eaf6bbf5daa7699"
+  },
+  {
+    "path": "src/app/api/workspace/byo-model/test/route.ts",
+    "sha256": "5bafccc7e94530a8c7b240441b0bb6187df73258cb723236b163f5ef5c8a8de9"
+  },
+  {
+    "path": "src/app/api/__tests__/r0b-seat-addon.test.ts",
+    "sha256": "495987c506104e9573b241ba4ee26a2e7b29d6f5089ab58f021f984e8de35950"
+  },
+  {
+    "path": "src/app/api/__tests__/r0d-global-markup.test.ts",
+    "sha256": "ac90bb2a7ddd1276646f0ac7b148eec8c1df3895af473d4eb87202ef06309b03"
+  },
+  {
+    "path": "src/app/api/__tests__/r0e-byo-dest.test.ts",
+    "sha256": "8b225f5c80aae1641e605d1b608d4f72f9deea7bd66fe584a7878d4a88b16b42"
+  },
+  {
+    "path": "src/app/api/__tests__/r0f-mailer.test.ts",
+    "sha256": "dbf2af189809bce740724bee3d94670698c6bb5a1adbcd90144e8ccf2cc7d48d"
+  },
+  {
+    "path": "src/app/api/__tests__/r0g-security.test.ts",
+    "sha256": "155ac5a3b1594dc443f3541bc4a8601589eaffe1aec2152826e40c3f523160ca"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l-verification.test.ts",
+    "sha256": "b283924748d102ff11b5e77fa4d25d463569ad9e1e0d8f6b973ceae115f862fd"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l2-verification-production.test.ts",
+    "sha256": "2e45df3f7de0f17f095d44dfe9270d02bbb886c3e4f0bd7a3d099e80da7c41ba"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l3-verification-fixes.test.ts",
+    "sha256": "ff47a7467388ba2cdf1b5f88a37bdd1d373012c174ece8dcb5beaccc40ac4418"
+  },
+  {
+    "path": "src/app/api/__tests__/r0u-auth-challenge.test.ts",
+    "sha256": "a0695de4a54829185f8bc6abe3431295ffe0cd1db4066d721956e9790683612a"
+  },
+  {
+    "path": "src/app/api/__tests__/r0v-u12-request-ddl.test.ts",
+    "sha256": "7b84210ada4f991c2ed7442a361a970691a08fad7b9f2bba5b72a76ca6d23935"
+  },
+  {
+    "path": "src/app/api/__tests__/r0x-payment-facts.test.ts",
+    "sha256": "d66c5b1a808576467927f9ffbea8febbcb8b671dc1652854a4f28d4c78669ac1"
+  },
+  {
+    "path": "src/app/api/__tests__/r0y-payment-u04.test.ts",
+    "sha256": "fbf0ad7921ad6bf02ce3c214f380602e960ad8095d762c1113107050ec657dec"
+  },
+  {
+    "path": "src/app/api/__tests__/r0z-init-wizard.test.ts",
+    "sha256": "c9364be66b1162ba4c8f269c3c1874ad2e3ccf213654095b4e97ff283982a8b3"
+  },
+  {
+    "path": "src/app/init/page.tsx",
+    "sha256": "f7d8c65e4bf3439bff2e1ec063a8517b59e591290585ae30c7025eee1996c0d4"
+  },
+  {
+    "path": "src/lib/api-key-auth.ts",
+    "sha256": "197aa9c72036ba36da21a7a4741ca0a46bbb182c096fe1186f0ed1310be9f5bd"
+  },
+  {
+    "path": "src/lib/email-code-store.ts",
+    "sha256": "ae9cf9b06b38a16649a2dd57572966f511221ec4ba90646e6739151be4ada9ad"
+  },
+  {
+    "path": "src/lib/install-auth.ts",
+    "sha256": "a20d50abe6c757361fc93f861ee54204c8caac8ba3e133be593a0b6bd87bf74a"
+  },
+  {
+    "path": "src/lib/mailer.ts",
+    "sha256": "35b0bce53198f109b911653640c0a91563c9d2c484169999906cadf0ca84e123"
+  },
+  {
+    "path": "src/lib/payment/alipay.ts",
+    "sha256": "99dc546058fc02c4ac61fdebe29c4efabfb05c4fae0d6bc359bc8aefafdf233f"
+  },
+  {
+    "path": "src/lib/payment/fulfill.ts",
+    "sha256": "2251f91256d4896bc84231e468935fbaca8c947691f74a391dcd0a35ff55c1f8"
+  },
+  {
+    "path": "src/lib/payment/receipt.ts",
+    "sha256": "de1d3c851675496515f32c53954c84a4ecde9fe8dd683e6d20c6b99a19b33bea"
+  },
+  {
+    "path": "src/lib/payment/wechatpay.ts",
+    "sha256": "b9e90fe46f70adb8be5e5e3e1df2225aa0201ceca5d080c222681d11c181e21a"
+  },
+  {
+    "path": "src/lib/security.ts",
+    "sha256": "6e3e75b8420e246f7df51d6adabeefd8380cb0553f1c1baca60189275177c509"
+  },
+  {
+    "path": "src/lib/sms-store.ts",
+    "sha256": "3ac218523403a20944fa627151c085ae955bcd1b528fd6cb2d309e12b79caa47"
+  },
+  {
+    "path": "src/lib/verification-backend.ts",
+    "sha256": "e4b8e835051a67482b410b2d5eca9e1270eb3c1f8f8fcc6ffc9cb5f5f979b438"
+  },
+  {
+    "path": "src/lib/verification-codes.ts",
+    "sha256": "03b7c171256291c314fc7bb9c41647326de4ac56208cc4ed3ced95d086313800"
+  },
+  {
+    "path": "src/lib/workspace-byo-model.ts",
+    "sha256": "f9ad77779264f2fa4bfa10a4ece63cd2b7226a7b241e043693b9313d8b54510f"
+  },
+  {
+    "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+    "sha256": "b536829679859ba2fb5f6bf6b53e2f1978c4576169212ed2ca6991d8aac28c3d"
+  },
+  {
+    "path": "prisma/migrations/20261109000100_request_ddl_offline/migration.sql",
+    "sha256": "1b1f9e1198460f2fe5b861b649361e623c2b3e8cd00088a3db725f9742b79bd4"
+  }
+]

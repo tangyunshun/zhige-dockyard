@@ -1,0 +1,78 @@
+[
+  {
+    "path": "src/app/api/admin/model-pricing/global-markup/route.ts",
+    "sha256": "672a3b3557471edcfbf0f0367a24e2ae74ec1b86b3e890431c67c3cc33d7b283"
+  },
+  {
+    "path": "src/app/api/auth/init-admin/route.ts",
+    "sha256": "0e133b3cb35b8196f281d07ad978a0373c8dd92b1a2aaf72bcc4a6b76f6a2b1b"
+  },
+  {
+    "path": "src/app/api/auth/login-sms/route.ts",
+    "sha256": "a3c23dc101627e47556560560d63a600b003fb356e0df6dde131e602d772bba4"
+  },
+  {
+    "path": "src/app/api/auth/reset-password/route.ts",
+    "sha256": "0d3fc03c54c691a651331981f47d34b5b70bd2b65ffe1be9322cd9da26ecbe3a"
+  },
+  {
+    "path": "src/app/api/auth/send-email-code/route.ts",
+    "sha256": "82d85431c979e359fede9821ad6755096b1379a2e6f3e8a9be1be76fcaca57e9"
+  },
+  {
+    "path": "src/app/api/auth/verify-sms-code/route.ts",
+    "sha256": "607dc9f2842123e7ce97f831b8e303927293f58949cc88e50127baf6ff4ae453"
+  },
+  {
+    "path": "src/app/api/health/debug-test01/route.ts",
+    "sha256": "dd0809f69839f0c1e6ff6fe212ba4bc0cb25e4de133a715e49dfccb50ad4ced4"
+  },
+  {
+    "path": "src/app/api/test-db/route.ts",
+    "sha256": "79b28738f143caeb5f3ba6859500946d5805fbd1285895d37bd52d57ad2f769e"
+  },
+  {
+    "path": "src/app/api/user/profile/route.ts",
+    "sha256": "060a06dbfcf283779e22c1dbc6ba4071ec233c8fa206df3ed2b3b5b7a96fa3db"
+  },
+  {
+    "path": "src/app/api/workspace/byo-model/test/route.ts",
+    "sha256": "152c86faf159e04b1a25d88e5e470fe0b101acdba7b41b19dbd4de1f7e71c511"
+  },
+  {
+    "path": "src/app/api/__tests__/r08-billing-quota.test.ts",
+    "sha256": "be0e897bef863d6e5dd7c0ed0ce998c4d02d4ccc62c34278cc12194bb7f90cfb"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l-verification.test.ts",
+    "sha256": "383b1f0f20e8ded0365a1c70a6d1d6adf413aa3b4ba24e9309c21e6b06a05b17"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l2-verification-production.test.ts",
+    "sha256": "0deb6e1119ca3ef96b34977b61e89a51ece09e361ba7a169578b70b936c13bb8"
+  },
+  {
+    "path": "src/lib/billing/billing-config.ts",
+    "sha256": "d5ad965c2fd760d24e1c93174de98d0db24294f2b68012535ec1c3ac33438469"
+  },
+  {
+    "path": "src/lib/mailer.ts",
+    "sha256": "ececfe1158042c285bf25a4558301f46d41ab6b872bf0c42efc82231dd810e23"
+  },
+  {
+    "path": "src/lib/quota-token.ts",
+    "sha256": "19f44592545813d887d6859248c29fdabd341808d853a08eb639e007c946f44e"
+  },
+  {
+    "path": "src/lib/verification-backend.ts",
+    "sha256": "b7d8a6b7f56c039e84ffd817ab67e5c3a6bd4055300984f04a943a42af5a50e9"
+  },
+  {
+    "path": "prisma/migrations/20261109000000_verification_budget_lock/migration.sql",
+    "sha256": "9812e11b6490da5f7d4363ec11cf13fe49eb41747a202201cdb5b679fc3a2204"
+  },
+  {
+    "path": "prisma/schema.prisma",
+    "sha256": "6e426011cf7bb3887922766310f7ad2f530e5d512fd4e765ebf1ce1e84c19a0a"
+  }
+]

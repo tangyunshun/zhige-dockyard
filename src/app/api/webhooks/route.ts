@@ -3,37 +3,36 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import crypto from "crypto";
 
-// 通用从 API 请求解析当前登录用户（兼容中间件 x-user-id、Authorization Header 及 auth_token Cookie）
+// [U05/原9] 从请求解析当前登录用户：一律走完整 validateUser（会话/封禁/注销/强制下线/到期
+// 状态一致校验）。中间件验签注入的 x-user-id 只是已验签身份，不等于有效会话——
+// 已强制下线/封禁的会话不得凭该头跳过完整拒绝语义，也不得凭用户行存在就当已授权。
 async function getCurrentUser(req: NextRequest) {
-  let userId = req.headers.get("x-user-id");
-  
-  if (!userId) {
-    const authHeader = req.headers.get("authorization");
-    if (authHeader && authHeader !== "Bearer null" && authHeader !== "Bearer ") {
-      const authResult = await validateUser(authHeader);
-      if (authResult.valid && authResult.user) {
-        userId = authResult.user.id;
-      }
+  const authHeader = req.headers.get("authorization");
+  if (authHeader && authHeader !== "Bearer null" && authHeader !== "Bearer ") {
+    const authResult = await validateUser(authHeader);
+    if (authResult.valid && authResult.user) {
+      return await prisma.user.findUnique({
+        where: { id: authResult.user.id },
+        select: { id: true, email: true, name: true, role: true, status: true, lastWorkspaceId: true },
+      });
     }
+    // 带了凭证但完整验证拒绝（含强制下线/封禁/过期）→ 直接拒绝，不回退其他来源
+    return null;
   }
 
-  if (!userId) {
-    const cookieToken = req.cookies.get("auth_token")?.value;
-    if (cookieToken) {
-      const authResult = await validateUser(`Bearer ${cookieToken}`);
-      if (authResult.valid && authResult.user) {
-        userId = authResult.user.id;
-      }
+  const cookieToken = req.cookies.get("auth_token")?.value;
+  if (cookieToken) {
+    const authResult = await validateUser(`Bearer ${cookieToken}`);
+    if (authResult.valid && authResult.user) {
+      return await prisma.user.findUnique({
+        where: { id: authResult.user.id },
+        select: { id: true, email: true, name: true, role: true, status: true, lastWorkspaceId: true },
+      });
     }
+    return null;
   }
 
-  if (!userId) return null;
-
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { id: true, email: true, name: true, role: true, status: true, lastWorkspaceId: true },
-  });
-  return user;
+  return null;
 }
 
 /**

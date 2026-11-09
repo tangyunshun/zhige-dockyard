@@ -1,0 +1,148 @@
+export const dynamic = "force-dynamic";
+
+import { NextRequest, NextResponse } from "next/server";
+import { validateUser } from "@/lib/auth";
+import { isExtractableFile, parseWithBoundary } from "@/lib/text-extract";
+import {
+  PARSE_CODES,
+  PARSE_LIMITS,
+  ParseResourceError,
+  RootBudget,
+  parseErrorBody,
+  checkDeclaredInput,
+} from "@/lib/parse-policy";
+import {
+  acquireParseLease,
+  releaseParseLease,
+  quarantineParseLease,
+  isParseLeaseActive,
+  sweepParseLeases,
+} from "@/lib/parse-admission";
+
+/**
+ * [R0-K / 原 F14 K01/K03/K04] 独立提取接口。
+ *
+ * 顺序：认证 → 共享原子准入（worker 启动前）→ 声明/真实字节核验 → 根预算
+ *      → 隔离 worker 解析（硬 deadline/取消/崩溃都 terminate + 等 exit 确认）
+ *      → 只在确认结束后释放租约 → 稳定错误码。
+ * 不再使用进程内 Map 限额，不再 Promise.race 返回空串假装超时。
+ * 3 并发 / 20 次每分钟 / 60 秒仍为服务端基线，只是改为跨实例共享裁决。
+ */
+
+function statusFor(err: unknown): number {
+  return err instanceof ParseResourceError ? err.status : 500;
+}
+
+/**
+ * 带有限超时的 formData 读取：不无限等待吞占连接/租约。
+ * 超时或读取失败按不可读输入拒绝（在 worker 启动之前）。
+ */
+async function readFormDataWithTimeout(request: NextRequest, timeoutMs: number): Promise<FormData> {
+  try {
+    return await Promise.race([
+      request.formData(),
+      new Promise<FormData>((_, reject) =>
+        setTimeout(() => reject(new ParseResourceError(PARSE_CODES.UNREADABLE_INPUT, "表单读取超时")), timeoutMs),
+      ),
+    ]);
+  } catch (e) {
+    if (e instanceof ParseResourceError) throw e;
+    throw new ParseResourceError(PARSE_CODES.UNREADABLE_INPUT, "表单读取超时");
+  }
+}
+
+export async function POST(request: NextRequest) {
+  let lease: Awaited<ReturnType<typeof acquireParseLease>> | null = null;
+  let quarantined = false;
+  try {
+    // 认证必须在准入与 worker 启动之前
+    const auth = await validateUser(request.headers.get("Authorization"), request);
+    if (!auth.valid || !auth.user) {
+      return NextResponse.json({ success: false, code: "UNAUTHORIZED", error: "未登录" }, { status: 401 });
+    }
+    const uid = String((auth.user as any).id || (auth.user as any).userId || (auth.user as any).email || "anonymous");
+
+    // 分配前按声明长度预检（Content-Length 仅作提示，不作为依据）
+    const declared = Number(request.headers.get("content-length") || "") || null;
+    checkDeclaredInput(declared, PARSE_LIMITS.EXTRACT_TEXT_MAX_INPUT_BYTES + 64 * 1024);
+
+    // 有界恢复：进程崩溃/租约中断后有限回收，不永久卡槽
+    await sweepParseLeases().catch(() => 0);
+
+    // 先读取 formData（带有限超时：不无限等待吞占连接/租约；读取失败/超时按不可读输入拒绝）
+    const formData = await readFormDataWithTimeout(request, PARSE_LIMITS.FORM_DATA_TIMEOUT_MS);
+    const file = formData.get("file");
+    if (!file || !(file instanceof Blob)) {
+      return NextResponse.json({ success: false, code: PARSE_CODES.UNREADABLE_INPUT, error: "缺少文件" }, { status:400 });
+    }
+    const fileName = (file as any).name || "unknown";
+    const fileType = file.type || "";
+    if (!isExtractableFile(fileName, fileType)) {
+      return NextResponse.json({
+        success: false,
+        code: PARSE_CODES.UNREADABLE_INPUT,
+        error: `「${fileName}」属于可执行文件或无文本内容的音视频文件，无法提取文本。`,
+      }, { status: 400 });
+    }
+
+    // [KR3] 读取完成、文件校验通过后，紧贴 worker 启动前获取共享原子准入：租约生命周期与解析一致，
+    // 不在读取等待期间占用租约（消除「慢 formData 使旧租约失效后仍启动 worker」），且容量上限不超发。
+    // 任何失败都在 worker 启动之前拒绝，不回退本机 Map。
+    lease = await acquireParseLease({
+      userId: uid,
+      workUnits: PARSE_LIMITS.WORK_UNITS_PER_PARSE,
+      now: Date.now(),
+    });
+
+    // 既有 20MB 单文件上限保留（不是全系统同一上限）；实际字节再核验
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    // [KR3] 慢 arrayBuffer 之后、worker 启动之前二次核验租约仍有效：旧租约已过期/失去所有权的执行者
+    // 不得再启动 worker（租约失效/失去所有权后旧执行者不可再认领并启动，避免 cap=1 时并发超发）。
+    if (lease && !(await isParseLeaseActive(lease))) {
+      lease = null;
+      return NextResponse.json({ success: false, code: PARSE_CODES.BUSY, error: "解析名额已失效，请重新上传" }, { status: 503 });
+    }
+    const budget = new RootBudget({ deadlineMs: PARSE_LIMITS.HARD_DEADLINE_MS });
+    // 停止证据成立（worker 实际退出，含迟到退出）后幂等归还被隔离的租约，不永久卡槽
+    const onWorkerExited = async () => {
+      if (lease && quarantined) await releaseParseLease(lease).catch(() => {});
+    };
+    const result = await parseWithBoundary(buffer, fileName, fileType, {
+      budget,
+      timeoutMs: PARSE_LIMITS.HARD_DEADLINE_MS,
+      signal: request.signal,
+      maxInputBytes: PARSE_LIMITS.EXTRACT_TEXT_MAX_INPUT_BYTES,
+      declaredBytes: declared,
+      onWorkerExited,
+    });
+
+    if (result.noText) {
+      const isImageFile = /\.(png|jpe?g|gif|bmp|webp|tiff?)$/i.test(fileName) || fileType.toLowerCase().startsWith("image/");
+      return NextResponse.json({
+        success: false,
+        code: PARSE_CODES.NO_TEXT,
+        error: isImageFile
+          ? `「${fileName}」中未检测到文字内容，请上传包含文字的图片，或直接在输入框中描述您的任务需求。`
+          : "未能从文件中提取到有效文本，请检查文件内容或下载原文件查看",
+      }, { status: statusFor(new ParseResourceError(PARSE_CODES.NO_TEXT)) });
+    }
+
+    return NextResponse.json({ success: true, fileName, fileSize: buffer.length, text: result.text });
+  } catch (error: any) {
+    // 退出确认失败：保守隔离占用，不盲目腾槽（保留引用，交由 late-exit 回调确认退出后幂等归还）
+    if (lease && error instanceof ParseResourceError && error.code === PARSE_CODES.STOP_UNCONFIRMED) {
+      await quarantineParseLease(lease, "解析 worker 退出未确认，保守隔离占用").catch(() => {});
+      quarantined = true;
+    }
+    const body = error instanceof ParseResourceError
+      ? parseErrorBody(error)
+      : { success: false as const, code: PARSE_CODES.FAILED, error: "文件解析失败，请稍后重试" };
+    console.error("extract-text error:", error instanceof ParseResourceError ? error.code : "internal");
+    return NextResponse.json(body, { status: statusFor(error) });
+  } finally {
+    // 只在解析 runner 确认 worker 结束之后才归还名额；迟到结果不会先腾出名额。
+    // 已隔离（未知停止）的租约不在此立即释放，交由 late-exit 回调确认退出后幂等归还，不永久卡槽。
+    if (lease && !quarantined) await releaseParseLease(lease).catch(() => {});
+  }
+}

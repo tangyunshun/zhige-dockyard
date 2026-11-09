@@ -1,0 +1,11 @@
+{
+  "sourceDrift": [],
+  "addedSourceFiles": [],
+  "headMatches": true,
+  "linkCount": 30,
+  "brokenLinks": [],
+  "independentAllPassed": true,
+  "parseRetryAllPassed": true,
+  "workerSyntaxExitCode": 0,
+  "executorManifestMismatches": []
+}

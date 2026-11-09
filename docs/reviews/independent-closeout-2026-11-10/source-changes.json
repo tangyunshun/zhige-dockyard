@@ -1,0 +1,118 @@
+[
+  {
+    "path": "src/app/api/admin/model-pricing/global-markup/route.ts",
+    "sha256": "bb5f35ffe4e5fd9e56f40874934361108fdf9e9b4d1039dccaa1851d867d7f9a"
+  },
+  {
+    "path": "src/app/api/auth/reset-password/route.ts",
+    "sha256": "adf00f1069dba1d14d612a8f60bf7755484dc5cbd1dfd78e1e20ad7a6859af72"
+  },
+  {
+    "path": "src/app/api/auth/send-email-code/route.ts",
+    "sha256": "2738430b7a15deb0105d1723213d4f88b8287aae79b46f5c4371b064a296c7f1"
+  },
+  {
+    "path": "src/app/api/studio/extract-text/route.ts",
+    "sha256": "e814e4d2b6393d585c2c206599895c95923fdae9946576c12afab560436dd8a5"
+  },
+  {
+    "path": "src/app/api/user/workspace-hub/dashboard/route.ts",
+    "sha256": "bd9296191a61ac3a382a881c1322a30e75c00d9e8f93cbc72963957454cd9f88"
+  },
+  {
+    "path": "src/app/api/webhooks/route.ts",
+    "sha256": "03f5b95409ae74027fab342ea5594252cdfc3283e8f9fb852986fc73277c1b27"
+  },
+  {
+    "path": "src/app/api/workspace/byo-model/test/route.ts",
+    "sha256": "29157170685a93f7f2795538cea5cec97be04417190c00a43eb1d727ed34a43a"
+  },
+  {
+    "path": "src/app/api/workspace/create-personal/route.ts",
+    "sha256": "0e1c20cd6713452c744b11b5302ffc04d15588662fd71f01429aa55cf4780d1b"
+  },
+  {
+    "path": "src/app/api/workspace/list/route.ts",
+    "sha256": "d94dfdd00c3301c9083ecf387fb625c873d59e2b994892c8d2ed1bc9d9c45167"
+  },
+  {
+    "path": "src/app/api/workspace/switch/route.ts",
+    "sha256": "d008e0f4d3a6b31becc151fb90e938a3d44465d54d0c2b64bab2824cb3957941"
+  },
+  {
+    "path": "src/app/api/workspace/upgrade/route.ts",
+    "sha256": "08a18f1d221706e9505026bbdacef6266932c9e6abf75e1d0ea67f9ea165d722"
+  },
+  {
+    "path": "src/app/api/__tests__/r0b-seat-addon.test.ts",
+    "sha256": "c7d2b03bcf2fc74cfd11a18176c38e48f5d911b29fb7e3512e9e38f2834dbf3f"
+  },
+  {
+    "path": "src/app/api/__tests__/r0d-global-markup.test.ts",
+    "sha256": "6ce660e101b0e3a90e4ffb3eef83daa5b51a43fd10c93ec82d985b0c3e51cbff"
+  },
+  {
+    "path": "src/app/api/__tests__/r0f-mailer.test.ts",
+    "sha256": "0f14246aedcc0e28bdcd99d88a342c2eefc0e6ee422e79c511cef49f06e6b16b"
+  },
+  {
+    "path": "src/app/api/__tests__/r0k1-fixes.test.ts",
+    "sha256": "b049215022b52825d2ea0fe351e3f6206616bb1c7859b24bdd0a458b70d788c9"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l-verification.test.ts",
+    "sha256": "6d01c230e0ef3b84807abe77d3c393e0ffebad6e56dc23f740a09f387d0981cb"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l2-verification-production.test.ts",
+    "sha256": "92eb0ccd5980b009b084a3660c933f89c22a1d704be3e8cdbb50929ad2c26f6f"
+  },
+  {
+    "path": "src/app/api/__tests__/r0l3-verification-fixes.test.ts",
+    "sha256": "5d98f4df60d146946cd1820499f457f2940298cd5b1977d929325dc6994b4526"
+  },
+  {
+    "path": "src/app/api/__tests__/r0u-auth-challenge.test.ts",
+    "sha256": "72bbb8ac6d8dbc0ab02701f4db25fa60cd4037a25a8942db707f64038f219ea7"
+  },
+  {
+    "path": "src/app/api/__tests__/r0y-payment-u04.test.ts",
+    "sha256": "a1aa5a44a300e58f718266ad90d553a3ecf6f8520c3e85e864b0688557733742"
+  },
+  {
+    "path": "src/app/auth/login/page.tsx",
+    "sha256": "02bb63508b22c7700a22ba5fc80df089b73a1a10a87636ba3729987c20f60f2f"
+  },
+  {
+    "path": "src/lib/email-code-store.ts",
+    "sha256": "be20230ef3a8de222fa430d567e4e3fb1a8aff70b570a8bdd7e171d7a2956114"
+  },
+  {
+    "path": "src/lib/mailer.ts",
+    "sha256": "91fc734972cf1cfd35a1801a48ebe086fa6072c7f081aca9a36d823ad45295a9"
+  },
+  {
+    "path": "src/lib/parse-admission.ts",
+    "sha256": "911e559b4bd9d387186a1906270db209b13460979065e756b5a038d770a5dc25"
+  },
+  {
+    "path": "src/lib/payment/fulfill.ts",
+    "sha256": "235196f9ed84e3dfc252b0f91574a82e22a316bbe95a473d8623d4e77192a2ec"
+  },
+  {
+    "path": "src/lib/sms-store.ts",
+    "sha256": "deb45e464be574d35160d9143af8906eafb65ee7975baf8fd94c158a64827ab7"
+  },
+  {
+    "path": "src/lib/verification-backend.ts",
+    "sha256": "166ae927a1d1a5336af4f141fb08fb03fe8c05cf47df4957a64e3b70f7adee79"
+  },
+  {
+    "path": "src/lib/verification-codes.ts",
+    "sha256": "21f11a9e6afba0460989fea9ef1a7bbc772d61905275f28e5ee1b52f16b2dc02"
+  },
+  {
+    "path": "prisma/schema.prisma",
+    "sha256": "d1ca464690bb6aff1f7c0e698e3f0de05a7959fadabe3c391c64200246ab24f9"
+  }
+]

@@ -1,0 +1,104 @@
+{
+  "reviewedAt": "2026-11-09T16:57:38.870Z",
+  "baselineHead": "6d9f68b403798a8243f11eeb36a587916c4deb13",
+  "currentHead": "6d9f68b403798a8243f11eeb36a587916c4deb13",
+  "versionKind": "UNCOMMITTED_WORKTREE_ON_BASELINE",
+  "sourceFiles": 1070,
+  "sourceWorktreeSha256": "c0c9a57dada3911fa50e5acd2fd75877143631355d96c72bf60576638d728f01",
+  "sourceDrift": [],
+  "addedSourceFiles": [],
+  "identityScope": "SHA256 of sorted path/hash rows for source-manifest.json coverage (src, prisma, selected project config); audit artifacts separately hashed; not a claim of all untracked workspace bytes",
+  "sourceChangesSincePriorSnapshot": 29,
+  "executorManifest": {
+    "reportedFiles": 29,
+    "mismatches": []
+  },
+  "formal": {
+    "files": 41,
+    "total": 792,
+    "passed": 791,
+    "failed": 1,
+    "pending": 0,
+    "success": false,
+    "failures": [
+      {
+        "file": "src/app/api/__tests__/r0k-parse-resource.test.ts",
+        "test": "R0-K K01：真正停止非合作解析，迟到文本不接收 预检缺陷①正向：Office 超期限后解析确实终止，迟到文本不被接收",
+        "messages": [
+          "Error: promise resolved \"{ envelope: 'result', …(3) }\" instead of rejecting\n    at _Assertion.__VITEST_REJECTS__ (file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/expect/dist/index.js:1610:17)\n    at _Assertion.propertyGetter (file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/chai/index.js:1557:27)\n    at Reflect.get (<anonymous>)\n    at Object.proxyGetter [as get] (file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/chai/index.js:1645:22)\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0k-parse-resource.test.ts:263:7\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:155:11\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:26\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:1897:20\n    at new Promise (<anonymous>)\n    at runWithTimeout (file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:1863:10)"
+        ]
+      }
+    ]
+  },
+  "parseRetry": {
+    "files": 1,
+    "total": 32,
+    "passed": 32,
+    "failed": 0,
+    "pending": 0,
+    "success": true,
+    "failures": []
+  },
+  "independent": {
+    "files": 6,
+    "total": 43,
+    "passed": 43,
+    "failed": 0,
+    "pending": 0,
+    "success": true,
+    "failures": [],
+    "defectCharacterizations": 15,
+    "positiveRegressions": 28
+  },
+  "strictTypecheck": {
+    "exitCode": 0,
+    "command": "node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json",
+    "outputFile": "typecheck.txt",
+    "note": "Exit status observed in this review; not inferred only from empty output"
+  },
+  "nodeTests": {
+    "passed": 18,
+    "failed": 0,
+    "cancelled": 0,
+    "exitCode": 0,
+    "outputFile": "node-tests.txt"
+  },
+  "workerSyntax": {
+    "exitCode": 0,
+    "outputFile": "worker-syntax.txt"
+  },
+  "databaseEvidence": {
+    "method": "schema text, migration SQL text, static local generated Prisma DMMF; never instantiated a client or connected",
+    "models": [
+      {
+        "name": "VerificationBudget",
+        "inSchema": true,
+        "inLocalGeneratedClient": true,
+        "migrationFiles": [
+          "prisma/migrations/20261109000000_verification_budget_lock/migration.sql"
+        ]
+      },
+      {
+        "name": "VerificationSendClaim",
+        "inSchema": true,
+        "inLocalGeneratedClient": false,
+        "migrationFiles": []
+      },
+      {
+        "name": "PasswordResetClaim",
+        "inSchema": true,
+        "inLocalGeneratedClient": false,
+        "migrationFiles": []
+      }
+    ],
+    "generatedClientError": null
+  },
+  "conclusion": "FAILED_ORIGINAL_SCOPE_CLOSEOUT",
+  "realExternalIOExecuted": false,
+  "limitations": [
+    "No real database concurrency, migration, payment signature interoperability, SMTP, supplier model, browser journey, cost/profit or human acceptance validation.",
+    "DEFECT tests assert reproduced wrong current behavior; passed characterization is not repaired acceptance.",
+    "Reset latent-state tests add an explicitly documented wrong-delegate alias to reach logic behind current 503.",
+    "First formal failure retained; standalone retry success does not replace it."
+  ]
+}

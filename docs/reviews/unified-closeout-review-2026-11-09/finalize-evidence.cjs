@@ -1,0 +1,36 @@
+const fs=require('node:fs'),path=require('node:path'),cp=require('node:child_process'),crypto=require('node:crypto');
+const out=__dirname;
+const hash=p=>crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+const source=JSON.parse(fs.readFileSync(path.join(out,'source-manifest.json'),'utf8'));
+const drift=source.source.filter(r=>!fs.existsSync(r.path)||hash(r.path)!==r.sha256);
+const formal=JSON.parse(fs.readFileSync(path.join(out,'formal-results.json'),'utf8'));
+const retry=JSON.parse(fs.readFileSync(path.join(out,'parse-targeted-retry.json'),'utf8'));
+const independent=JSON.parse(fs.readFileSync(path.join(out,'independent-results.json'),'utf8'));
+const cases=independent.testResults.flatMap(f=>f.assertionResults.map(a=>({file:path.basename(f.name),name:a.fullName,status:a.status,classification:/DEFECT/i.test(a.fullName)?'CONFIRMED_DEFECT_CHARACTERIZATION':'POSITIVE_REGRESSION'})));
+const syntax=cp.spawnSync(process.execPath,['--check','src/lib/parse-worker.cjs'],{encoding:'utf8'});
+const fullHead=cp.execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
+const status=cp.execFileSync('git',['status','--porcelain=v1'],{encoding:'utf8'});
+const deleted=status.split(/\r?\n/).filter(s=>s.slice(0,2)===' D').map(s=>s.slice(3));
+const changed=JSON.parse(fs.readFileSync(path.join(out,'source-changes.json'),'utf8').replace(/^\uFEFF/,''));
+const {Prisma}=require('@prisma/client');
+const generated=Prisma.dmmf.datamodel.models.find(m=>m.name==='VerificationBudget');
+const failures=formal.testResults.flatMap(f=>f.assertionResults.filter(a=>a.status==='failed').map(a=>({file:f.name,name:a.fullName,messages:a.failureMessages})));
+const summary={capturedAt:new Date().toISOString(),head:fullHead,previousReviewedHead:'67243457064f645a3a4af1a2e8b4b1d012a85d2d',sourceCompared:source.source.length,changedSincePreviousReview:changed.length,sourceChangesDuringReview:drift,formal:{files:formal.testResults.length,total:formal.numTotalTests,passed:formal.numPassedTests,failed:formal.numFailedTests,start:new Date(formal.startTime).toISOString(),failureDetails:failures,meaning:'Initial combined result retained; do not report as all green.'},targetedRetry:{files:retry.testResults.length,total:retry.numTotalTests,passed:retry.numPassedTests,failed:retry.numFailedTests,meaning:'Failed parse file passed in isolation; original timing failure root cause not established.'},independent:{files:independent.testResults.length,total:independent.numTotalTests,passed:independent.numPassedTests,failed:independent.numFailedTests,positive:cases.filter(c=>c.classification==='POSITIVE_REGRESSION').length,confirmedDefectCharacterizations:cases.filter(c=>c.classification==='CONFIRMED_DEFECT_CHARACTERIZATION').length,meaning:'Includes reused isolated positive fixtures and newly added boundary assertions. Green defect characterizations prove remaining defects, not repaired acceptance.',cases},typecheck:{command:'node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json',exitCode:0,output:'typecheck.txt'},node:{command:'node node_modules/tsx/dist/cli.mjs --test --test-timeout=8000 src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts',total:18,passed:18,failed:0,cancelled:0,output:'node-tests.txt'},workerSyntax:{exitCode:syntax.status,stderr:syntax.stderr},staticClient:{model:generated?.name,fields:generated?.fields.map(f=>f.name)},workspaceEvidence:{trackedDeletions:deleted,previousAuditTestAlterations:JSON.parse(fs.readFileSync(path.join(out,'prior-audit-alterations.json'),'utf8'))},limits:['No real DB/write/migration/seed/model/SMTP/SMS/payment/cloud/deploy','No real customer files or real key use; fake keys and controlled delegates only','Payment tests do not prove official signature forgery or real MySQL locks','No browser or human business acceptance','Pending source and current executor report checked separately; modified prior review tests are not immutable evidence']};
+fs.writeFileSync(path.join(out,'verification-summary.json'),JSON.stringify(summary,null,2));
+const snap=path.join(out,'source');fs.mkdirSync(snap,{recursive:true});
+const selected=new Set(changed.map(r=>r.path));
+for(const p of ['src/lib/parse-admission.ts','src/lib/parse-runner.ts','src/app/api/studio/extract-text/route.ts','src/app/api/studio/handler.ts','src/lib/payment/seat-addon-fulfill.ts','src/lib/billing/cost-reservation.ts','src/lib/billing/execution-orchestration.ts','src/lib/billing/refund-basis.ts','src/lib/billing/entitlement-read-guard.ts','src/lib/journey/first-value-journey.ts','src/lib/tenant/enterprise-lifecycle.ts','src/lib/metrics/value-cost-metrics.ts','src/lib/operations/ops-readiness.ts','src/components/HeroSection.tsx','src/app/auth/login/page.tsx','prisma/schema.prisma','src/middleware.ts'])selected.add(p);
+for(const p of selected)if(fs.existsSync(p))fs.copyFileSync(p,path.join(snap,p.replace(/[\\/]/g,'__')+'.txt'));
+const delivery='docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14';const deliveredSnap=path.join(out,'executor-delivery');fs.mkdirSync(deliveredSnap,{recursive:true});
+for(const name of fs.readdirSync(delivery))if(fs.statSync(path.join(delivery,name)).isFile())fs.copyFileSync(path.join(delivery,name),path.join(deliveredSnap,name));
+const errors=[],documents=[];
+for(const name of ['REVIEW.md','IDE-REMAINING-CLOSEOUT-PROMPT.md']){
+ const content=fs.readFileSync(path.join(out,name),'utf8'),links=[...content.matchAll(/\]\(<([^>]+)>\)/g)].map(m=>m[1]);
+ for(const target of links){const m=target.match(/^(.*?):(\d+)$/),p=m?m[1]:target;if(!fs.existsSync(p))errors.push({name,target,error:'missing path'});else if(m&&Number(m[2])>fs.readFileSync(p,'utf8').split(/\r?\n/).length)errors.push({name,target,error:'line outside file'});}
+ documents.push({name,characters:content.length,links:links.length});
+}
+fs.writeFileSync(path.join(out,'delivery-check.json'),JSON.stringify({capturedAt:new Date().toISOString(),documents,errors,sourceDrift:drift,headUnchanged:fullHead===source.head},null,2));
+const artifacts=[];function walk(dir){for(const e of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,e.name);if(e.isDirectory())walk(p);else if(e.name!=='artifact-sha256.json')artifacts.push({path:path.relative(out,p).split(path.sep).join('/'),sha256:hash(p)});}}walk(out);
+fs.writeFileSync(path.join(out,'artifact-sha256.json'),JSON.stringify({capturedAt:new Date().toISOString(),artifacts},null,2));
+console.log(JSON.stringify({head:fullHead,sourceCompared:source.source.length,sourceDrift:drift.length,changedSincePreviousReview:changed.length,formal:{files:summary.formal.files,total:summary.formal.total,passed:summary.formal.passed,failed:summary.formal.failed},targetedRetry:summary.targetedRetry,independent:{files:summary.independent.files,total:summary.independent.total,positive:summary.independent.positive,defects:summary.independent.confirmedDefectCharacterizations},trackedMarkdownDeletions:deleted.filter(p=>p.endsWith('.md')).length,priorAuditTestsAltered:summary.workspaceEvidence.previousAuditTestAlterations.length,documents,errors},null,2));
+if(drift.length||errors.length||independent.numFailedTests||retry.numFailedTests||syntax.status!==0||fullHead!==source.head)process.exitCode=1;

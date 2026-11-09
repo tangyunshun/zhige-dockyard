@@ -14,6 +14,7 @@ import {
   newSalt,
   VERIFY_POLICY,
   newGrantId,
+  VerificationBackendUnavailableError,
   type Channel,
   type VerifyPurpose,
   type AdmitResult,
@@ -28,6 +29,8 @@ export interface SendResult {
   /** 建议 HTTP 状态码：未就绪 503、限流 429 */
   status?: number;
   waitSeconds?: number;
+  /** [U02] 本次发送的稳定身份：结果回填（onSendResult）必须携带以实现幂等回退 */
+  sendId?: string;
 }
 
 export interface VerifyResult {
@@ -35,6 +38,8 @@ export interface VerifyResult {
   error?: string;
   /** 已核验 challenge 的不可替换身份，供签发一次性授权凭证时绑定 */
   challengeId?: string;
+  /** [U02] 验证服务不可用（fail-closed）：调用方应返回 503，不计入用户失败 */
+  notReady?: boolean;
 }
 
 function normalize(target: string): string {
@@ -47,19 +52,22 @@ export function generateVerificationCode(): string {
 }
 
 /**
- * 存储验证码：先裁决共享预算（admitSend），再签发哈希。
+ * 存储验证码：先裁决共享预算（admitSend，含发送预约身份绑定），再签发哈希。
  * 预算未就绪（真实委托不可用）时返回 status=503，不发生任何外部发送。
+ * @param opts.ip 仅取自服务端可信来源（代理规范化后），绝不信任 body 任意字符串
+ * @param opts.actorId 已认证账号（如存在）
  */
 export async function storeVerificationCode(
   channel: Channel,
   target: string,
   purpose: VerifyPurpose,
   code: string,
+  opts: { ip?: string; actorId?: string | null } = {},
 ): Promise<SendResult> {
   const t = normalize(target);
   const backend = getVerificationBackend();
 
-  const admit = await backend.admitSend({ channel, target: t, purpose });
+  const admit = await backend.admitSend({ channel, target: t, purpose, ip: opts.ip, actorId: opts.actorId ?? null });
   if (!admit.ok) {
     return { ok: false, error: admit.error, status: admit.status, waitSeconds: admit.waitSeconds };
   }
@@ -74,15 +82,16 @@ export async function storeVerificationCode(
     expiresAt: Date.now() + VERIFY_POLICY.codeExpiryMs,
   });
   if (!issue.ok) {
-    // 签发失败返还本次占用的预算
-    await backend.onSendResult({ channel, target: t, purpose }, "failed");
+    // [U02] 签发失败按预约身份幂等返还本次占用（重复回填零效果）
+    await backend.onSendResult({ channel, target: t, purpose }, "failed", admit.sendId);
     return { ok: false, error: issue.error, status: issue.status };
   }
-  return { ok: true };
+  return { ok: true, sendId: admit.sendId };
 }
 
 /**
  * 核验验证码（不消费）：比对哈希、有效期、失败锁定。失败时累计失败次数。
+ * [U02 §2.1.3] 锁服务不可用 → fail-closed（notReady=true，不计用户失败、不返回有效）。
  */
 export async function verifyVerificationCode(
   channel: Channel,
@@ -92,7 +101,15 @@ export async function verifyVerificationCode(
 ): Promise<VerifyResult> {
   const t = normalize(target);
   const backend = getVerificationBackend();
-  const rec = await backend.lookup({ channel, target: t, purpose });
+  let rec: Awaited<ReturnType<typeof backend.lookup>>;
+  try {
+    rec = await backend.lookup({ channel, target: t, purpose });
+  } catch (e) {
+    if (e instanceof VerificationBackendUnavailableError) {
+      return { valid: false, error: "验证服务暂不可用，请稍后重试", notReady: true };
+    }
+    throw e;
+  }
   if (!rec) {
     await backend.recordFailure({ channel, target: t, purpose });
     return { valid: false, error: "请先获取验证码" };

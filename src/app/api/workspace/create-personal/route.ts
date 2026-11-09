@@ -41,13 +41,15 @@ export async function POST(request: NextRequest) {
     // 统一鉴权（与 /api/workspace/list 保持一致）：
     // 优先使用中间件注入并验签过的 x-user-id；缺失时通过 validateUser 校验
     // Authorization Bearer JWT 或 Cookie auth_token JWT（明文 userId 一律拒绝）。
-    let userId = request.headers.get("x-user-id");
-    if (!userId) {
+    // [U05/原9] 统一鉴权：一律完整 validateUser（会话/封禁/强制下线/到期一致校验），
+    // 中间件验签的 x-user-id 不等于有效会话（明文 userId 一律拒绝）。
+    let userId: string | null = null;
+    {
       const authResult = await validateUser(
         request.headers.get("authorization"),
         request,
       );
-      if (!authResult.valid) {
+      if (!authResult.valid || !authResult.user) {
         return NextResponse.json(
           { message: "未授权" },
           { status: 401 },

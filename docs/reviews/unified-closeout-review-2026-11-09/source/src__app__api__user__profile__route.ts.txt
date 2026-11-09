@@ -1,0 +1,369 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { withAuth } from "@/lib/with-auth";
+import { getDeletionCooldownDays } from "@/lib/account-deletion";
+import { resolveEffectiveMembershipLevel } from "@/lib/user-entitlement";
+
+// GET - 获取用户信息（P0-2 修复：统一走 withAuth 状态机校验）
+export const GET = withAuth(async (req, user) => {
+  try {
+    const dbUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        role: true,
+        status: true,
+        membershipLevel: true,
+        createdAt: true,
+        lastLoginAt: true,
+        lastLoginIp: true,
+        lastLoginRegion: true,
+        lastLoginDevice: true,
+        passwordChangedAt: true,
+        deletionRequestedAt: true,
+        bio: true,
+      },
+    });
+
+    if (!dbUser) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    let isPendingDeletion = false;
+    let deletionDeadline: string | null = null;
+    let daysRemaining: number | null = null;
+
+    // 冷静期总天数（可配置）恒返回：前端注销弹窗文案不能依赖"是否已申请注销"才拿得到真实配置
+    const deletionCooldownDays = await getDeletionCooldownDays();
+
+    // deletionRequestedAt 存的是冷静期截止日（申请时间 + 冷静期天数），直接与当前时间比较
+    if (dbUser.deletionRequestedAt) {
+      const deletionDeadlineDate = new Date(dbUser.deletionRequestedAt);
+      const now = new Date();
+
+      if (now < deletionDeadlineDate) {
+        isPendingDeletion = true;
+        deletionDeadline = deletionDeadlineDate.toISOString();
+        daysRemaining = Math.ceil(
+          (deletionDeadlineDate.getTime() - now.getTime()) /
+            (24 * 60 * 60 * 1000),
+        );
+      }
+    }
+
+    // 附带查询用户当前个人空间的可用算力点（只读实际余额，不赠送/兜底）
+    // ⚠️ 按 workspacequota.workspaceId 正向查询：workspace.workspacequotaId 外键历史为 NULL，
+    // 依赖 include 关系会把有余额的个人空间误读成 0。
+    let tokenBalance = 0;
+    try {
+      const personalWs = await prisma.workspace.findFirst({
+        where: { ownerId: user.id, type: "PERSONAL" },
+        select: { id: true },
+      });
+      if (personalWs) {
+        const personalQuota = await prisma.workspacequota.findUnique({
+          where: { workspaceId: personalWs.id },
+        });
+        if (personalQuota) {
+          tokenBalance = Number(personalQuota.tokenBalance);
+        }
+      }
+    } catch (e) {
+      console.warn("[profile] 查询算力非致命提示:", e);
+    }
+
+    // 查询会员等级中文名称与权益（统一走 resolveEffectiveMembershipLevel 判定）
+    const effectiveMembershipLevel = resolveEffectiveMembershipLevel(dbUser.role, dbUser.membershipLevel);
+    const membershipMap: Record<string, string> = {
+      FREE: "普通会员",
+      BRONZE: "青铜会员",
+      SILVER: "白银会员",
+      GOLD: "黄金会员",
+      DIAMOND: "钻石会员",
+      CROWN: "皇冠会员",
+      ENTERPRISE: "企业专享会员",
+    };
+    const membershipDisplayName = membershipMap[effectiveMembershipLevel.toUpperCase()] || "普通会员";
+
+    // 统计用户所属工作空间总数
+    const workspaceCount = await prisma.workspacemember.count({
+      where: { userId: user.id },
+    }).catch(() => 0);
+
+    // 统计生效中的 API 密钥数量
+    const apiKeyCount = await prisma.apikey.count({
+      where: { userId: user.id },
+    }).catch(() => 0);
+
+    // 统计用户产生的操作日志记录数
+    const activityCount = await prisma.operationlog.count({
+      where: { userId: user.id },
+    }).catch(() => 0);
+
+    // 查询用户参与的主要团队空间列表（前 3 个）
+    const recentMemberships = await prisma.workspacemember.findMany({
+      where: { userId: user.id },
+      include: {
+        workspace: {
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            updatedAt: true,
+          },
+        },
+      },
+      orderBy: { joinedAt: "desc" },
+      take: 3,
+    }).catch(() => []);
+
+    const roleNameMap: Record<string, string> = {
+      OWNER: "所有者",
+      ADMIN: "管理员",
+      MEMBER: "成员",
+      DEVELOPER: "开发员",
+      GUEST: "访客",
+    };
+
+    const recentWorkspaces = recentMemberships.map((m) => ({
+      id: m.workspace.id,
+      name: m.workspace.name,
+      type: m.workspace.type,
+      role: roleNameMap[m.role] || "成员",
+    }));
+
+    const safeJson = JSON.parse(
+      JSON.stringify(
+        {
+          success: true,
+          data: {
+            ...dbUser,
+            membershipLevel: effectiveMembershipLevel,
+            tokenBalance,
+            membershipDisplayName,
+            securityProfile: {
+              createdAt: dbUser.createdAt,
+              lastLoginAt: dbUser.lastLoginAt,
+              lastLoginIp: dbUser.lastLoginIp || "127.0.0.1",
+              lastLoginRegion: dbUser.lastLoginRegion || "本地网络",
+              lastLoginDevice: dbUser.lastLoginDevice || "Desktop Chrome",
+              passwordChangedAt: dbUser.passwordChangedAt || dbUser.createdAt,
+            },
+            stats: {
+              workspaceCount,
+              apiKeyCount,
+              activityCount,
+            },
+            recentWorkspaces,
+          },
+          deletionCooldownDays,
+          user: {
+            isPendingDeletion,
+            deletionDeadline,
+            daysRemaining,
+          },
+        },
+        (k, v) => (typeof v === "bigint" ? Number(v) : v)
+      )
+    );
+
+    return NextResponse.json(safeJson);
+  } catch (error) {
+    console.error("Get profile error:", error);
+    return NextResponse.json({ error: "获取用户信息失败" }, { status: 500 });
+  }
+});
+
+// PUT - 更新用户信息（P0-2 修复：统一走 withAuth 状态机校验）
+export const PUT = withAuth(async (req, user) => {
+  try {
+    const { name, email, phone, smsCode, bio, verifyToken } = await req.json();
+
+    // 验证昵称
+    if (!name || !String(name).trim()) {
+      return NextResponse.json(
+        { error: "用户昵称不能为空" },
+        { status: 400 },
+      );
+    }
+
+    // 查询当前用户信息比对手机号
+    const currentUser = await prisma.user.findUnique({
+      where: { id: user.id },
+      select: { phone: true, email: true },
+    });
+
+    if (!currentUser) {
+      return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    const trimmedPhone = phone ? String(phone).trim() : "";
+    const currentPhone = currentUser.phone ? String(currentUser.phone).trim() : "";
+
+    // 判断是否更换或绑定新手机号
+    if (trimmedPhone && trimmedPhone !== currentPhone) {
+      // 1. 校验合法的 11 位中国大陆手机号码
+      if (!/^1[3-9]\d{9}$/.test(trimmedPhone)) {
+        return NextResponse.json(
+          { error: "请输入正确的 11 位手机号码" },
+          { status: 400 },
+        );
+      }
+
+      // 2. 检查手机号是否已被其他账号占用
+      const existingPhoneUser = await prisma.user.findFirst({
+        where: {
+          phone: trimmedPhone,
+          id: { not: user.id },
+        },
+      });
+
+      if (existingPhoneUser) {
+        return NextResponse.json(
+          { error: "该手机号码已被其他账号绑定，请更换其他号码" },
+          { status: 400 },
+        );
+      }
+
+      // 3. 更换手机号必须校验短信验证码
+      if (!smsCode || String(smsCode).trim().length !== 6) {
+        return NextResponse.json(
+          { error: "更换手机号必须填写 6 位短信验证码" },
+          { status: 400 },
+        );
+      }
+
+      const { verifySmsCode, consumeSmsCode } = await import("@/lib/sms-store");
+      const verifyResult = await verifySmsCode(trimmedPhone, String(smsCode).trim(), "binding");
+      if (!verifyResult.valid) {
+        return NextResponse.json(
+          { error: verifyResult.error || "短信验证码错误或已过期，请重新获取" },
+          { status: 400 },
+        );
+      }
+
+      // 验证通过，立即按 challenge 身份原子消费该验证码；
+      // 消费失败（已用/与新码不符/服务不可用）不继续换绑。
+      const bindConsume = await consumeSmsCode(trimmedPhone, "binding", verifyResult.challengeId);
+      if (!bindConsume.ok) {
+        return NextResponse.json(
+          { error: bindConsume.error || "短信验证码已失效，请重新获取" },
+          { status: bindConsume.status === 503 ? 503 : 400 }
+        );
+      }
+    }
+
+    // 检查并更新登录邮箱
+    const rawEmail = email !== undefined ? String(email).trim() : undefined;
+    let targetEmail = currentUser.email;
+
+    if (rawEmail !== undefined) {
+      if (rawEmail === "") {
+        targetEmail = null;
+      } else {
+        // 校验合法邮箱格式与长度边界
+        if (rawEmail.length > 100) {
+          return NextResponse.json(
+            { error: "邮箱地址长度不能超过 100 个字符" },
+            { status: 400 },
+          );
+        }
+        if (/[\u4e00-\u9fa5]/.test(rawEmail)) {
+          return NextResponse.json(
+            { error: "邮箱地址不能包含中文字符" },
+            { status: 400 },
+          );
+        }
+        if (!/^[a-zA-Z0-9_\.\-\+]+@[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)*\.[a-zA-Z]{2,}$/.test(rawEmail)) {
+          return NextResponse.json(
+            { error: "请输入规范有效的电子邮箱格式，如 name@example.com" },
+            { status: 400 },
+          );
+        }
+        if (rawEmail !== (currentUser.email || "")) {
+          const existingUser = await prisma.user.findFirst({
+            where: {
+              email: rawEmail,
+              id: { not: user.id },
+            },
+          });
+
+          if (existingUser) {
+            return NextResponse.json(
+              { error: "该邮箱已被其他账号使用，请更换其他邮箱" },
+              { status: 400 },
+            );
+          }
+
+          // 登录凭据变更属高危操作：必须先过二次身份验证（与注销同级的密码验证），
+          // 堵住"拿到会话即可静默替换登录邮箱"的攻击面
+          const { requireStepUp } = await import("@/lib/step-up");
+          const stepUp = await requireStepUp(req, "change_email", user.id, { verifyToken });
+          if (!stepUp.ok) {
+            return NextResponse.json(
+              {
+                error: stepUp.error,
+                message:
+                  stepUp.error === "SEC_AUTH_REQUIRED"
+                    ? "修改登录邮箱属于敏感操作，需要进行二次身份验证"
+                    : "验证令牌无效或已过期，请重新验证",
+              },
+              { status: stepUp.status },
+            );
+          }
+          targetEmail = rawEmail;
+        }
+      }
+    }
+
+    // 个人签名/团队寄语：真实落库（长度约束 200 字符）
+    const trimmedBio = bio !== undefined && bio !== null ? String(bio).trim() : undefined;
+    if (trimmedBio && trimmedBio.length > 200) {
+      return NextResponse.json(
+        { error: "个人签名不能超过 200 个字符" },
+        { status: 400 },
+      );
+    }
+
+    // 更新用户信息
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: String(name).trim(),
+        email: targetEmail,
+        phone: trimmedPhone || null,
+        ...(trimmedBio !== undefined ? { bio: trimmedBio || null } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        avatar: true,
+        bio: true,
+      },
+    });
+
+    // 写操作留痕（非阻断式）
+    const { writeAuditLog } = await import("@/lib/security");
+    await writeAuditLog(user.id, "user:profile_update", {
+      nameChanged: true,
+      emailChanged: rawEmail !== undefined && targetEmail !== currentUser.email,
+      phoneChanged: !!(trimmedPhone && trimmedPhone !== currentPhone),
+      bioChanged: trimmedBio !== undefined,
+    }, null, null, req).catch(() => {});
+
+    return NextResponse.json({
+      success: true,
+      data: updatedUser,
+      message: trimmedPhone && trimmedPhone !== currentPhone ? "手机号码及个人资料已更新" : "个人信息已更新",
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    return NextResponse.json({ error: "更新用户信息失败" }, { status: 500 });
+  }
+});

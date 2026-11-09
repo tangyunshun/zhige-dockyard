@@ -65,3 +65,14 @@
   `value-cost-metrics` 未接 API；预付/消费/利润分栏与未知成本口径未完成。
 - **U05-5/6/7**：标准岗位跨空间私有统计、企业撤权在 UI/Open/Key/资料各入口一致性、历史保留矩阵。
 - **U13/U14**：原 1–14 全量唯一共享集成、同版本冻结 SHA 与完整页面/业务矩阵。
+
+---
+
+# 本轮新增接线（2026-11-10）
+
+- 支付：notify 路由 → `fulfillPaidOrder` → **全类型** (渠道,商户,交易号) billingrecord 唯一认领（P2002 裁决）→ 席位/企业/点数履约 → SUCCESS；终态/晚到账 → 原子事实行（PENDING_RECOVERY/DIFF_FACT）→ 运营可追溯（未发放）。
+- 验证码：send-email-code（可信 ip/actor）→ admitSend（预算 + VerificationSendClaim 认领）→ issue（同事务换码）→ sendMail（精确接收事实）→ onSendResult（按 sendId 幂等回退/终态）；verify/consume 同一失败锁，服务不可用 fail-closed 503。
+- 改密：resetToken(jti) → PasswordResetClaim 状态机 → 消费与写密提交一致性（失败可重试/重放幂等）。
+- 身份：Webhooks 与 5 个工作空间入口一律完整 validateUser；登录回跳 sanitizeInternalRedirect。
+- 解析：extract-text → size 预检 → 原子准入 → worker → exit 确认 → 释放；无停止证据不腾槽（QUARANTINED 诊断保留），EXIT_CONFIRMED 证据回收。
+- 仍为纯契约/未接线（FAILED）：cost-reservation 生产后端、task/attempt 持久化、来源退款真实 ledger、ops 恢复后台、指标 API。

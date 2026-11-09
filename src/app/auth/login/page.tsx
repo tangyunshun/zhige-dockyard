@@ -272,7 +272,7 @@ function LoginForm() {
         if (res.ok) {
           // 用户已登录，重定向到首页或原页面
           const savedPath = sessionStorage.getItem("redirectAfterLogin");
-          const redirect = savedPath || searchParams.get("redirect") || "/";
+          const redirect = sanitizeInternalRedirect(savedPath || searchParams.get("redirect"));
           console.log("用户已登录，重定向到:", redirect);
           window.location.href = redirect;
           return;
@@ -317,7 +317,7 @@ function LoginForm() {
 
     if (justRedirected && savedPath) {
       // 有保存的原页面 URL，使用它
-      setRedirectPath(savedPath);
+      setRedirectPath(sanitizeInternalRedirect(savedPath));
       console.log("登录页：使用保存的原页面 URL:", savedPath);
       // 清除标记
       sessionStorage.removeItem("just_redirected");
@@ -1024,7 +1024,7 @@ function LoginForm() {
           const isAdminPage = targetPath.startsWith("/admin");
           const isAdminUser = isAdminRole(userRole);
 
-          let finalPath = targetPath;
+          let finalPath = sanitizeInternalRedirect(targetPath);
 
           if (isSystemInMaintenance) {
             // 系统处于维护中
@@ -1937,6 +1937,23 @@ function LoginForm() {
 }
 
 // 确保 Next.js App Router 正确扫描并编译登录页面路由
+
+/**
+ * [U05/原9] 登录回跳安全校验：仅允许站内绝对路径。
+ * 拒绝外站/协议相对(//)、反斜杠(/\)、危险协议(javascript: 等)、编码绕过（解码一次后复查）。
+ * 不合法一律回落站内默认路径。
+ */
+function sanitizeInternalRedirect(raw: string | null | undefined): string {
+  const fallback = "/workspace-hub";
+  if (!raw) return fallback;
+  let v = String(raw).trim();
+  try { const dec = decodeURIComponent(v); if (dec !== v) v = dec; } catch { /* 保留原值继续校验 */ }
+  if (!v.startsWith("/")) return fallback; // 相对/外站/协议
+  if (v.startsWith("//") || v.startsWith("/\\") || v.includes("\\")) return fallback; // 协议相对/反斜杠绕过
+  if (v.includes(":")) return fallback; // 任何 scheme（javascript:/data:/http: 等）
+  if (v.toLowerCase().startsWith("%2f")) return fallback;
+  return v;
+}
 export default function LoginPage() {
   return (
     <Suspense fallback={<div>加载中...</div>}>

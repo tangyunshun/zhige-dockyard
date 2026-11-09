@@ -10,7 +10,9 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-vi.mock("@/lib/prisma", () => ({ prisma: {} as any }));
+const txHolder = vi.hoisted(() => ({ current: null as any }));
+
+vi.mock("@/lib/prisma", () => ({ prisma: { $transaction: async (fn: any) => fn(txHolder.current) } as any }));
 
 import {
   __setVerificationBackendForTest,
@@ -114,14 +116,46 @@ function makeStores() {
     },
   };
 
-  return { budgetModel, smscodeModel, budget, smscodes };
+  // [U02] 发送认领替身：真实唯一约束 + PENDING→(REFUNDED|SETTLED|OBSOLETE) 条件转换
+  const claims: Record<string, any> = {};
+  const claimModel = {
+    create: async ({ data }: any) => {
+      if (claims[data.id]) {
+        const e = new Error("unique");
+        (e as any).code = "P2002";
+        throw e;
+      }
+      claims[data.id] = { ...data, status: data.status ?? "PENDING" };
+      return { ...claims[data.id] };
+    },
+    findMany: async ({ where }: any) =>
+      Object.values(claims).filter((c: any) => !where || Object.entries(where).every(([k, v]) => (c as any)[k] === v)),
+    updateMany: async ({ where, data }: any) => {
+      let count = 0;
+      for (const k of Object.keys(claims)) {
+        const c = claims[k];
+        if (Object.entries(where).every(([kk, vv]) => (c as any)[kk] === vv)) {
+          Object.assign(c, data);
+          count++;
+        }
+      }
+      return { count };
+    },
+    update: async ({ where, data }: any) => {
+      const c = claims[where.id];
+      if (c) Object.assign(c, data);
+      return { ...c };
+    },
+  };
+  return { budgetModel, smscodeModel, claimModel, budget, smscodes, claims };
 }
 
 let stores: ReturnType<typeof makeStores>;
 
 beforeEach(() => {
   stores = makeStores();
-  __setVerificationModelsForTest(stores.budgetModel, stores.smscodeModel);
+  __setVerificationModelsForTest(stores.budgetModel, stores.smscodeModel, stores.claimModel);
+  txHolder.current = { smscode: stores.smscodeModel };
   __setVerificationBackendForTest(new PrismaVerificationBackend());
 });
 

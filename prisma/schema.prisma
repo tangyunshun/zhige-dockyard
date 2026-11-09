@@ -2223,3 +2223,44 @@ model VerificationBudget {
 
   @@index([id])
 }
+
+// ─────────────────────────────────────────────────────────────
+// [U02/原2 离线 schema 草案] 发送预约身份绑定（回填幂等）
+// 每次 admitSend 为各预算维度（target/platform/ip）创建一条 PENDING 认领；
+// failed 回填仅将对应认领 PENDING→REFUNDED（count=1 才返还，重复回填 count=0 零效果），
+// 旧窗口迟到回填因 windowStart 不匹配被标 OBSOLETE，不污染新窗口。
+// 认领被消费（发送成功签发）后置 SETTLED，终态不再回退。
+// 回滚：DROP TABLE VerificationSendClaim;
+// ─────────────────────────────────────────────────────────────
+model VerificationSendClaim {
+  id          String   @id // `${sendId}:${scope}`
+  sendId      String
+  scope       String   // target | platform | ip
+  budgetKey   String
+  windowStart BigInt   // 预约时所在预算窗口起点（跨窗口迟到回填判据）
+  status      String   @default("PENDING") // PENDING | REFUNDED | SETTLED | OBSOLETE
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([sendId])
+  @@index([status])
+}
+
+// ─────────────────────────────────────────────────────────────
+// [U02 §2.2 离线 schema 草案] 改密授权持久认领（提交一致性）
+// resetToken 的 jti 一次性绑定：PENDING(已建认领,码未确认消费) →
+// AUTH_CONSUMED(验证码已为本 jti 消费,密码未更新) → COMPLETED(密码已更新+会话已失效)。
+// 密码更新失败后可凭同一 token 重试（AUTH_CONSUMED 不再重复消费）；
+// 响应丢失后重放 COMPLETED 幂等成功。旧 token 不能消费新码的约束不变。
+// 回滚：DROP TABLE PasswordResetClaim;
+// ─────────────────────────────────────────────────────────────
+model PasswordResetClaim {
+  id          String    @id // resetToken 的 jti（一次性）
+  userId      String
+  challengeId String
+  status      String    @default("PENDING") // PENDING | AUTH_CONSUMED | COMPLETED
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+
+  @@index([userId])
+}

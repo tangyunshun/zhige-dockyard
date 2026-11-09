@@ -92,37 +92,101 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. 一次性消费验证码（绑定 challenge 身份）；消费失败绝不写密码。
-    // 旧 token 绑定的 challenge 已用时，消费会因已用或 challenge 不匹配被拒，
-    // 更不能借后来签发的新码恢复改密权。
-    const consumeRes: AdmitResult = phone
-      ? await consumeSmsCode(phone, "reset-password", challengeId)
-      : email
-        ? await consumeEmailCode(email, "reset-password", challengeId)
-        : { ok: false, error: "缺少账号信息", status: 400 };
-    if (!consumeRes.ok) {
-      // 已使用 / 不存在 / 服务不可用 -> 拒绝，不写密码、不失效会话
-      const status = consumeRes.status === 503 ? 503 : 400;
+    // 4. [U02 §2.2] 持久授权认领（提交一致性）：jti 一次性绑定状态机
+    //    PENDING（已建认领，码未确认消费）→ AUTH_CONSUMED（码已为本 jti 消费）→ COMPLETED（密码已更新）。
+    //    - 首次：原子创建 PENDING 认领（唯一 jti），再消费验证码 → 成功则推进 AUTH_CONSUMED；
+    //    - 消费失败：认领保持 PENDING，同一 token 重试可再次消费（码未被用）；
+    //    - 消费成功但密码更新失败：认领已是 AUTH_CONSUMED，重试**不再重复消费**，直接重做密码更新；
+    //    - 已 COMPLETED：响应丢失后的重放幂等成功，不重做敏感动作。
+    //    旧 token 不能消费新码的 challenge 绑定约束保持不变。
+    const claimModel = (prisma as any).passwordresetclaim;
+    if (!claimModel?.findUnique) {
       return NextResponse.json(
-        { message: consumeRes.error || "验证码校验失败，请重新获取验证码" },
-        { status }
+        { message: "改密授权服务未就绪，请联系管理员完成部署", code: "RESET_CLAIM_NOT_READY" },
+        { status: 503 }
       );
     }
+    let claim = await claimModel.findUnique({ where: { id: jti } });
+    if (!claim) {
+      try {
+        claim = await claimModel.create({
+          data: { id: jti, userId: user.id, challengeId, status: "PENDING" },
+        });
+      } catch (e: any) {
+        if (String(e?.code) === "P2002") {
+          claim = await claimModel.findUnique({ where: { id: jti } });
+        } else {
+          throw e;
+        }
+      }
+    }
+    if (!claim || claim.userId !== user.id) {
+      // jti 冲突（极小概率）或归属不符 → 拒绝，不复用他人授权
+      return NextResponse.json({ message: "重置凭证无效，请重新获取验证码" }, { status: 401 });
+    }
 
-    // 5. 更新密码 + 失效所有会话（强制重新登录）
+    if (claim.status === "PENDING") {
+      // 一次性消费验证码（绑定 challenge 身份）；消费失败绝不写密码。
+      const consumeRes: AdmitResult = phone
+        ? await consumeSmsCode(phone, "reset-password", challengeId)
+        : email
+          ? await consumeEmailCode(email, "reset-password", challengeId)
+          : { ok: false, error: "缺少账号信息", status: 400 };
+      if (!consumeRes.ok) {
+        // 已使用 / 不存在 / 服务不可用 -> 拒绝，不写密码、不失效会话；认领保持 PENDING 可重试
+        const status = consumeRes.status === 503 ? 503 : 400;
+        return NextResponse.json(
+          { message: consumeRes.error || "验证码校验失败，请重新获取验证码" },
+          { status }
+        );
+      }
+      // 消费成功 → 推进 AUTH_CONSUMED（持久化"授权已消费"恢复事实）
+      await claimModel.update({ where: { id: jti }, data: { status: "AUTH_CONSUMED" } });
+    }
+
+    if (claim.status === "COMPLETED") {
+      // 响应丢失后的重放：幂等成功，不重做敏感动作
+      return NextResponse.json({
+        success: true,
+        message: "密码已重置成功，请使用新密码登录",
+      });
+    }
+
+    // 5. 更新密码 + 失效所有会话（强制重新登录）；成功即推进 COMPLETED（同一持久边界）
     const hashedPassword = await hashPassword(newPassword);
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashedPassword,
-        sessionToken: null,
-        sessionExpiresAt: null,
-        sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
-        refreshToken: null,
-        refreshTokenPrev: null,
-        lastForcedLogoutAt: new Date(),
-      },
-    });
+    const prismaAny = prisma as any;
+    if (typeof prismaAny?.$transaction === "function") {
+      await prismaAny.$transaction(async (tx: any) => {
+        await tx.user.update({
+          where: { id: user.id },
+          data: {
+            password: hashedPassword,
+            sessionToken: null,
+            sessionExpiresAt: null,
+            sessionRememberMe: false, // 会话销毁时复位「7天内免登录」标记
+            refreshToken: null,
+            refreshTokenPrev: null,
+            lastForcedLogoutAt: new Date(),
+          },
+        });
+        await tx.passwordresetclaim.update({ where: { id: jti }, data: { status: "COMPLETED", completedAt: new Date() } });
+      });
+    } else {
+      // 测试替身（无事务能力）：顺序执行，语义等价由替身保证
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          password: hashedPassword,
+          sessionToken: null,
+          sessionExpiresAt: null,
+          sessionRememberMe: false,
+          refreshToken: null,
+          refreshTokenPrev: null,
+          lastForcedLogoutAt: new Date(),
+        },
+      });
+      await claimModel.update({ where: { id: jti }, data: { status: "COMPLETED", completedAt: new Date() } });
+    }
 
     return NextResponse.json({
       success: true,
