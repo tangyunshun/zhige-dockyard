@@ -21,35 +21,14 @@ export function isUnlimitedTokenLimit(tokenLimit: bigint | number | null | undef
 
 /**
  * 从 membershiplevel 表读取真实 tokenLimit（BigInt）。
- * 找不到等级时回退：FREE 等级 → 表中第一条等级 → 0（0 仅在异常兜底时出现，不表示某档位默认值）。
+ * 纯只读：不写库、不写死档位默认值。找不到等级时返回 0（表示未配置额度/未就绪），
+ * 由运营补配置处理，不在此路径私自补发体验额度或覆盖真实配置。
  */
 export async function getMembershipTokenLimit(
   membershipLevel?: string | null,
 ): Promise<bigint> {
   const level = membershipLevel || "FREE";
-  let byLevel = await prisma.membershiplevel.findUnique({ where: { id: level } });
-
-  // 针对免费版 FREE，系统标准为 100 算力点免费体验额度；若库中为旧种子值（如 500 或 0），自动同步为 100
-  if (level === "FREE") {
-    if (!byLevel || Number(byLevel.tokenLimit) !== 100) {
-      try {
-        if (byLevel) {
-          byLevel = await prisma.membershiplevel.update({
-            where: { id: "FREE" },
-            data: { tokenLimit: BigInt(100) }
-          });
-        }
-      } catch (e) {
-        console.warn("[getMembershipTokenLimit] 同步 FREE 算力额度非致命提示:", e);
-      }
-      return BigInt(100);
-    }
-  }
-
-  if (byLevel?.tokenLimit != null) return BigInt(byLevel.tokenLimit);
-  const free = await prisma.membershiplevel.findUnique({ where: { id: "FREE" } });
-  if (free?.tokenLimit != null) return BigInt(free.tokenLimit);
-  const any = await prisma.membershiplevel.findFirst();
-  if (any?.tokenLimit != null) return BigInt(any.tokenLimit);
-  return BigInt(100);
+  const row = await prisma.membershiplevel.findUnique({ where: { id: level } });
+  if (row?.tokenLimit != null) return BigInt(row.tokenLimit);
+  return BigInt(0);
 }

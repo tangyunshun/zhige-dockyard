@@ -44,37 +44,43 @@ export async function POST(request: NextRequest) {
     const now = new Date();
     let modelCount = 0;
     let periodCount = 0;
+
+    // 组装同事务操作：改价与回写单一真源（systemconfig）原子提交，避免中途失败留下部分价格变更。
+    const txOps: any[] = [];
     if (scope === "all") {
       // 强制全量覆盖：把同一加价率写入全部主表行 + 全部时段行
-      const batch = await prisma.$transaction([
+      txOps.push(
         prisma.modelpricing.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
         }),
+      );
+      txOps.push(
         prisma.modelpricingperiod.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
         }),
-      ]);
+      );
     }
     // 两种 scope 都回写全局默认（单一真源），模型 markupRateBps 留空即继承此值
-    await prisma.systemconfig.upsert({
-      where: { key: "billing.markupCoefficientBps" },
-      create: { key: "billing.markupCoefficientBps", value: String(bps) },
-      update: { value: String(bps) },
-    });
-
-    // 回写单一真源
-    await prisma.systemconfig.upsert({
-      where: { key: "billing.markupCoefficientBps" },
-      create: { key: "billing.markupCoefficientBps", value: String(bps) },
-      update: { value: String(bps) },
-    });
+    txOps.push(
+      prisma.systemconfig.upsert({
+        where: { key: "billing.markupCoefficientBps" },
+        create: { key: "billing.markupCoefficientBps", value: String(bps) },
+        update: { value: String(bps) },
+      }),
+    );
+    const txResult = await prisma.$transaction(txOps);
+    if (scope === "all") {
+      modelCount = txResult[0].count;
+      periodCount = txResult[1].count;
+    }
 
     // 已独立设置加价率的模型数（markupRateBps 非空）；「设为默认」时不改动这些行
     const overriddenModelRows = await prisma.modelpricing.count({ where: { markupRateBps: { not: null } } });
 
-    try {
-      if (adminId) {
-        await prisma.operationlog.create({
+    // 审计与改价同事务：要么一起成功，要么都不提交，避免「审计失败却伪报成功」。
+    if (adminId) {
+      await prisma.$transaction([
+        prisma.operationlog.create({
           data: {
             id: `op_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
             userId: adminId,
@@ -93,10 +99,8 @@ export async function POST(request: NextRequest) {
               syncedAt: now.toISOString(),
             } as object,
           },
-        });
-      }
-    } catch (logErr) {
-      console.error("[global-markup] 审计日志写入失败:", (logErr as Error)?.message);
+        }),
+      ]);
     }
 
     return NextResponse.json({
@@ -126,10 +130,8 @@ export async function GET(request: NextRequest) {
       return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
     }
     const cfg = await prisma.systemconfig.findUnique({ where: { key: "billing.markupCoefficientBps" } });
-    const raw = cfg?.value != null ? Number(cfg.value) : null;
-    // 口径矫正：旧版曾将乘数 k 以 *10000 存储（如 20000），正确基点口径应为 *100（2000 bps = 20%）。
-    // 读取时若检测到旧版超大值（> 10000 bps），自动折算回正确基点，避免顶部误显 200%。
-    const bps = raw != null && raw > 10000 ? Math.round(raw / 10) : raw;
+    // 现行合法 bps 原值使用：不按大数猜旧单位做 ÷10 折算，避免误显/误算。
+    const bps = cfg?.value != null ? Number(cfg.value) : null;
     const [modelRows, periodRows, overriddenModelRows] = await Promise.all([
       prisma.modelpricing.count(),
       prisma.modelpricingperiod.count(),

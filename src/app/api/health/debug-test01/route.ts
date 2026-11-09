@@ -1,7 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { requirePlatformPermission } from "@/lib/security";
 
-export async function GET() {
+/**
+ * 诊断入口：仅平台授权可访问，绝不向匿名/普通用户暴露私有数据。
+ * 保留最小诊断数据；未授权一律 403，不返回任何业务/用户材料。
+ */
+export async function GET(request: Request) {
+  const auth = await requirePlatformPermission(request as any, "system:manage", "debug:read");
+  if (!auth.authorized) {
+    return auth.errorResponse || NextResponse.json({ success: false, error: "无权限" }, { status: 403 });
+  }
   try {
     const wsPersonal = "ws-personal-1787924572254-wu6kio";
     const wsEnterprise = "ws-enterprise-1787927954618-9arzol";
@@ -37,6 +46,6 @@ export async function GET() {
 
     return NextResponse.json(safeJson);
   } catch (err: any) {
-    return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 200 });
+    return NextResponse.json({ success: false, error: err?.message || String(err) }, { status: 500 });
   }
 }

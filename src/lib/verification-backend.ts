@@ -317,85 +317,148 @@ interface BudgetRow {
   id: string;
   count: number;
   windowStart: number;
+  lastSentAt: number;
+  failCount: number;
+  lockedUntil: number;
   version: number;
 }
 
-function getBudgetModel(): { findUnique: Function; upsert: Function; update: Function } {
-  // 离线模型，未部署前访问即抛错 -> 由调用方捕获得 not-ready
-  return (prisma as unknown as { verificationbudget: any }).verificationbudget;
+// 数据访问层注入：测试可注入实现相同接口的替身，以在隔离环境下运行真实生产算法。
+let testBudgetModel: any = null;
+let testSmsCodeModel: any = null;
+
+export function getBudgetModel(): any {
+  if (testBudgetModel !== null) return testBudgetModel;
+  const m = (prisma as unknown as { verificationBudget?: any }).verificationBudget;
+  if (!m) throw new Error("VerificationBudget model not available");
+  return m;
 }
 
-class PrismaVerificationBackend implements VerificationBackend {
+export function getSmsCodeModel(): any {
+  if (testSmsCodeModel !== null) return testSmsCodeModel;
+  const m = (prisma as unknown as { smscode?: any }).smscode;
+  if (!m) throw new Error("smscode model not available");
+  return m;
+}
+
+/** 测试注入：用替身模型运行真实生产算法（不连真实库）。生产代码不得调用。 */
+export function __setVerificationModelsForTest(budget: any | null, smscode: any | null): void {
+  testBudgetModel = budget;
+  testSmsCodeModel = smscode;
+}
+
+/** 重置数据访问层为生产 prisma 客户端（测试清理用） */
+export function __resetVerificationModels(): void {
+  testBudgetModel = null;
+  testSmsCodeModel = null;
+}
+
+const CAS_RETRIES = 32;
+
+export class PrismaVerificationBackend implements VerificationBackend {
   async ready(): Promise<boolean> {
-    // smscode 表在客户端存在；预算表未部署则整体 not-ready
     try {
-      getBudgetModel();
-      return true;
+      const b = testBudgetModel !== null ? testBudgetModel : (prisma as unknown as { verificationBudget?: any }).verificationBudget;
+      const s = testSmsCodeModel !== null ? testSmsCodeModel : (prisma as unknown as { smscode?: any }).smscode;
+      return !!b && !!s;
     } catch {
       return false;
     }
   }
 
-  private async budgetGet(id: string): Promise<BudgetRow | null> {
+  private async budgetRow(id: string): Promise<any | null> {
     try {
-      const m = getBudgetModel();
-      const row = await m.findUnique({ where: { id } });
-      return (row as BudgetRow) || null;
+      return await getBudgetModel().findUnique({ where: { id } });
     } catch {
       return null;
     }
   }
 
-  private async budgetIncr(id: string, by: number, limit: number): Promise<AdmitResult> {
-    const now = Date.now();
-    try {
-      const m = getBudgetModel();
-      const row = (await m.upsert({
-        where: { id },
-        create: { id, count: Math.max(0, by), windowStart: now, version: 1 },
-        update: { count: { increment: by } },
-      })) as BudgetRow;
-      if (now - Number(row.windowStart) > VERIFY_POLICY.dailyWindowMs) {
-        await m.update({ where: { id }, data: { count: Math.max(0, by), windowStart: now, version: { increment: 1 } } });
+  /** 原子预约一次发送额度：检查失败锁定、60s 间隔、日窗口/日限；用 version CAS 防并发，失败回滚。 */
+  private async reserveBudget(id: string, limit: number, now: number, enforceInterval: boolean): Promise<AdmitResult> {
+    for (let attempt = 0; attempt < CAS_RETRIES; attempt++) {
+      const row = await this.budgetRow(id);
+      if (!row) {
+        try {
+          await getBudgetModel().upsert({
+            where: { id },
+            create: {
+              id,
+              count: 1,
+              windowStart: now,
+              lastSentAt: now,
+              failCount: 0,
+              lockedUntil: 0,
+              version: 1,
+            },
+            update: {},
+          });
+          return { ok: true };
+        } catch (e: any) {
+          if (String(e?.code) === "P2002") continue; // 唯一冲突，重试
+          return { ok: false, error: "发送预算服务不可用", status: 503 };
+        }
+      }
+      if (Number(row.lockedUntil) > now) {
+        return { ok: false, error: "验证码错误次数过多，请稍后再试", status: 429 };
+      }
+      if (enforceInterval && row.lastSentAt != null && now - Number(row.lastSentAt) < VERIFY_POLICY.sendIntervalMs) {
+        const waitSeconds = Math.ceil((VERIFY_POLICY.sendIntervalMs - (now - Number(row.lastSentAt))) / 1000);
+        return { ok: false, error: `请${waitSeconds}秒后再试`, status: 429, waitSeconds };
+      }
+      const windowExpired = now - Number(row.windowStart) > VERIFY_POLICY.dailyWindowMs;
+      const currentCount = windowExpired ? 0 : Number(row.count);
+      if (currentCount >= limit) {
+        return { ok: false, error: "今日发送次数已达上限，请明日再试", status: 429 };
+      }
+      try {
+        await getBudgetModel().update({
+          where: { id, version: Number(row.version) },
+          data: {
+            count: { increment: 1 },
+            lastSentAt: now,
+            windowStart: windowExpired ? now : Number(row.windowStart),
+            version: { increment: 1 },
+          },
+        });
         return { ok: true };
+      } catch (e: any) {
+        if (String(e?.code) === "P2025") continue; // version 冲突，重试
+        return { ok: false, error: "发送预算服务不可用", status: 503 };
       }
-      if (row.count > limit) {
-        // 回滚：超出则返还
-        await m.update({ where: { id }, data: { count: { decrement: by } } });
-        return { ok: false, error: "发送额度已用尽，请稍后重试", status: 429 };
-      }
-      return { ok: true };
+    }
+    return { ok: false, error: "发送预算服务繁忙，请稍后重试", status: 429 };
+  }
+
+  private async releaseBudget(id: string): Promise<void> {
+    try {
+      await getBudgetModel().update({ where: { id }, data: { count: { decrement: 1 } } });
     } catch {
-      return { ok: false, error: "发送预算服务不可用", status: 503 };
+      /* 回滚失败不阻断主流程；下一日窗口自愈 */
     }
   }
 
   async admitSend(args: AdmitArgs): Promise<AdmitResult> {
-    // 1) 目标失败锁定
-    try {
-      const code = await prisma.smscode.findFirst({
-        where: { phone: args.target, type: args.purpose, used: false },
-        orderBy: { createdAt: "desc" },
-      });
-      void code;
-    } catch {
-      return { ok: false, error: "验证服务不可用", status: 503 };
-    }
-    // 平台/IP 技术上限（共享，条件 + 回滚）
-    const plat = await this.budgetIncr("platform", 1, VERIFY_POLICY.platformLimit);
+    const now = Date.now();
+    const tgtId = `target:${args.channel}:${args.target}`;
+    const platId = "platform";
+    const ipId = args.ip ? `ip:${args.ip}` : null;
+
+    const plat = await this.reserveBudget(platId, VERIFY_POLICY.platformLimit, now, false);
     if (!plat.ok) return plat;
-    const ipRes = args.ip
-      ? await this.budgetIncr(`ip:${args.ip}`, 1, VERIFY_POLICY.ipLimit)
-      : { ok: true as const };
-    if (!ipRes.ok) {
-      await this.budgetIncr("platform", -1, VERIFY_POLICY.platformLimit);
-      return ipRes;
+    let ipReserved = false;
+    if (ipId) {
+      const ipRes = await this.reserveBudget(ipId, VERIFY_POLICY.ipLimit, now, false);
+      if (!ipRes.ok) {
+        await this.releaseBudget(platId);
+        return ipRes;
+      }
+      ipReserved = true;
     }
-    // 目标日限（含间隔/失败锁定由 smscode 既有逻辑在 issue/verify 阶段兜底）
-    const tgt = await this.budgetIncr(`target:${args.channel}:${args.target}`, 1, VERIFY_POLICY.dailyLimit);
+    const tgt = await this.reserveBudget(tgtId, VERIFY_POLICY.dailyLimit, now, true);
     if (!tgt.ok) {
-      await this.budgetIncr("platform", -1, VERIFY_POLICY.platformLimit);
-      if (args.ip) await this.budgetIncr(`ip:${args.ip}`, -1, VERIFY_POLICY.ipLimit);
+      await this.releaseBudget(platId);
+      if (ipReserved) await this.releaseBudget(ipId!);
       return tgt;
     }
     return { ok: true };
@@ -404,11 +467,11 @@ class PrismaVerificationBackend implements VerificationBackend {
   async issue(args: IssueArgs): Promise<AdmitResult> {
     try {
       // 取代旧有效码：先标记旧码 used
-      await prisma.smscode.updateMany({
+      await getSmsCodeModel().updateMany({
         where: { phone: args.target, type: args.purpose, used: false },
         data: { used: true, usedAt: new Date() },
       });
-      await prisma.smscode.create({
+      await getSmsCodeModel().create({
         data: {
           id: `vc_${randomBytes(12).toString("hex")}`,
           phone: args.target,
@@ -425,7 +488,7 @@ class PrismaVerificationBackend implements VerificationBackend {
 
   async lookup(args: AdmitArgs): Promise<VerifyRecord | null> {
     try {
-      const row = await prisma.smscode.findFirst({
+      const row = await getSmsCodeModel().findFirst({
         where: { phone: args.target, type: args.purpose, used: false },
         orderBy: { createdAt: "desc" },
       });
@@ -446,19 +509,55 @@ class PrismaVerificationBackend implements VerificationBackend {
   }
 
   async recordFailure(args: AdmitArgs): Promise<void> {
-    // 失败锁定由内存态无法跨实例共享；真实多实例共享需 B2 在 verificationbudget 增加 failLock 列。
-    return;
+    const id = `target:${args.channel}:${args.target}`;
+    for (let attempt = 0; attempt < CAS_RETRIES; attempt++) {
+      const row = await this.budgetRow(id);
+      if (!row) {
+        try {
+          await getBudgetModel().upsert({
+            where: { id },
+            create: {
+              id,
+              count: 0,
+              windowStart: Date.now(),
+              lastSentAt: 0,
+              failCount: 1,
+              lockedUntil: 0,
+              version: 1,
+            },
+            update: {},
+          });
+          return;
+        } catch (e: any) {
+          if (String(e?.code) === "P2002") continue;
+          return;
+        }
+      }
+      const newFail = Number(row.failCount) + 1;
+      const lockedUntil =
+        newFail >= VERIFY_POLICY.failLimit ? Date.now() + VERIFY_POLICY.failLockMs : Number(row.lockedUntil);
+      try {
+        await getBudgetModel().update({
+          where: { id, version: Number(row.version) },
+          data: { failCount: newFail, lockedUntil, version: { increment: 1 } },
+        });
+        return;
+      } catch (e: any) {
+        if (String(e?.code) === "P2025") continue;
+        return;
+      }
+    }
   }
 
   async consume(args: AdmitArgs): Promise<AdmitResult> {
     try {
-      const res = await prisma.smscode.updateMany({
+      const res = await getSmsCodeModel().updateMany({
         where: { phone: args.target, type: args.purpose, used: false },
         data: { used: true, usedAt: new Date() },
       });
       if ((res as any).count === 0) {
         // 已用或不存在 -> 一次性消费失败
-        const any = await prisma.smscode.findFirst({ where: { phone: args.target, type: args.purpose } });
+        const any = await getSmsCodeModel().findFirst({ where: { phone: args.target, type: args.purpose } });
         if (any && (any as any).used) return { ok: false, error: "验证码已使用", status: 400 };
         return { ok: false, error: "请先获取验证码", status: 400 };
       }
@@ -470,7 +569,7 @@ class PrismaVerificationBackend implements VerificationBackend {
 
   async delete(args: AdmitArgs): Promise<void> {
     try {
-      await prisma.smscode.updateMany({
+      await getSmsCodeModel().updateMany({
         where: { phone: args.target, type: args.purpose, used: false },
         data: { used: true, usedAt: new Date() },
       });
@@ -481,11 +580,11 @@ class PrismaVerificationBackend implements VerificationBackend {
 
   async onSendResult(args: AdmitArgs, outcome: SendOutcome): Promise<void> {
     if (outcome === "failed") {
-      await this.budgetIncr("platform", -1, VERIFY_POLICY.platformLimit);
-      if (args.ip) await this.budgetIncr(`ip:${args.ip}`, -1, VERIFY_POLICY.ipLimit);
-      await this.budgetIncr(`target:${args.channel}:${args.target}`, -1, VERIFY_POLICY.dailyLimit);
+      await this.releaseBudget(`target:${args.channel}:${args.target}`);
+      await this.releaseBudget("platform");
+      if (args.ip) await this.releaseBudget(`ip:${args.ip}`);
     }
-    // unknown/accepted 不返还
+    // unknown/accepted 不返还（防盲目重发）
   }
 }
 

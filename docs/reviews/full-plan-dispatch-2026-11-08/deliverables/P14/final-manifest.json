@@ -1,0 +1,59 @@
+{
+  "baselineCommit": "5162e5b12b105c71ca71fb628854d32f7201f371",
+  "repairPrompt": "docs/reviews/unified-independent-review-2026-11-09/IDE-UNIFIED-REPAIR-PROMPT.md",
+  "headNote": "同一基线 + 本批次离线代码改动，未连接真实库/支付/短信/模型/部署",
+  "changedFiles": [
+    "prisma/schema.prisma",
+    "src/lib/verification-backend.ts",
+    "src/lib/mailer.ts",
+    "src/lib/billing/billing-config.ts",
+    "src/lib/quota-token.ts",
+    "src/app/api/auth/reset-password/route.ts",
+    "src/app/api/auth/verify-sms-code/route.ts",
+    "src/app/api/auth/login-sms/route.ts",
+    "src/app/api/auth/send-email-code/route.ts",
+    "src/app/api/user/profile/route.ts",
+    "src/app/api/admin/model-pricing/global-markup/route.ts",
+    "src/app/api/auth/init-admin/route.ts",
+    "src/app/api/health/debug-test01/route.ts",
+    "src/app/api/test-db/route.ts",
+    "src/app/api/workspace/byo-model/test/route.ts",
+    "src/app/api/__tests__/r0l-verification.test.ts",
+    "src/app/api/__tests__/r0l2-verification-production.test.ts",
+    "src/app/api/__tests__/r08-billing-quota.test.ts",
+    "prisma/migrations/20261109000000_verification_budget_lock/migration.sql"
+  ],
+  "newDeliveryDocs": "docs/reviews/full-plan-dispatch-2026-11-08/deliverables/P14/*",
+  "reviewDocsUncommitted": "docs/reviews/unified-independent-review-2026-11-09/*",
+  "perItemStatus": {
+    "U02_U03": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U06": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U08": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U09_6": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U05_3": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U05_4": "IMPLEMENTED_OFFLINE_VERIFIED",
+    "U04": "FAILED",
+    "U05_1_2_5_6_7": "FAILED",
+    "U07": "FAILED",
+    "U01_U10_U11": "FAILED",
+    "U12": "PARTIAL",
+    "U13": "DECISION_BLOCKED",
+    "U14": "IN_PROGRESS"
+  },
+  "tsc": "零类型错误（本批次改动）",
+  "testCommands": [
+    "node node_modules/vitest/vitest.mjs run src/app/api/__tests__/r0l-verification.test.ts",
+    "node node_modules/vitest/vitest.mjs run src/app/api/__tests__/r0l2-verification-production.test.ts",
+    "node node_modules/vitest/vitest.mjs run src/app/api/__tests__/r08-billing-quota.test.ts"
+  ],
+  "executorStopWrite": true,
+  "remainingGates": [
+    "U04 支付并发唯一认领",
+    "U05 认证复活/API Key 状态/企业边界/标准岗位目录",
+    "U07 解析隔离停止证明与有界读取",
+    "U01/U10/U11 真实页面接线与浏览器串联",
+    "U12 webhooks/BYO/settings 请求内 DDL 移除",
+    "真实迁移执行（需独立授权）",
+    "真实环境/人工业务验收"
+  ]
+}

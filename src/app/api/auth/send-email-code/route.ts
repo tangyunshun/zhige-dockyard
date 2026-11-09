@@ -46,10 +46,10 @@ export async function POST(request: NextRequest) {
     const sendResult = await sendMail({ to: email, subject, text, html });
 
     if (!sendResult.ok) {
-      // 发送失败：返还本次预算，如实告知（不伪装已发送）
+      // 仅“确定失败”退还本次预算；unknown（连接中断/超时）保留占用，不盲目退预算后重发
       await getVerificationBackend().onSendResult(
         { channel: "email", target: email, purpose },
-        "failed",
+        sendResult.outcome === "failed" ? "failed" : "unknown",
       );
       if (sendResult.reason === "SMTP_NOT_CONFIGURED") {
         return NextResponse.json(
@@ -60,8 +60,15 @@ export async function POST(request: NextRequest) {
           { status: 503 },
         );
       }
+      if (sendResult.outcome === "failed") {
+        return NextResponse.json(
+          { message: "验证码邮件发送失败，请稍后重试", code: "SEND_FAILED" },
+          { status: 502 },
+        );
+      }
+      // unknown：保留占用与可诊断原因，不立即重发
       return NextResponse.json(
-        { message: "验证码邮件发送失败，请稍后重试", code: "SEND_FAILED" },
+        { message: "邮件发送结果未知，请稍后重试或检查收件箱", code: "SEND_UNKNOWN" },
         { status: 502 },
       );
     }

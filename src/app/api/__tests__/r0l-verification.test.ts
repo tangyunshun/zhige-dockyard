@@ -8,14 +8,29 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-// 替身：mailer（sendMail 可控）+ 任意 smscode/verificationbudget（条件/唯一/回滚可模拟）
+// 替身：mailer（sendMail 可控）+ 任意 smscode/verificationBudget（条件/唯一/回滚可模拟）
+// 注意：模型名必须使用真实生成客户端命名（camelCase），字段/类型/必要条件与 schema 一致。
 vi.mock("@/lib/mailer", () => ({
   sendMail: vi.fn(),
   buildVerificationEmailHtml: (_t: string, code: string) => `<html>${code}</html>`,
 }));
 
 vi.mock("@/lib/prisma", () => {
-  const budget: Record<string, { id: string; count: number; windowStart: number; version: number }> = {};
+  const budget: Record<string, any> = {};
+  function ensure(id: string): any {
+    if (!budget[id]) {
+      budget[id] = {
+        id,
+        count: 0,
+        windowStart: Date.now(),
+        lastSentAt: 0,
+        failCount: 0,
+        lockedUntil: 0,
+        version: 1,
+      };
+    }
+    return budget[id];
+  }
   return {
     prisma: {
       smscode: {
@@ -23,20 +38,33 @@ vi.mock("@/lib/prisma", () => {
         updateMany: vi.fn().mockResolvedValue({ count: 1 }),
         create: vi.fn().mockResolvedValue({ id: "x" }),
       },
-      verificationbudget: {
-        findUnique: vi.fn().mockResolvedValue(null),
+      verificationBudget: {
+        findUnique: vi.fn(async ({ where }: any) => (budget[where.id] ? { ...budget[where.id] } : null)),
         upsert: vi.fn(async ({ where, create, update }: any) => {
-          const row = budget[where.id] || { id: where.id, count: 0, windowStart: Date.now(), version: 1 };
-          const inc = update?.count?.increment ?? create?.count ?? 0;
-          row.count += inc;
-          budget[where.id] = row;
+          if (!budget[where.id]) {
+            const row = { ...create, id: where.id };
+            budget[where.id] = row;
+            return { ...row };
+          }
+          const row = ensure(where.id);
+          if (update?.count?.increment) row.count += update.count.increment;
+          if (update?.count?.decrement) row.count -= update.count.decrement;
+          if (update?.lastSentAt != null) row.lastSentAt = update.lastSentAt;
+          if (update?.windowStart != null) row.windowStart = update.windowStart;
+          if (update?.failCount != null) row.failCount = update.failCount;
+          if (update?.lockedUntil != null) row.lockedUntil = update.lockedUntil;
+          if (update?.version?.increment) row.version += update.version.increment;
           return { ...row };
         }),
         update: vi.fn(async ({ where, data }: any) => {
-          const row = budget[where.id] || { id: where.id, count: 0, windowStart: Date.now(), version: 1 };
+          const row = ensure(where.id);
           if (data?.count?.increment) row.count += data.count.increment;
           if (data?.count?.decrement) row.count -= data.count.decrement;
-          budget[where.id] = row;
+          if (data?.lastSentAt != null) row.lastSentAt = data.lastSentAt;
+          if (data?.windowStart != null) row.windowStart = data.windowStart;
+          if (data?.failCount != null) row.failCount = data.failCount;
+          if (data?.lockedUntil != null) row.lockedUntil = data.lockedUntil;
+          if (data?.version?.increment) row.version += data.version.increment;
           return { ...row };
         }),
       },
@@ -109,8 +137,8 @@ describe("L01 诚实通道状态 / 不泄露验证码", () => {
     expect(json.code).toBe("CHANNEL_NOT_READY");
   });
 
-  it("send-email-code：SMTP 发送失败返回 502 SEND_FAILED，并返还预算", async () => {
-    (sendMail as any).mockResolvedValue({ ok: false, reason: "SEND_FAILED" });
+  it("send-email-code：SMTP 确定失败返回 502 SEND_FAILED，并返还预算", async () => {
+    (sendMail as any).mockResolvedValue({ ok: false, outcome: "failed", reason: "SEND_FAILED" });
     const res = await sendEmailPost(
       jsonReq("http://x/api/auth/send-email-code", { email: "user@example.com" }),
     );
@@ -119,10 +147,21 @@ describe("L01 诚实通道状态 / 不泄露验证码", () => {
     expect(json.code).toBe("SEND_FAILED");
   });
 
+  it("send-email-code：SMTP 未知结果返回 502 SEND_UNKNOWN，不盲退预算后重发", async () => {
+    (sendMail as any).mockResolvedValue({ ok: false, outcome: "unknown", reason: "SEND_FAILED" });
+    const res = await sendEmailPost(
+      jsonReq("http://x/api/auth/send-email-code", { email: "user@example.com" }),
+    );
+    expect(res.status).toBe(502);
+    const json = await res.json();
+    expect(json.code).toBe("SEND_UNKNOWN");
+  });
+
   it("send-email-code：后端未就绪（真实表缺失）在任何发送前 503，不本机放行", async () => {
-    // 模拟真实表缺失：Prisma 抛错 -> 后端 not-ready
+    // 模拟真实表缺失：预算表查询抛错 -> 生产后端 admitSend 返回 503，外发前拦截
     __setVerificationBackendForTest(null); // 回落生产 Prisma 后端
-    (prisma.smscode.findFirst as any).mockRejectedValue(new Error("P2021 table missing"));
+    (prisma.verificationBudget.upsert as any).mockRejectedValueOnce(new Error("P2021 table missing"));
+    (prisma.verificationBudget.findUnique as any).mockResolvedValue(null);
     const res = await sendEmailPost(
       jsonReq("http://x/api/auth/send-email-code", { email: "user@example.com" }),
     );

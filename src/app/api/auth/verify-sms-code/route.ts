@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifySmsCode, consumeSmsCode } from "@/lib/sms-store";
 import { SignJWT } from "jose";
 import { getJwtSecretKey } from "@/lib/jwt-config";
+import type { VerifyPurpose } from "@/lib/verification-backend";
 
 /**
  * 验证短信验证码（用于找回密码等场景）
@@ -9,7 +10,10 @@ import { getJwtSecretKey } from "@/lib/jwt-config";
  */
 export async function POST(request: NextRequest) {
   try {
-    const { phone, code, type = "reset-password" } = await request.json();
+    const { phone, code } = await request.json();
+    // 本接口专用于找回密码：只接受并签发 reset-password 用途的凭证，
+    // 注册/登录/绑定验证码不能在此换取改密 token（用途严格隔离）。
+    const type: VerifyPurpose = "reset-password";
 
     if (!phone || !code) {
       return NextResponse.json(
@@ -19,7 +23,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 校验验证码（不立即消费，由 reset-password 接口消费，避免验证与改密之间 token 丢失）
-    const result = await verifySmsCode(phone, code, type as any);
+    const result = await verifySmsCode(phone, code, type);
     if (!result.valid) {
       return NextResponse.json(
         { message: result.error || "验证码错误" },

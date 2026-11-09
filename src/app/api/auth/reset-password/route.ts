@@ -5,6 +5,7 @@ import { jwtVerify } from "jose";
 import { consumeSmsCode } from "@/lib/sms-store";
 import { consumeEmailCode } from "@/lib/email-code-store";
 import { getJwtSecretKey } from "@/lib/jwt-config";
+import type { AdmitResult } from "@/lib/verification-backend";
 
 /**
  * 重置密码接口（P0-1 修复）
@@ -80,11 +81,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. 消费验证码（一次性，防止 token 被复制后重复使用）
-    if (phone) {
-      await consumeSmsCode(phone, "reset-password");
-    } else if (email) {
-      await consumeEmailCode(email, "reset-password");
+    // 4. 一次性消费验证码（防止 token 被复制后重复使用）；消费失败绝不写密码
+    const consumeRes: AdmitResult = phone
+      ? await consumeSmsCode(phone, "reset-password")
+      : email
+        ? await consumeEmailCode(email, "reset-password")
+        : { ok: false, error: "缺少账号信息", status: 400 };
+    if (!consumeRes.ok) {
+      // 已使用 / 不存在 / 服务不可用 -> 拒绝，不写密码、不失效会话
+      const status = consumeRes.status === 503 ? 503 : 400;
+      return NextResponse.json(
+        { message: consumeRes.error || "验证码校验失败，请重新获取验证码" },
+        { status }
+      );
     }
 
     // 5. 更新密码 + 失效所有会话（强制重新登录）

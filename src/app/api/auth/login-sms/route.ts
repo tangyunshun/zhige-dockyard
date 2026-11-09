@@ -375,8 +375,8 @@ export async function POST(request: NextRequest) {
       expiresAt: sessionExpiresAt,
     });
 
-    // 删除验证码
-    deleteSmsCode(phone);
+    // 消费登录验证码（一次性，防止重放）；用正确用途，不误删其他用途码
+    await deleteSmsCode(phone, "login");
 
     // 更新用户信息
     await prisma.user.update({

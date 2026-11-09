@@ -2215,6 +2215,9 @@ model VerificationBudget {
   id          String   @id // 预算键：platform | ip:<ip> | target:<channel>:<target>
   count       Int      @default(0)
   windowStart BigInt   // 滚动窗口起点（毫秒时间戳；B2 真实列，代码侧已 Number() 兼容）
+  lastSentAt  BigInt   @default(0) // 上次发送时刻（毫秒时间戳），用于 60s 间隔裁决
+  failCount   Int      @default(0) // 连续核验失败次数
+  lockedUntil BigInt   @default(0) // 失败锁定截止时刻（毫秒时间戳）
   version     Int      @default(1) // 乐观并发控制（CAS）版本号
   updatedAt   DateTime @updatedAt
 

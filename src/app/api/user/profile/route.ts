@@ -246,8 +246,14 @@ export const PUT = withAuth(async (req, user) => {
         );
       }
 
-      // 验证通过，立即消费该验证码
-      await consumeSmsCode(trimmedPhone, "binding");
+      // 验证通过，立即消费该验证码；消费失败（已用/不存在/服务不可用）不继续换绑
+      const bindConsume = await consumeSmsCode(trimmedPhone, "binding");
+      if (!bindConsume.ok) {
+        return NextResponse.json(
+          { error: bindConsume.error || "短信验证码已失效，请重新获取" },
+          { status: bindConsume.status === 503 ? 503 : 400 }
+        );
+      }
     }
 
     // 检查并更新登录邮箱

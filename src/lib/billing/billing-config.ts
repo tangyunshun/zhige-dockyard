@@ -125,12 +125,8 @@ export function parseBillingConfig(
     BILLING_CONFIG_DEFAULTS.markupCoefficientBps,
     { min: 0, max: 100_000 }, // 加价率 0% ~ 1000%
   );
-  // 遗留口径过渡折算：旧版以「乘数 k×10000」存储（20000 = k 2.0 = +100%），新口径为加价率基点
-  // （2000 = +20%）。检测到旧版超大值（> 10000）自动 ÷10；管理员在全局卡片重新同步后数据归一，此分支失效。
-  if (rawMarkup != null) {
-    const n = Number(rawMarkup);
-    if (Number.isFinite(n) && Number.isInteger(n) && n > 10_000) markupCoefficientBps = Math.round(n / 10);
-  }
+  // 现行合法 bps 原值使用：不再对 > 10000 的值做 ÷10 单位猜测（旧版乘数口径不可靠，
+  // 会错误把 20000 折算成 2000）。配置值即为真实加价率基点，缺位回退默认值 2000。
   return {
     markupCoefficientBps,
     byokServiceRateBps: readInt(

@@ -5,6 +5,15 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto-secrets";
 import { testByoModelConnection, deriveSuggestedCapabilities } from "@/lib/workspace-byo-model";
 
+/** 规范化 endpoint 用于「同一目的地」判定：去协议、转小写、去尾斜杠、去默认端口差异 */
+function normalizeEndpoint(url: string | null | undefined): string {
+  if (!url) return "";
+  let s = String(url).trim().toLowerCase();
+  s = s.replace(/^https?:\/\//, "");
+  s = s.replace(/\/+$/, "");
+  return s;
+}
+
 /**
  * BYO 配置权限：平台管理员（isAdminRole）可代管任意空间；
  * 否则必须是该空间成员，且写操作需 OWNER/ADMIN 角色。
@@ -50,15 +59,22 @@ export async function POST(request: NextRequest) {
 
     if (!baseUrl) return NextResponse.json({ error: "Base URL 不能为空" }, { status: 400 });
 
-    // 未填写密钥时，回退使用已保存配置的密钥：便于在不重输密钥的情况下验证已保存配置是否仍连通。
-    // 仅在该空间已配置 BYO 时生效（权限已在上一步 assertByoAccess 校验）。
-    if (!apiKey) {
+    // 未填写密钥时的兜底：仅当本次测试目标与已保存配置「完全一致」（同一 endpoint + 同一协议）
+    // 才复用已保存密钥，便于不重输密钥验证已保存配置是否仍连通。
+    // 目标变更（新的 baseUrl 或不同协议）必须重新提供该目标的授权凭据，
+    // 禁止拿旧 key 发往新目的地（防 SSRF/跨域携带旧 Authorization）。
+    if (!apiKey && baseUrl) {
       const row = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
       if (row) {
-        try {
-          apiKey = decryptSecret(row.apiKeyCipher);
-        } catch {
-          // 解密失败（主密钥不匹配等）→ 维持空密钥，测试将以鉴权失败返回明确提示
+        const sameDestination =
+          normalizeEndpoint(row.baseUrl) === normalizeEndpoint(baseUrl) &&
+          (!protocol || protocol === row.protocol);
+        if (sameDestination) {
+          try {
+            apiKey = decryptSecret(row.apiKeyCipher);
+          } catch {
+            // 解密失败（主密钥不匹配等）→ 维持空密钥，测试将以鉴权失败返回明确提示
+          }
         }
       }
     }

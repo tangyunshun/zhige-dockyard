@@ -83,16 +83,42 @@ export interface SendMailOptions {
   html?: string;
 }
 
+/** 邮件发送结果三态：已确认接受 / 确定失败（明确拒绝或确定未发送）/ 未知（网络中断等） */
+export type MailOutcome = "accepted" | "failed" | "unknown";
+
+export interface SendMailResult {
+  ok: boolean;
+  outcome: MailOutcome;
+  reason?: string;
+}
+
+/** 根据 SMTP 响应码判定是否为“确定失败”（明确拒绝/认证/策略类），其余（含网络层）归为未知 */
+function classifySmtpOutcome(responseCode: unknown, message: string): MailOutcome {
+  const code = Number(responseCode);
+  const permanent = [
+    401, 403, 450, 451, 455, 501, 502, 503, 504, 530, 535, 538, 550, 551, 552, 553, 554,
+  ];
+  if (permanent.includes(code)) return "failed";
+  // 无响应码（连接超时/重置/ DNS/网络层）一律视为未知，不盲目重发
+  if (responseCode == null) return "unknown";
+  // 其余 4xx 临时错误按未知处理（可重试，但不得擅自当作确定失败退预算）
+  void message;
+  return "unknown";
+}
+
 /**
- * 发送邮件。失败不抛异常，返回 { ok, reason } 交给调用方决定（通常仅记录）。
+ * 发送邮件。结果分为三态：accepted / failed / unknown。
+ * - accepted：传输层已确认接收，可视为已发送。
+ * - failed：明确拒绝或确定未发送（认证/收件人/策略类），调用方可退还占用。
+ * - unknown：连接中断/超时等不确定结果，保留占用、不盲目退预算后重发，由可诊断原因后续处理。
  */
-export async function sendMail(opts: SendMailOptions): Promise<{ ok: boolean; reason?: string }> {
-  if (!opts?.to) return { ok: false, reason: "NO_RECIPIENT" };
+export async function sendMail(opts: SendMailOptions): Promise<SendMailResult> {
+  if (!opts?.to) return { ok: false, outcome: "failed", reason: "NO_RECIPIENT" };
 
   const transport = await getTransport();
   if (!transport) {
     console.warn("[邮件] SMTP 未配置，跳过发送 →", opts.to, "|", opts.subject);
-    return { ok: false, reason: "SMTP_NOT_CONFIGURED" };
+    return { ok: false, outcome: "unknown", reason: "SMTP_NOT_CONFIGURED" };
   }
 
   try {
@@ -104,10 +130,11 @@ export async function sendMail(opts: SendMailOptions): Promise<{ ok: boolean; re
       text: opts.text,
       html: opts.html,
     });
-    return { ok: true };
+    return { ok: true, outcome: "accepted" };
   } catch (e) {
-    console.warn("[邮件] 发送失败:", (e as Error)?.message, "→", opts.to);
-    return { ok: false, reason: "SEND_FAILED" };
+    const outcome = classifySmtpOutcome((e as any)?.responseCode ?? (e as any)?.code, (e as Error)?.message);
+    console.warn("[邮件] 发送结果未知/失败:", (e as Error)?.message, "→", opts.to, "| outcome=", outcome);
+    return { ok: false, outcome, reason: "SEND_FAILED" };
   }
 }
 
