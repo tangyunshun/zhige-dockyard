@@ -4,8 +4,6 @@ import path from "path";
 import { NextRequest } from "next/server";
 import { validateUser } from "@/lib/auth";
 import { getClientIP } from "@/lib/ip-risk";
-import { jwtVerify } from "jose";
-import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
  * API安全监控工具
@@ -480,50 +478,11 @@ export async function requirePlatformAuth(
   user?: { id: string; email: string; name: string; role: string; status: string };
   errorResponse?: Response;
 }> {
-  const authHeader = request.headers.get("authorization");
-  // 统一走合法 JWT 校验（同时交叉校验 x-user-id，拒绝客户端伪造的明文身份）
-  let authResult = await validateUser(request.headers.get("authorization"), request as any);
-
-  // 双保险机制：如果 header 校验失败，尝试从 Request Cookie 中提取并解析 auth_token JWT
-  if (!authResult.valid) {
-    let token = "";
-    if ("cookies" in request) {
-      token = (request as any).cookies.get("auth_token")?.value || "";
-    } else {
-      const cookieHeader = request.headers.get("cookie") || "";
-      const match = cookieHeader.match(/auth_token=([^;]+)/);
-      if (match) token = match[1];
-    }
-
-    if (!token && authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
-    }
-
-    if (token) {
-      try {
-        const { payload } = await jwtVerify(token, getJwtSecretKey());
-        const userId = payload.userId as string;
-        const dbUser = await prisma.user.findUnique({
-          where: { id: userId },
-          select: { id: true, email: true, name: true, role: true, status: true }
-        });
-        if (dbUser && dbUser.status === "active") {
-          authResult = {
-            valid: true,
-            user: {
-              id: dbUser.id,
-              email: dbUser.email || "",
-              name: dbUser.name || "",
-              role: dbUser.role,
-              status: dbUser.status
-            }
-          };
-        }
-      } catch (jwtError) {
-        console.error("requirePlatformAuth JWT 兜底验证失败:", jwtError);
-      }
-    }
-  }
+  // 统一走完整认证：validateUser 已同时处理 Authorization 头与 Cookie auth_token，
+  // 并执行验签、x-user-id 交叉校验、账号状态机、强制下线、密码过期、会话过期等全部判定。
+  // 此处严禁另设「JWT 验签 + 只查 status」的弱兜底：完整认证明确拒绝（FORCED_LOGOUT、
+  // ACCOUNT_DISABLED、PASSWORD_EXPIRED、INVALID_TOKEN 等）后不得被复活。
+  const authResult = await validateUser(request.headers.get("authorization"), request as any);
 
   if (!authResult.valid || !authResult.user) {
     return {

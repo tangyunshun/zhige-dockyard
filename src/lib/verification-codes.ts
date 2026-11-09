@@ -13,13 +13,14 @@ import {
   hashCode,
   newSalt,
   VERIFY_POLICY,
+  newGrantId,
   type Channel,
   type VerifyPurpose,
   type AdmitResult,
 } from "./verification-backend";
 
 export type { AdmitResult } from "./verification-backend";
-export { __setVerificationBackendForTest, __resetVerificationBackend, VERIFY_POLICY };
+export { __setVerificationBackendForTest, __resetVerificationBackend, VERIFY_POLICY, newGrantId };
 
 export interface SendResult {
   ok: boolean;
@@ -32,6 +33,8 @@ export interface SendResult {
 export interface VerifyResult {
   valid: boolean;
   error?: string;
+  /** 已核验 challenge 的不可替换身份，供签发一次性授权凭证时绑定 */
+  challengeId?: string;
 }
 
 function normalize(target: string): string {
@@ -101,16 +104,21 @@ export async function verifyVerificationCode(
     await backend.recordFailure({ channel, target: t, purpose });
     return { valid: false, error: "验证码错误" };
   }
-  return { valid: true };
+  return { valid: true, challengeId: rec.challengeId };
 }
 
-/** 一次性消费：原子标记已用，两个实例并发不可重复消费。 */
+/**
+ * 一次性消费：原子标记已用，两个实例并发不可重复消费。
+ * 传入 challengeId 时，只有当前有效码与签发凭证绑定的那一枚一致才允许消费
+ * （旧凭证不能消费后来签发的新码）。
+ */
 export async function consumeVerificationCode(
   channel: Channel,
   target: string,
   purpose: VerifyPurpose,
+  challengeId?: string,
 ): Promise<AdmitResult> {
-  return getVerificationBackend().consume({ channel, target: normalize(target), purpose });
+  return getVerificationBackend().consume({ channel, target: normalize(target), purpose, challengeId });
 }
 
 /** 删除有效验证码（注册成功后调用）。 */

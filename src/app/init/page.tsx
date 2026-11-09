@@ -22,6 +22,10 @@ export default function InitWizard() {
     confirmPassword: "",
   });
 
+  // 第一步验证通过后由服务端签发的短期一次性安装授权，仅保存在当前页面内存中，
+  // 第二步创建管理员时随请求传回并由服务端原子消费；刷新页面需重新验证。
+  const [initToken, setInitToken] = useState("");
+
   const [passwordStrength, setPasswordStrength] = useState({
     valid: false,
     score: 0,
@@ -63,10 +67,15 @@ export default function InitWizard() {
 
       const data = await res.json();
 
-      if (res.ok) {
+      if (res.ok && data.initToken) {
+        setInitToken(data.initToken);
         setStep(2);
         toast.success("安装令牌验证通过，请创建创世管理员账号");
+      } else if (res.ok) {
+        // 服务端未返回可用授权时不进入创建步骤，避免第二步必然失败。
+        toast.error("未取得有效的安装授权，请重新验证安装令牌");
       } else {
+        setInitToken("");
         toast.error(data.message || "安装令牌无效");
       }
     } catch (error) {
@@ -89,6 +98,12 @@ export default function InitWizard() {
       return;
     }
 
+    if (!initToken) {
+      toast.error("安装授权已失效，请返回第一步重新验证安装令牌");
+      setStep(1);
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -100,16 +115,23 @@ export default function InitWizard() {
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
+          initToken,
         }),
       });
 
       const data = await res.json();
 
       if (res.ok) {
+        setInitToken("");
         setStep(3);
         toast.success("创世管理员账号创建成功！");
       } else {
         toast.error(data.message || "创建失败，请重试");
+        // 授权无效/过期：回到第一步重新验证，避免用户反复提交必然失败的请求。
+        if (res.status === 403) {
+          setInitToken("");
+          setStep(1);
+        }
       }
     } catch (error) {
       toast.error("网络错误，请稍后重试");

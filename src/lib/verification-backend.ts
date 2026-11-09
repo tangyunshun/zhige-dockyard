@@ -51,6 +51,11 @@ export interface AdmitArgs {
   ip?: string;
   /** 已认证账号（如存在）；匿名注册场景可为 null，不得强制已有账号才能用 */
   actorId?: string | null;
+  /**
+   * 可选：消费时绑定的 challenge 身份（由 deriveChallengeId 派生的不可逆标识）。
+   * 提供时，只有当前有效码与挑战身份完全一致才允许消费，防止旧凭证消费后来签发的码。
+   */
+  challengeId?: string;
 }
 
 export interface AdmitResult {
@@ -74,6 +79,8 @@ export interface VerifyRecord {
   usedAt: number | null;
   failCount: number;
   lockedUntil: number;
+  /** 由 codeHash 派生的不可替换 challenge 身份 */
+  challengeId: string;
 }
 
 export type SendOutcome = "accepted" | "failed" | "unknown";
@@ -111,6 +118,20 @@ export function newSalt(): string {
   return randomBytes(16).toString("hex");
 }
 
+/**
+ * 由存储的「盐+哈希」派生不可逆 challenge 身份。
+ * 每次签发新码都会产生新的随机盐，因此旧 challenge 身份天然无法匹配新码；
+ * 该值可安全放入签名 token，不泄露验证码哈希本身。
+ */
+export function deriveChallengeId(codeHash: string): string {
+  return createHash("sha256").update(`challenge:${codeHash}`).digest("hex").slice(0, 32);
+}
+
+/** 生成一个随机的一次性授权 id（jti） */
+export function newGrantId(): string {
+  return randomBytes(16).toString("hex");
+}
+
 // ---------------------------------------------------------------------------
 // 内存实现：用于测试与单实例降级边界清晰；多实例必须由 Prisma 后端共享。
 // 注意：本实现通过单进程锁串行化，模拟数据库事务的“条件 + 唯一 + 回滚”语义。
@@ -136,8 +157,8 @@ export class MemoryVerificationBackend implements VerificationBackend {
       lockedUntil: number;
     }
   >();
-  // channel:target:type -> 有效码
-  private codes = new Map<string, VerifyRecord & { salt: string }>();
+  // channel:target:type -> 有效码（challengeId 由 codeHash 派生，不冗余存储）
+  private codes = new Map<string, Omit<VerifyRecord, "challengeId"> & { salt: string }>();
   private platformCount = 0;
   private platformWindowStart = Date.now();
   private ipCount = new Map<string, { count: number; windowStart: number }>();
@@ -239,7 +260,7 @@ export class MemoryVerificationBackend implements VerificationBackend {
       if (r.used || r.expiresAt <= Date.now()) return null;
       const { salt, ...rest } = r;
       void salt;
-      return rest;
+      return { ...rest, challengeId: deriveChallengeId(r.codeHash) };
     });
   }
 
@@ -272,6 +293,10 @@ export class MemoryVerificationBackend implements VerificationBackend {
       if (r.expiresAt <= Date.now()) {
         this.codes.delete(key);
         return { ok: false, error: "验证码已过期", status: 400 };
+      }
+      // [U02] challenge 身份绑定：旧凭证不得消费后来签发的新码（同一锁内原子比对）。
+      if (args.challengeId && deriveChallengeId(r.codeHash) !== args.challengeId) {
+        return { ok: false, error: "凭证与当前验证码不匹配，请重新获取验证码", status: 400 };
       }
       r.used = true;
       r.usedAt = Date.now();
@@ -379,10 +404,11 @@ export class PrismaVerificationBackend implements VerificationBackend {
     for (let attempt = 0; attempt < CAS_RETRIES; attempt++) {
       const row = await this.budgetRow(id);
       if (!row) {
+        // 冷启动：尝试「占有创建」，仅一笔请求真正创建并计数 1；其余因唯一约束冲突转入下方增量分支，
+        // 杜绝「两笔同时读到不存在 → 都 upsert 且第二笔命中已有行却只 update:{} 放行」的漏计。
         try {
-          await getBudgetModel().upsert({
-            where: { id },
-            create: {
+          await getBudgetModel().create({
+            data: {
               id,
               count: 1,
               windowStart: now,
@@ -391,11 +417,10 @@ export class PrismaVerificationBackend implements VerificationBackend {
               lockedUntil: 0,
               version: 1,
             },
-            update: {},
           });
           return { ok: true };
         } catch (e: any) {
-          if (String(e?.code) === "P2002") continue; // 唯一冲突，重试
+          if (String(e?.code) === "P2002") continue; // 他人已创建，重试读取后增量
           return { ok: false, error: "发送预算服务不可用", status: 503 };
         }
       }
@@ -407,8 +432,20 @@ export class PrismaVerificationBackend implements VerificationBackend {
         return { ok: false, error: `请${waitSeconds}秒后再试`, status: 429, waitSeconds };
       }
       const windowExpired = now - Number(row.windowStart) > VERIFY_POLICY.dailyWindowMs;
-      const currentCount = windowExpired ? 0 : Number(row.count);
-      if (currentCount >= limit) {
+      if (windowExpired) {
+        // 窗口已过期：原子重置为「本次新窗口第一次」，count=1，而非在旧 10 上 increment 成 11。
+        try {
+          await getBudgetModel().update({
+            where: { id, version: Number(row.version) },
+            data: { count: 1, windowStart: now, lastSentAt: now, version: { increment: 1 } },
+          });
+          return { ok: true };
+        } catch (e: any) {
+          if (String(e?.code) === "P2025") continue; // version 冲突，重试
+          return { ok: false, error: "发送预算服务不可用", status: 503 };
+        }
+      }
+      if (Number(row.count) >= limit) {
         return { ok: false, error: "今日发送次数已达上限，请明日再试", status: 429 };
       }
       try {
@@ -417,7 +454,6 @@ export class PrismaVerificationBackend implements VerificationBackend {
           data: {
             count: { increment: 1 },
             lastSentAt: now,
-            windowStart: windowExpired ? now : Number(row.windowStart),
             version: { increment: 1 },
           },
         });
@@ -432,9 +468,13 @@ export class PrismaVerificationBackend implements VerificationBackend {
 
   private async releaseBudget(id: string): Promise<void> {
     try {
-      await getBudgetModel().update({ where: { id }, data: { count: { decrement: 1 } } });
+      // 条件 decrement：仅当 count>0 才减，杜绝重复回填/退款把计数打到负数；不无条件 decrement。
+      await getBudgetModel().update({
+        where: { id, count: { gt: 0 } },
+        data: { count: { decrement: 1 } },
+      });
     } catch {
-      /* 回滚失败不阻断主流程；下一日窗口自愈 */
+      /* 未命中（已为 0 或不存在）时不回滚；下一日窗口自愈 */
     }
   }
 
@@ -488,6 +528,9 @@ export class PrismaVerificationBackend implements VerificationBackend {
 
   async lookup(args: AdmitArgs): Promise<VerifyRecord | null> {
     try {
+      // 失败锁定先于核验：锁定期间任何码都不可验证（挡住「5 次失败后正确码仍 valid」）
+      const bRow = await this.budgetRow(`target:${args.channel}:${args.target}`);
+      if (bRow && Number(bRow.lockedUntil) > Date.now()) return null;
       const row = await getSmsCodeModel().findFirst({
         where: { phone: args.target, type: args.purpose, used: false },
         orderBy: { createdAt: "desc" },
@@ -502,6 +545,7 @@ export class PrismaVerificationBackend implements VerificationBackend {
         usedAt: null,
         failCount: 0,
         lockedUntil: 0,
+        challengeId: deriveChallengeId((row as any).code),
       };
     } catch {
       return null;
@@ -551,15 +595,39 @@ export class PrismaVerificationBackend implements VerificationBackend {
 
   async consume(args: AdmitArgs): Promise<AdmitResult> {
     try {
-      const res = await getSmsCodeModel().updateMany({
+      // 先定位未用码并核对过期，过期则标记清理并拒绝（挡住「过期码仍可消费」）
+      const row = await getSmsCodeModel().findFirst({
         where: { phone: args.target, type: args.purpose, used: false },
-        data: { used: true, usedAt: new Date() },
+        orderBy: { createdAt: "desc" },
       });
-      if ((res as any).count === 0) {
-        // 已用或不存在 -> 一次性消费失败
+      if (!row) {
         const any = await getSmsCodeModel().findFirst({ where: { phone: args.target, type: args.purpose } });
         if (any && (any as any).used) return { ok: false, error: "验证码已使用", status: 400 };
         return { ok: false, error: "请先获取验证码", status: 400 };
+      }
+      const created = (row as any).createdAt?.getTime?.() ?? Date.now();
+      if (created + VERIFY_POLICY.codeExpiryMs <= Date.now()) {
+        await getSmsCodeModel().updateMany({
+          where: { phone: args.target, type: args.purpose, used: false },
+          data: { used: true, usedAt: new Date() },
+        });
+        return { ok: false, error: "验证码已过期", status: 400 };
+      }
+      // [U02] challenge 身份绑定：仅当当前未用码正是签发凭证时那一枚才允许消费；
+      // 条件带 code（存储哈希），使「比对 + 标记」落在同一条原子条件更新里，并发只有一个赢家。
+      const consumeWhere: any = { phone: args.target, type: args.purpose, used: false };
+      if (args.challengeId) {
+        if (deriveChallengeId((row as any).code) !== args.challengeId) {
+          return { ok: false, error: "凭证与当前验证码不匹配，请重新获取验证码", status: 400 };
+        }
+        consumeWhere.code = (row as any).code;
+      }
+      const res = await getSmsCodeModel().updateMany({
+        where: consumeWhere,
+        data: { used: true, usedAt: new Date() },
+      });
+      if ((res as any).count === 0) {
+        return { ok: false, error: "验证码已使用", status: 400 };
       }
       return { ok: true };
     } catch {

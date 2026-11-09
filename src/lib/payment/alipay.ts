@@ -142,6 +142,8 @@ export interface AlipayNotifyVerifyResult {
   totalAmount?: string;
   /** 支付宝网关交易号（trade_no）：履约层幂等/对账/跨订单唯一约束所需的可信事实 */
   tradeNo?: string;
+  /** 验签通过并核对过的商户应用 id，作为收款唯一认领的商户语境 */
+  appId?: string;
 }
 
 /**
@@ -153,8 +155,9 @@ export async function verifyNotify(form: Record<string, string>): Promise<Alipay
   const c = getAlipayConfig();
   const sign = form.sign;
   if (!sign) return { ok: false, error: "通知缺少签名" };
-  if (form.app_id && form.app_id !== c.appId) {
-    return { ok: false, error: "通知 app_id 与商户配置不符" };
+  // 商户/应用语境必须存在且与本平台配置一致：缺失或不符的通知不视为本商户收款。
+  if (!form.app_id || !c.appId || form.app_id !== c.appId) {
+    return { ok: false, error: "通知 app_id 缺失或与商户配置不符" };
   }
 
   const content = Object.keys(form)
@@ -173,5 +176,6 @@ export async function verifyNotify(form: Record<string, string>): Promise<Alipay
     tradeStatus: form.trade_status,
     totalAmount: form.total_amount,
     tradeNo: form.trade_no,
+    appId: form.app_id,
   };
 }

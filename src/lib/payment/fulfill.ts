@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { grantPoints } from "@/lib/credit-service";
 import { isOrderExpired } from "@/lib/order-expiry";
+import { isSafeAmountCents, receiptClaimId, RECEIPT_CLAIM_TYPE } from "@/lib/payment/receipt";
 
 /**
  * 支付成功后的统一入账服务：真实回调（微信/支付宝）与模拟确认共用同一套状态机。
@@ -25,6 +26,8 @@ export interface FulfillOrderInput {
   gatewayTransactionId?: string | null;
   /** 网关侧实付金额（分），用于与订单金额核对 */
   gatewayAmountCents?: number | null;
+  /** 受控验签后确认的商户/应用语境（微信 mchid、支付宝 app_id），参与交易号唯一认领键 */
+  merchantContext?: string | null;
 }
 
 export interface FulfillOrderResult {
@@ -46,11 +49,19 @@ function getBillingModel() {
  * 仅用于取消/超时后收到已验收款这类「需留存待恢复事实」的分支；普通 PENDING 入账沿用原有
  * 「金额若提供必须一致」的轻量校验，避免改动已签收的 F05 幂等契约（r0b 基线不传交易号）。
  */
-function receiptVerified(input: FulfillOrderInput, order: { amount?: unknown }): { ok: boolean; error?: string } {
-  if (!input.gatewayTransactionId) return { ok: false, error: "缺少网关交易号，拒绝入账" };
-  if (input.gatewayAmountCents == null) return { ok: false, error: "缺少网关实付金额，拒绝入账" };
-  if (Number(order.amount) !== Number(input.gatewayAmountCents)) {
+function receiptVerified(input: FulfillOrderInput, order: { amount?: unknown; currency?: unknown }): { ok: boolean; error?: string } {
+  if (!input.gatewayTransactionId || !String(input.gatewayTransactionId).trim()) {
+    return { ok: false, error: "缺少网关交易号，拒绝入账" };
+  }
+  // 金额按安全整数与协议精度核验：不接受小数分、NaN、Infinity、指数或超安全范围。
+  if (!isSafeAmountCents(input.gatewayAmountCents) || !isSafeAmountCents(Number(order.amount))) {
+    return { ok: false, error: "缺少合法的网关实付金额，拒绝入账" };
+  }
+  if (Number(order.amount) !== input.gatewayAmountCents) {
     return { ok: false, error: "回调金额与订单金额不一致，拒绝入账" };
+  }
+  if (order.currency != null && String(order.currency).toUpperCase() !== "CNY") {
+    return { ok: false, error: "收款币种与订单币种不符，拒绝入账" };
   }
   return { ok: true };
 }
@@ -62,8 +73,37 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
   const order = await billingModel.findUnique({ where: { id: input.orderNo } });
   if (!order) return { ok: false, status: "REJECTED", error: "订单不存在" };
 
-  // 幂等：已入账订单直接返回成功（微信/支付宝会重发通知）
+  const orderType = (order.type || "TOKEN_RECHARGE") as string;
+  // 由本函数直接发放权益的类型（SEAT_ADDON 委托专门服务，其自身有事务级唯一履约权）。
+  const directGrant = orderType !== "SEAT_ADDON";
+
+  // [U04/G1] 受控验签后的收款事实才带渠道/商户语境：有交易号时严格核对订单渠道与币种，
+  // 拒绝「支付宝收款兑现微信订单」这类跨渠道串单，也拒绝非本系统支持的币种。
+  if (input.gatewayTransactionId) {
+    if (order.channel && String(order.channel) !== input.paymentMethod) {
+      return { ok: false, status: "REJECTED", error: "收款渠道与订单渠道不符，拒绝入账" };
+    }
+    if (order.currency != null && String(order.currency).toUpperCase() !== "CNY") {
+      return { ok: false, status: "REJECTED", error: "订单币种不受支持，拒绝入账" };
+    }
+  }
+
+  // [U04/G1] 底层 REAL 门禁：精确金额必须是安全整数分且与订单一致，不依赖每个路由自觉；
+  // 直接发放权益的类型还必须有受控验签后的交易号（客户端 paid/备注/截图不构成收款事实）。
+  if (input.paymentMode === "REAL") {
+    if (!isSafeAmountCents(input.gatewayAmountCents) || Number(order.amount) !== input.gatewayAmountCents) {
+      return { ok: false, status: "REJECTED", error: "缺少合法且与订单一致的网关实付金额，拒绝入账" };
+    }
+    if (directGrant && (!input.gatewayTransactionId || !String(input.gatewayTransactionId).trim())) {
+      return { ok: false, status: "REJECTED", error: "缺少网关交易号，拒绝入账" };
+    }
+  }
+
+  // 幂等：已入账订单不得用 ALREADY_PROCESSED 掩盖金额/渠道异常，先核对本次收款事实。
   if (order.status === "SUCCESS") {
+    if (input.gatewayAmountCents != null && Number(order.amount) !== Number(input.gatewayAmountCents)) {
+      return { ok: false, status: "REJECTED", error: "回调金额与订单金额不一致，拒绝入账" };
+    }
     return { ok: true, status: "ALREADY_PROCESSED", workspaceId: order.workspaceId ?? null };
   }
 
@@ -77,9 +117,15 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
         metadata: { path: ["gatewayTransactionId"], equals: input.gatewayTransactionId },
       },
     });
+    // [U04/G3] 同字符串不同渠道是合法的不同收款：仅当历史 SUCCESS 订单的渠道与本次
+    // 收款渠道一致（或历史单无渠道字段，保守按冲突处理）才判定重复，避免误冲突。
     if (dup) {
-      console.warn(`[fulfill] 渠道交易号 ${input.gatewayTransactionId} 已被订单 ${dup.id} 使用，拒绝重复履约`);
-      return { ok: false, status: "REJECTED", error: "该渠道交易号已被其他订单使用，拒绝重复履约" };
+      const dupChannel = (dup as any).channel as string | null | undefined;
+      const sameChannel = !dupChannel || String(dupChannel) === input.paymentMethod;
+      if (sameChannel) {
+        console.warn(`[fulfill] 渠道交易号 ${input.gatewayTransactionId} 已被订单 ${dup.id} 使用，拒绝重复履约`);
+        return { ok: false, status: "REJECTED", error: "该渠道交易号已被其他订单使用，拒绝重复履约" };
+      }
     }
   }
 
@@ -91,6 +137,24 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
     const meta = (order.metadata || {}) as Record<string, unknown>;
     const existing = meta.pendingReceipt as { gatewayTransactionId?: string } | undefined;
     if (existing?.gatewayTransactionId === input.gatewayTransactionId) {
+      return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
+    }
+    // [U04/G5] 两笔不同交易不得覆盖单个 pendingReceipt：首笔保留为待恢复主事实，
+    // 后续冲突另存为差异列表供运营裁决，绝不静默覆盖、不发放。
+    if (existing?.gatewayTransactionId) {
+      const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
+      conflicts.push({
+        gatewayTransactionId: input.gatewayTransactionId,
+        gatewayAmountCents: input.gatewayAmountCents,
+        channel: input.paymentMethod,
+        recordedAt: new Date().toISOString(),
+        reason: "DIFFERENT_TRANSACTION_FOR_TERMINAL_ORDER",
+      });
+      await billingModel.update({
+        where: { id: input.orderNo },
+        data: { metadata: { ...meta, receiptConflicts: conflicts } },
+      });
+      console.warn(`[fulfill] 订单 ${input.orderNo} 收到与首笔不同的第二笔收款，已留存差异（未覆盖、未发放）`);
       return { ok: true, status: "RECEIPT_PENDING_RECOVERY", workspaceId: order.workspaceId ?? null };
     }
     await billingModel.update({
@@ -124,7 +188,20 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
     if (v.ok) {
       const meta = (order.metadata || {}) as Record<string, unknown>;
       const existing = meta.pendingReceipt as { gatewayTransactionId?: string } | undefined;
-      if (existing?.gatewayTransactionId !== input.gatewayTransactionId) {
+      if (existing?.gatewayTransactionId && existing.gatewayTransactionId !== input.gatewayTransactionId) {
+        const conflicts = Array.isArray(meta.receiptConflicts) ? [...(meta.receiptConflicts as unknown[])] : [];
+        conflicts.push({
+          gatewayTransactionId: input.gatewayTransactionId,
+          gatewayAmountCents: input.gatewayAmountCents,
+          channel: input.paymentMethod,
+          recordedAt: new Date().toISOString(),
+          reason: "DIFFERENT_TRANSACTION_FOR_EXPIRED_ORDER",
+        });
+        await billingModel.update({
+          where: { id: input.orderNo },
+          data: { metadata: { ...meta, receiptConflicts: conflicts } },
+        });
+      } else if (!existing?.gatewayTransactionId) {
         await billingModel.update({
           where: { id: input.orderNo },
           data: {
@@ -169,8 +246,48 @@ export async function fulfillPaidOrder(input: FulfillOrderInput): Promise<Fulfil
     return { ok: false, status: "REJECTED", error: "回调金额与订单金额不一致，拒绝入账" };
   }
 
+  // [U04/G3] 持久原子唯一认领：以 (渠道, 商户语境, 交易号) 为 billingrecord 主键落一条认领行。
+  // 依赖数据库主键唯一约束（P2002）裁决并发，findFirst「查不到再 grant」无法防并发；
+  // 认领键含渠道，同字符串不同渠道是合法的不同收款，不误冲突。
+  // SEAT_ADDON 由 fulfillSeatAddonOrder 在自己的事务写边界裁决唯一履约权，此处不重复落行。
+  if (directGrant && input.gatewayTransactionId) {
+    const claimId = receiptClaimId(input.paymentMethod, input.merchantContext, String(input.gatewayTransactionId));
+    try {
+      await billingModel.create({
+        data: {
+          id: claimId,
+          userId: order.userId,
+          workspaceId: order.workspaceId ?? null,
+          type: RECEIPT_CLAIM_TYPE,
+          title: "网关收款唯一认领",
+          amount: Number(order.amount),
+          currency: (order.currency as string) ?? "CNY",
+          status: "CLAIMED",
+          channel: input.paymentMethod,
+          metadata: {
+            orderNo: input.orderNo,
+            gatewayTransactionId: String(input.gatewayTransactionId),
+            gatewayAmountCents: input.gatewayAmountCents ?? null,
+            merchantContext: input.merchantContext ?? null,
+          },
+        },
+      });
+    } catch (e: any) {
+      if (String(e?.code) !== "P2002") {
+        return { ok: false, status: "REJECTED", error: "收款认领不可用，拒绝入账" };
+      }
+      // 主键冲突：读回认领行区分「同一订单重发/故障恢复」与「跨订单重复收款」。
+      const owner = await billingModel.findUnique({ where: { id: claimId } });
+      const ownerOrderNo = (owner?.metadata as any)?.orderNo;
+      if (ownerOrderNo !== input.orderNo) {
+        console.warn(`[fulfill] 交易号 ${input.gatewayTransactionId} 已由订单 ${ownerOrderNo} 认领，拒绝订单 ${input.orderNo} 重复履约`);
+        return { ok: false, status: "REJECTED", error: "该渠道交易号已被其他订单认领，拒绝重复履约" };
+      }
+      // 同一订单：允许继续，权益发放由 grantPoints 的 orderNo 幂等键保证不重复。
+    }
+  }
+
   const meta = (order.metadata || {}) as Record<string, unknown>;
-  const orderType = (order.type || "TOKEN_RECHARGE") as string;
   const markSuccess = (extra: Record<string, unknown>) =>
     billingModel.update({
       where: { id: input.orderNo },

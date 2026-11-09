@@ -1,34 +1,47 @@
 {
   "status": "DELIVERED_PENDING_INDEPENDENT_REVIEW",
-  "baselineCommit": "5162e5b12b105c71ca71fb628854d32f7201f371",
+  "baselineCommit": "67243457064f645a3a4af1a2e8b4b1d012a85d2d",
+  "closeoutPrompt": "docs/reviews/unified-recheck-2026-11-09/IDE-UNIFIED-CLOSEOUT-PROMPT.md",
   "deliveredAt": "2026-11-09",
   "executorsStopWrite": true,
   "implementedOfflineVerified": [
-    "U02/U03 生产验证码与一次性授权（后端+4路由+离线迁移+24测试）",
-    "U06 BYO 新目的地+空 key 不重用旧 key",
-    "U08 计费口径（÷10 移除 + FREE 只读）",
-    "U09-6 全局调价计数/审计/事务",
-    "U05-3 关闭公开诊断私有数据",
-    "U05-4 init-admin 原子初始化"
+    "U02/U03 验证码：冷启动唯一认领、失败锁、过期码、跨日重置、回退不负数",
+    "U03 SMTP 三态（accepted/failed/unknown）",
+    "U02 resetToken 绑定 challenge+jti、短信登录/注册/绑定前置原子消费",
+    "U09-6 调价与审计单一事务、真实行数",
+    "U06 BYO scheme/路径/端口目的地严格",
+    "U05-1/2 完整认证拒绝不复活、禁用账号 Key 拒绝",
+    "U05-4 安装向导一次性授权闭环",
+    "U04 支付持久唯一认领、渠道/商户/币种/精度严格、晚收款不覆盖",
+    "U12 三类请求内 DDL 下线 + 离线迁移（建表前提+幂等加列），未执行"
   ],
   "failed": [
-    "U04 支付并发唯一认领/真实收款事实",
-    "U05-1/2/5/6/7 完整认证复活/API Key 状态/企业边界/标准岗位目录",
     "U07 解析隔离停止证明与有界读取",
-    "U01/U10/U11 真实页面接线/运营恢复/价值成本指标/首值旅程"
+    "U01/U10 成本预算生产后端/编排持久接线/来源与配额守卫/运营恢复/null scope",
+    "U11/U12 首页与登录回跳、首值旅程页面、价值成本指标接线与利润分栏",
+    "U05-5/6/7 企业撤权各入口一致、标准岗位跨空间私有统计",
+    "U13/U14 原 1-14 唯一共享集成与同版本冻结证据"
   ],
-  "partial": ["U12 请求内 DDL（公开诊断已处理；webhooks/BYO/settings 待处理）"],
-  "decisionBlocked": ["U13 唯一共享集成（依赖上述实现项实际交到）"],
+  "decisionBlocked": [
+    "平台现金预算/加价率/售价",
+    "商业退款/保留期/企业转个人政策"
+  ],
   "environmentUnverified": [
-    "真实浏览器页面串联",
-    "真实 MySQL 锁/渠道验签互通/供应商成本/人工业务验收",
-    "真实迁移执行（需独立授权）"
+    "真实 MySQL 行锁与迁移执行（两个离线迁移已准备未执行）",
+    "prisma generate 客户端与 schema 一致性核对（需隔离真实 .env）",
+    "微信/支付宝验签互通、真实 SMTP/短信供应商",
+    "真实浏览器页面串联与人工业务验收"
   ],
+  "evidence": {
+    "formalTests": "18 files / 318 passed",
+    "independentRecheck": "11 files / 58 passed（DEFECT 已改为正确结果断言）",
+    "tsc": "tsc --noEmit --incremental false -p tsconfig.json -> 0 errors"
+  },
   "hardRulesPreserved": [
     "F01-F13 已验收止损不动",
-    "F07 人工退款批准保持 MANUAL_REFUND_APPROVAL_PAUSED",
-    "生产 Token 结算硬关闭",
-    "固定点数兼容模式与真实余额/历史数据保持",
-    "未开启任何真实付费能力"
-  ]
+    "F07 人工退款批准保持暂停、F16 旧直充退役",
+    "生产 Token 结算硬关闭、固定点数兼容模式与真实余额/历史数据保持",
+    "未开启任何真实付费能力、未创建真实管理员、未真实收款"
+  ],
+  "nextGate": "真实环境/人工验收 + U07/U01/U10/U11/U05-5-6-7 实现与唯一共享集成"
 }

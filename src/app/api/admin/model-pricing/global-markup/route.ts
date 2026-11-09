@@ -45,15 +45,23 @@ export async function POST(request: NextRequest) {
     let modelCount = 0;
     let periodCount = 0;
 
-    // 组装同事务操作：改价与回写单一真源（systemconfig）原子提交，避免中途失败留下部分价格变更。
+    // 已独立设置加价率的模型数（markupRateBps 非空）；「设为默认」时不改动这些行
+    const overriddenModelRows = await prisma.modelpricing.count({ where: { markupRateBps: { not: null } } });
+
+    // 单一原子事务：改价（主表+时段）、回写单一真源（systemconfig）、审计日志一起提交；
+    // 任一步失败整笔回滚，杜绝「审计失败却价格已改」「部分提交」等不一致。
     const txOps: any[] = [];
+    let modelIdx = -1;
+    let periodIdx = -1;
     if (scope === "all") {
+      modelIdx = txOps.length;
       // 强制全量覆盖：把同一加价率写入全部主表行 + 全部时段行
       txOps.push(
         prisma.modelpricing.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
         }),
       );
+      periodIdx = txOps.length;
       txOps.push(
         prisma.modelpricingperiod.updateMany({
           data: { markupRateBps: bps, priceVersion: { increment: 1 }, effectiveFrom: now },
@@ -68,18 +76,8 @@ export async function POST(request: NextRequest) {
         update: { value: String(bps) },
       }),
     );
-    const txResult = await prisma.$transaction(txOps);
-    if (scope === "all") {
-      modelCount = txResult[0].count;
-      periodCount = txResult[1].count;
-    }
-
-    // 已独立设置加价率的模型数（markupRateBps 非空）；「设为默认」时不改动这些行
-    const overriddenModelRows = await prisma.modelpricing.count({ where: { markupRateBps: { not: null } } });
-
-    // 审计与改价同事务：要么一起成功，要么都不提交，避免「审计失败却伪报成功」。
     if (adminId) {
-      await prisma.$transaction([
+      txOps.push(
         prisma.operationlog.create({
           data: {
             id: `op_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
@@ -100,7 +98,12 @@ export async function POST(request: NextRequest) {
             } as object,
           },
         }),
-      ]);
+      );
+    }
+    const txResult = await prisma.$transaction(txOps);
+    if (scope === "all") {
+      modelCount = txResult[modelIdx].count;
+      periodCount = txResult[periodIdx].count;
     }
 
     return NextResponse.json({

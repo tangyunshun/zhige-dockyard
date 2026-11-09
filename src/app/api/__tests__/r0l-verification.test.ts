@@ -40,6 +40,17 @@ vi.mock("@/lib/prisma", () => {
       },
       verificationBudget: {
         findUnique: vi.fn(async ({ where }: any) => (budget[where.id] ? { ...budget[where.id] } : null)),
+        // 冷启动由 create 占有主键：重复键抛 P2002（忠实唯一约束）；
+        // 表缺失模拟（P2021）仍由用例按需注入，不在此默认。
+        create: vi.fn(async ({ data }: any) => {
+          if (budget[data.id]) {
+            const e = new Error("unique");
+            (e as any).code = "P2002";
+            throw e;
+          }
+          budget[data.id] = { ...data };
+          return { ...budget[data.id] };
+        }),
         upsert: vi.fn(async ({ where, create, update }: any) => {
           if (!budget[where.id]) {
             const row = { ...create, id: where.id };
@@ -158,9 +169,9 @@ describe("L01 诚实通道状态 / 不泄露验证码", () => {
   });
 
   it("send-email-code：后端未就绪（真实表缺失）在任何发送前 503，不本机放行", async () => {
-    // 模拟真实表缺失：预算表查询抛错 -> 生产后端 admitSend 返回 503，外发前拦截
+    // 模拟真实表缺失：预算表冷启动 create 抛错 -> 生产后端 admitSend 返回 503，外发前拦截
     __setVerificationBackendForTest(null); // 回落生产 Prisma 后端
-    (prisma.verificationBudget.upsert as any).mockRejectedValueOnce(new Error("P2021 table missing"));
+    (prisma.verificationBudget.create as any).mockRejectedValueOnce(new Error("P2021 table missing"));
     (prisma.verificationBudget.findUnique as any).mockResolvedValue(null);
     const res = await sendEmailPost(
       jsonReq("http://x/api/auth/send-email-code", { email: "user@example.com" }),

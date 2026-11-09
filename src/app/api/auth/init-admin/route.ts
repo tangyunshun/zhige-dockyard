@@ -1,13 +1,17 @@
 ﻿﻿import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { hashPassword, validatePasswordStrength } from "@/lib/auth";
+import { verifyInstallGrant } from "@/lib/install-auth";
 
 /**
- * 初始化首个超级管理员。
+ * 初始化首个超级管理员（安装向导第二步）。
  *
  * 安全约束（U05-4）：
- * - 必须携带「已批准初始化授权」initToken，缺失/不匹配一律拒绝（fail-closed，不开放匿名建管理员）。
- * - 仅能初始化一次：在事务内原子认领（systemconfig 唯一键），并发第二笔因唯一冲突整笔回滚，杜绝双建。
+ * - 必须携带由「verify-setup-token」基于已批准 SETUP_TOKEN 签发的短期一次性安装授权，
+ *   缺失/伪造/过期/用途不符一律拒绝（fail-closed，不开放匿名建管理员）。
+ * - 不新增第二份静态安装秘密：授权校验与创建动作共用同一套 SETUP_TOKEN 派生体系。
+ * - 仅能初始化一次：事务内「空库检查 + 唯一认领 + 用户创建」一起提交；并发/重放第二笔
+ *   因非空库或唯一键冲突整笔回滚，杜绝双建。
  * - 使用 Prisma create（按当前 User Entity 字段名写入），不再混用原始 SQL 的 created_at/createdAt。
  * - 测试使用空隔离模型，不得读取真实 setup key、不得创建真实管理员。
  */
@@ -21,11 +25,12 @@ export async function POST(request: NextRequest) {
       initToken?: string;
     };
 
-    // 1) 已批准初始化授权：一次性消费校验（fail-closed）
-    const expectedToken = process.env.INIT_ADMIN_TOKEN;
-    if (!expectedToken || initToken !== expectedToken) {
+    // 1) 已批准的安装授权：签名/用途/有效期校验（fail-closed）。
+    // 一次性由第 3 步事务内的持久认领保证：创建成功后重放同一授权必被空库/唯一键拒绝。
+    const grant = verifyInstallGrant(initToken);
+    if (!grant.ok) {
       return NextResponse.json(
-        { message: "缺少或无效的初始化授权，禁止创建管理员" },
+        { message: grant.error || "缺少或无效的安装授权，禁止创建管理员" },
         { status: 403 },
       );
     }

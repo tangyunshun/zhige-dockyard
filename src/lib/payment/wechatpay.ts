@@ -183,10 +183,20 @@ export async function loadPlatformCerts(force = false): Promise<Map<string, stri
   }
 }
 
+export interface WechatNotifyResource {
+  out_trade_no: string;
+  trade_state: string;
+  transaction_id?: string;
+  amount?: { total?: number; currency?: string };
+  /** 验签解密后核对过的商户号/应用 id，作为收款唯一认领的商户语境 */
+  mchid?: string;
+  appid?: string;
+}
+
 export interface WechatNotifyVerifyResult {
   ok: boolean;
   error?: string;
-  resource?: { out_trade_no: string; trade_state: string; transaction_id?: string; amount?: { total?: number } };
+  resource?: WechatNotifyResource;
 }
 
 /**
@@ -234,16 +244,23 @@ export async function verifyNotify(
   if (!plain) return { ok: false, error: "回调资源解密失败" };
 
   try {
-    const resource = JSON.parse(plain.toString("utf-8")) as {
-      out_trade_no?: string;
-      trade_state?: string;
-      transaction_id?: string;
-      amount?: { total?: number };
-    };
+    const resource = JSON.parse(plain.toString("utf-8")) as WechatNotifyResource;
     if (!resource.out_trade_no || !resource.trade_state) {
       return { ok: false, error: "解密后报文缺少关键字段" };
     }
-    return { ok: true, resource: resource as WechatNotifyVerifyResult["resource"] };
+    // 商户号 / 应用 id 必须存在且与本平台配置一致：防止其他商户的合法签名回包被用来入账。
+    const { mchId, appId } = getWechatPayConfig();
+    if (!resource.mchid || !c.mchId || resource.mchid !== mchId) {
+      return { ok: false, error: "回调 mchid 缺失或与商户配置不符" };
+    }
+    if (!resource.appid || !c.appId || resource.appid !== appId) {
+      return { ok: false, error: "回调 appid 缺失或与应用配置不符" };
+    }
+    // 币种：仅受理 CNY，避免他币种金额按同一分口径入账。
+    if (resource.amount?.currency && String(resource.amount.currency).toUpperCase() !== "CNY") {
+      return { ok: false, error: "回调币种不受支持" };
+    }
+    return { ok: true, resource };
   } catch {
     return { ok: false, error: "解密后报文非 JSON" };
   }

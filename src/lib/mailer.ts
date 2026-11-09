@@ -51,6 +51,12 @@ async function loadSmtpConfig(): Promise<SmtpConfig | null> {
 let cachedTransport: ReturnType<typeof nodemailer.createTransport> | null = null;
 let transportResolved = false;
 
+/** 测试专用：重置传输器缓存，避免跨用例污染（生产代码不调用） */
+export function __resetMailerTransportForTest() {
+  cachedTransport = null;
+  transportResolved = false;
+}
+
 async function getTransport() {
   if (transportResolved) return cachedTransport;
   transportResolved = true;
@@ -123,13 +129,28 @@ export async function sendMail(opts: SendMailOptions): Promise<SendMailResult> {
 
   try {
     const cfg = await loadSmtpConfig();
-    await transport.sendMail({
+    const info: any = await transport.sendMail({
       from: cfg ? `"${cfg.senderName}" <${cfg.senderEmail}>` : undefined,
       to: opts.to,
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
     });
+    // 核实目标接收事实：传输返回的 accepted/rejected 才是“是否真的被接收”的依据，
+    // Promise resolve 不等于发送成功；空 accepted 或目标未被确认接收不得返回“验证码已发送”。
+    const accepted: string[] = Array.isArray(info?.accepted) ? info.accepted : [];
+    const rejected: string[] = Array.isArray(info?.rejected) ? info.rejected : [];
+    const hit = (list: string[]) =>
+      list.some((a) => a === opts.to || String(a).includes(opts.to) || opts.to.includes(String(a)));
+    if (hit(rejected)) {
+      return { ok: false, outcome: "failed", reason: "RECIPIENT_REJECTED" };
+    }
+    if (Array.isArray(info?.accepted) || Array.isArray(info?.rejected)) {
+      // 传输返回了结果但本收件人未被确认接收（空 accepted 或未被列出）→ 不得宣称已发送
+      if (!hit(accepted)) {
+        return { ok: false, outcome: "unknown", reason: "NO_ACCEPTED_CONFIRMATION" };
+      }
+    }
     return { ok: true, outcome: "accepted" };
   } catch (e) {
     const outcome = classifySmtpOutcome((e as any)?.responseCode ?? (e as any)?.code, (e as Error)?.message);

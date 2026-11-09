@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { toAccountStatus, isLoginBlocked, isFullyBlocked } from "@/lib/account-status";
 
 /**
  * 开放接口 API Key 鉴权
@@ -63,6 +64,27 @@ export async function authenticateApiKey(
       matched = false;
     }
     if (!matched) continue;
+
+    // Key 合法不等于可用：所属账号被撤权/禁用/封禁/注销时一律拒绝，
+    // 且不得写「使用痕迹」或审计日志（否则会伪造一次成功的开放接口调用）。
+    const owner = await prisma.user.findUnique({
+      where: { id: candidate.userId },
+      select: { id: true, status: true, bannedUntil: true },
+    });
+    if (!owner) return null;
+    const rawStatus = String(owner.status || "").toLowerCase();
+    const semantic = toAccountStatus(owner.status);
+    const bannedStillInForce =
+      rawStatus === "banned" &&
+      (!owner.bannedUntil || new Date(owner.bannedUntil) > new Date());
+    const blocked =
+      rawStatus === "inactive" ||
+      rawStatus === "deleting" ||
+      rawStatus === "deleted" ||
+      bannedStillInForce ||
+      isLoginBlocked(semantic) ||
+      isFullyBlocked(semantic);
+    if (blocked) return null;
 
     // 记录使用痕迹（尽力而为，不影响主流程）
     await prisma.apikey

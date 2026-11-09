@@ -36,58 +36,37 @@ async function getCurrentUser(req: NextRequest) {
   return user;
 }
 
-// 安全自愈初始化数据表函数
-async function ensureWebhookTable() {
+/**
+ * [U12] 只读结构探针：业务请求中绝不在请求内 CREATE TABLE / 改列。
+ * 表结构由离线迁移准备；未就绪时稳定返回 not-ready，由调用方给 503，不自动补建。
+ * 返回 true 表示结构已就绪，false 表示未就绪。
+ */
+async function webhookTableReady(): Promise<boolean> {
   try {
-    // 优先尝试标准 MySQL 兼容 DDL 语法
-    await prisma.$executeRawUnsafe(`
-      CREATE TABLE IF NOT EXISTS \`webhooksubscription\` (
-        \`id\` VARCHAR(191) NOT NULL,
-        \`userId\` VARCHAR(191) NOT NULL,
-        \`url\` VARCHAR(500) NOT NULL,
-        \`secret\` VARCHAR(191) NOT NULL,
-        \`events\` TEXT NOT NULL,
-        \`active\` TINYINT(1) NOT NULL DEFAULT 1,
-        \`successRate\` VARCHAR(50) NOT NULL DEFAULT '100%',
-        \`lastTriggered\` DATETIME NULL,
-        \`createdAt\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-        \`updatedAt\` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        PRIMARY KEY (\`id\`),
-        INDEX \`Webhook_userId_idx\` (\`userId\`),
-        INDEX \`Webhook_active_idx\` (\`active\`)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-    `);
-  } catch (e1) {
-    try {
-      // 降级尝试 SQLite 兼容 DDL 语法
-      await prisma.$executeRawUnsafe(`
-        CREATE TABLE IF NOT EXISTS "webhooksubscription" (
-          "id" TEXT NOT NULL PRIMARY KEY,
-          "userId" TEXT NOT NULL,
-          "url" TEXT NOT NULL,
-          "secret" TEXT NOT NULL,
-          "events" TEXT NOT NULL,
-          "active" BOOLEAN NOT NULL DEFAULT true,
-          "successRate" TEXT NOT NULL DEFAULT '100%',
-          "lastTriggered" DATETIME,
-          "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          "updatedAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-        );
-      `);
-    } catch (e2) {
-      console.error("[Webhooks API] 自愈建表提示:", e2);
-    }
+    await prisma.$queryRawUnsafe("SELECT 1 FROM `webhooksubscription` LIMIT 1");
+    return true;
+  } catch {
+    return false;
   }
+}
+
+/** 结构未就绪时的稳定响应（不在请求内 DDL，不吞成空列表假成功） */
+function notReadyResponse() {
+  return NextResponse.json(
+    { error: "Webhook 数据表尚未部署，请联系平台管理员执行离线迁移后重试", code: "WEBHOOK_TABLE_NOT_READY" },
+    { status: 503 },
+  );
 }
 
 // GET: 拉取当前用户的 Webhooks 订阅真实列表
 export async function GET(req: NextRequest) {
   try {
-    await ensureWebhookTable();
     const user = await getCurrentUser(req);
     if (!user) {
       return NextResponse.json({ error: "未登录或凭证失效" }, { status: 401 });
     }
+    // [U12] 鉴权后才做只读结构探针；缺表稳定 not-ready，不在请求内建表。
+    if (!(await webhookTableReady())) return notReadyResponse();
 
     let rows: any[] = [];
     if ((prisma as any).webhooksubscription) {
@@ -122,11 +101,12 @@ export async function GET(req: NextRequest) {
 // POST: 真正建立并持久化 Webhook 订阅
 export async function POST(req: NextRequest) {
   try {
-    await ensureWebhookTable();
     const user = await getCurrentUser(req);
     if (!user) {
       return NextResponse.json({ error: "未登录或凭证失效" }, { status: 401 });
     }
+    // [U12] 鉴权后才做只读结构探针；缺表稳定 not-ready，不在请求内建表。
+    if (!(await webhookTableReady())) return notReadyResponse();
 
     const body = await req.json();
     const { url, events } = body;
@@ -230,11 +210,12 @@ export async function POST(req: NextRequest) {
 // PATCH: 切换启用状态或发送测试 Event Payload
 export async function PATCH(req: NextRequest) {
   try {
-    await ensureWebhookTable();
     const user = await getCurrentUser(req);
     if (!user) {
       return NextResponse.json({ error: "未登录或凭证失效" }, { status: 401 });
     }
+    // [U12] 鉴权后才做只读结构探针；缺表稳定 not-ready，不在请求内建表。
+    if (!(await webhookTableReady())) return notReadyResponse();
 
     const body = await req.json();
     const { id, action } = body;
@@ -389,11 +370,12 @@ export async function PATCH(req: NextRequest) {
 // DELETE: 真实物理解绑并删除 Webhook 订阅记录
 export async function DELETE(req: NextRequest) {
   try {
-    await ensureWebhookTable();
     const user = await getCurrentUser(req);
     if (!user) {
       return NextResponse.json({ error: "未登录或凭证失效" }, { status: 401 });
     }
+    // [U12] 鉴权后才做只读结构探针；缺表稳定 not-ready，不在请求内建表。
+    if (!(await webhookTableReady())) return notReadyResponse();
 
     const { searchParams } = new URL(req.url);
     const id = searchParams.get("id");

@@ -53,8 +53,8 @@ export async function verifyEmailCode(
 }
 
 /** 一次性消费邮箱验证码（reset-password 等敏感接口在改密成功后调用）。 */
-export async function consumeEmailCode(key: string, type?: VerifyPurpose): Promise<AdmitResult> {
-  return consumeVerificationCode("email", key, type ?? "reset-password");
+export async function consumeEmailCode(key: string, type?: VerifyPurpose, challengeId?: string): Promise<AdmitResult> {
+  return consumeVerificationCode("email", key, type ?? "reset-password", challengeId);
 }
 
 /** 删除邮箱验证码（注册成功后调用）。 */

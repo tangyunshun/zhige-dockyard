@@ -1,61 +1,52 @@
 {
-  "note": "缺陷成功复现不等于修复通过；以下为本批次实际修复后的正确结果断言，非缺陷复现统计。",
-  "mockScope": "全部外部 IO 用隔离替身（prisma/mailer/网络/支付/模型均 stub），无真实库写、无真实网络",
-  "suites": [
-    {
-      "file": "src/app/api/__tests__/r0l-verification.test.ts",
-      "runner": "node node_modules/vitest/vitest.mjs run",
-      "tests": 14,
-      "passed": 14,
-      "covers": [
-        "resetToken 第2次/并发使用最多一次密码提交",
-        "验证消费后端 503 密码/绑定/登录敏感效果为 0",
-        "正确 verificationBudget delegate 真实走生产算法；缺失 503",
-        "立即重发与 5 次失败真实生效",
-        "login/register/binding 用途正确",
-        "SMTP unknown 不返还后盲重发",
-        "日志/响应无验证码"
-      ]
-    },
-    {
-      "file": "src/app/api/__tests__/r0l2-verification-production.test.ts",
-      "runner": "node node_modules/vitest/vitest.mjs run",
-      "tests": 10,
-      "passed": 10,
-      "covers": [
-        "真实 Prisma 算法：60s 间隔/日限/失败锁 via 注入替身",
-        "并发同目标日限计数正确、不穿限（CAS 不丢增量）",
-        "跨用途隔离",
-        "ready() 反映真实 delegate",
-        "未就绪 503 且 send=0"
-      ]
-    },
-    {
-      "file": "src/app/api/__tests__/r08-billing-quota.test.ts",
-      "runner": "node node_modules/vitest/vitest.mjs run",
-      "tests": 4,
-      "passed": 4,
-      "covers": [
-        "合法 20000 bps 原值保留，无自动 ÷10",
-        "合法 2000 bps 保持 2000",
-        "FREE 查询只读、不写库、不写死 100"
-      ]
-    }
+  "note": "independent-results.json 中 DEFECT 通过代表仍有漏洞；本轮已将其改为正确结果断言，不照抄错误结果为成功标准。",
+  "mockScope": "全部外部 IO 隔离替身：数据库委托、发放/点数、网关验签输入、SMTP 传输、JWT 密钥、网络。零真实库/支付/短信/邮件/模型/云桶。",
+  "faithfulDoubleRequirements": "事务替身忠实实现主键唯一（P2002）、条件 updateMany count、失败整笔回滚/惰性 PrismaPromise 语义；不用失真的自动成功 mock。",
+  "commands": {
+    "formal": "node node_modules/vitest/vitest.mjs run <18 files listed in final-manifest.json>",
+    "independentRecheck": "node node_modules/vitest/vitest.mjs run --config docs/reviews/unified-recheck-2026-11-09/vitest.recheck.config.ts",
+    "tsc": "node node_modules/typescript/bin/tsc --noEmit --incremental false -p tsconfig.json"
+  },
+  "recheckConfigNote": "临时 vitest.recheck.config.ts 仅用于让 docs 目录的独立补测可运行（@→src 别名），运行后已删除，不属于交付文件。",
+  "results": {
+    "formalTestFiles": 18,
+    "formalTestsPassed": 318,
+    "formalTestsFailed": 0,
+    "independentRecheckFiles": 11,
+    "independentRecheckPassed": 58,
+    "independentRecheckFailed": 0,
+    "tscErrors": 0
+  },
+  "newFormalSuites": [
+    { "file": "r0y-payment-u04.test.ts", "tests": 18, "covers": "金额精度、双订单并发同一交易、渠道/币种、REAL 缺字段、晚收款不覆盖、两条 notify 门禁" },
+    { "file": "r0z-init-wizard.test.ts", "tests": 7, "covers": "SETUP_TOKEN 签发一次性授权、无授权/伪造/重放/并发拒绝、配置绑定" },
+    { "file": "r0u-auth-challenge.test.ts", "tests": 7, "covers": "resetToken 绑定 challenge、旧凭证不借新码复活、短信并发一份会话、注册无返回值 delete 移除" },
+    { "file": "r0v-u12-request-ddl.test.ts", "tests": 4, "covers": "webhooks/BYO/settings 请求零 DDL、离线迁移建表前提" },
+    { "file": "r0d-global-markup.test.ts", "tests": 2, "covers": "正常真实行数、审计失败整笔回滚" },
+    { "file": "r0e-byo-dest.test.ts", "tests": 4, "covers": "不同 host/路径大小写/scheme 变更不复用旧 key" },
+    { "file": "r0g-security.test.ts", "tests": 5, "covers": "完整认证拒绝不复活、禁用账号 Key 拒绝、正常放行" },
+    { "file": "r0l3-verification-fixes.test.ts", "tests": 5, "covers": "冷启动竞争、失败锁、过期码、跨日重置、回退不负数" },
+    { "file": "r0f-mailer.test.ts", "tests": 4, "covers": "accepted/rejected/unknown 三态" },
+    { "file": "r08-billing-quota.test.ts", "tests": 4, "covers": "加价率原值、FREE 只读" }
   ],
-  "totalPassed": 28,
-  "totalFailed": 0,
-  "tsc": "node node_modules/typescript/bin/tsc --noEmit -p tsconfig.json -> 0 错误（本批次改动）",
-  "stillFailingScenariosNotCovered": [
-    "两订单并发同交易仅一次履约（U04）",
-    "支付渠道不匹配/REAL 缺金额/非法精度（U04）",
-    "完整身份已拒绝平台 fallback 不放行（U05-1）",
-    "API Key 所属账号不可用（U05-2）",
-    "无 exit 仅过 100 秒不腾槽（U07）",
-    "ACTIVE sweep 计数命中 0 回滚（U07）",
-    "同预约键换空间/输入拒绝（U01/U10）",
-    "预付收款与消费严格分栏（U10）",
-    "固定成本未知不宣称利润（U10/U12）",
-    "无 tenant scope 不跨租户（U09/U10）",
-    "实际批量改价/审计失败真实计数（U09-6 已修代码，缺独立测试）"
+  "correctResultAssertionsFromDefects": [
+    "verification-review: 冷启动竞争只准入一次、5 次失败后正确码也拒、过期不可消费、跨日重置为 1、回退不为负",
+    "mailer-review: 空 accepted 不当 accepted",
+    "pricing-review: 审计失败价格/默认/版本全不变、单一事务",
+    "byo-review: 路径大小写/HTTPS→HTTP 变更不复用旧 key",
+    "security-review: 认证拒绝不复活、禁用账号 Key 拒绝",
+    "init-diagnostics-review: 合法向导闭环、无授权/伪造/重放/并发拒绝",
+    "payment-review: 并发同交易最多一次权益、渠道不符拒绝、REAL 缺字段拒绝、非法精度拒绝、晚收款保留首笔",
+    "reset-review: 旧 token 不能消费后来签发的新码，新码不被误消费",
+    "login-review: 并发请求最多一份会话",
+    "admission-review / business-modules-review / login-review 中 UNWIRED MODULE 缺陷仍标 DEFECT IN UNWIRED MODULE（模块未接线，不说成已发生的生产越权）"
+  ],
+  "stillFailingUncoveredScenarios": [
+    "U07 无停止证明过 100 秒仍占隔离、ACTIVE sweep 未命中回滚、实际字节有界读取",
+    "U01/U10 同预约键异参拒绝、跨实例预算穿限、UNKNOWN 不释放、结算不清历史已耗",
+    "U01/U10 运营恢复真实权限/可信事实、null scope 跨租户、预付/消费/利润分栏",
+    "U05 企业撤权各入口一致、标准岗位跨空间私有统计",
+    "U11 真实浏览器首页→登录→报价→任务→成果→历史复用串联",
+    "真 MySQL 锁/回滚语义、渠道验签互通、真实迁移执行与客户端生成"
   ]
 }

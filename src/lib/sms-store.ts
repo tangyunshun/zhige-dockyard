@@ -48,8 +48,8 @@ export async function verifySmsCode(
 }
 
 /** 一次性消费短信验证码。 */
-export async function consumeSmsCode(key: string, type?: VerifyPurpose): Promise<AdmitResult> {
-  return consumeVerificationCode("sms", key, type ?? "reset-password");
+export async function consumeSmsCode(key: string, type?: VerifyPurpose, challengeId?: string): Promise<AdmitResult> {
+  return consumeVerificationCode("sms", key, type ?? "reset-password", challengeId);
 }
 
 /** 删除短信验证码（注册/绑定成功后调用）。 */

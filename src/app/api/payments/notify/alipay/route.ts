@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyNotify } from "@/lib/payment/alipay";
 import { fulfillPaidOrder } from "@/lib/payment/fulfill";
+import { parseYuanToCents } from "@/lib/payment/receipt";
 
 /**
  * POST /api/payments/notify/alipay —— 支付宝异步通知（唯一在真实支付宝模式下产生入账动作的地方）
@@ -39,20 +40,20 @@ export async function POST(request: NextRequest) {
       return new NextResponse("fail", { status: 401 });
     }
 
-    const { outTradeNo, tradeStatus, totalAmount, tradeNo } = verified;
+    const { outTradeNo, tradeStatus, totalAmount, tradeNo, appId } = verified;
     if (tradeStatus !== "TRADE_SUCCESS" && tradeStatus !== "TRADE_FINISHED") {
       console.log(`[alipay-notify] 订单 ${outTradeNo} 状态 ${tradeStatus}，无需入账`);
       return new NextResponse("success");
     }
 
-    // [R1] 收款事实必需字段：网关交易号 trade_no 必须存在并透传履约层用于幂等与对账；
-    // 金额（元 → 分）必须可解析，缺失/非法则拒绝，不向履约层传 null 绕过核验。
+    // [R1/U04] 收款事实必需字段：网关交易号 trade_no 必须存在并透传履约层用于幂等与对账。
+    // 金额（元 → 分）按协议精度严格解析：10.004 这类多余精度、指数、NaN、Infinity、
+    // 负数、超安全范围一律拒绝，禁止 Math.round 把非法值四舍五入成合法金额。
     const gatewayTransactionId = tradeNo ?? null;
-    const gatewayAmountCents =
-      totalAmount != null && totalAmount !== "" ? Math.round(Number(totalAmount) * 100) : null;
-    if (!outTradeNo || !gatewayTransactionId || gatewayAmountCents == null || Number.isNaN(gatewayAmountCents)) {
+    const gatewayAmountCents = parseYuanToCents(totalAmount);
+    if (!outTradeNo || !gatewayTransactionId || gatewayAmountCents == null) {
       console.warn(
-        `[alipay-notify] 收款事实不完整（outTradeNo=${outTradeNo}, tradeNo=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`,
+        `[alipay-notify] 收款事实不完整或金额非法（outTradeNo=${outTradeNo}, tradeNo=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`,
       );
       return new NextResponse("fail", { status: 400 });
     }
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
       remark: "支付宝入账（电脑网站支付，通知验签通过）",
       gatewayTransactionId,
       gatewayAmountCents,
+      merchantContext: appId ?? null,
     });
 
     if (!fulfillment.ok) {

@@ -5,13 +5,25 @@ import { prisma } from "@/lib/prisma";
 import { decryptSecret } from "@/lib/crypto-secrets";
 import { testByoModelConnection, deriveSuggestedCapabilities } from "@/lib/workspace-byo-model";
 
-/** 规范化 endpoint 用于「同一目的地」判定：去协议、转小写、去尾斜杠、去默认端口差异 */
+/**
+ * 规范化 endpoint 用于「同一目的地」判定（凭据绑定语义）：
+ * - scheme 区分 http/https（协议降级不得复用旧 key）；
+ * - host 大小写不敏感（RFC）；
+ * - 路径大小写敏感（不同大小写路径可能对应不同服务/租户）；
+ * - 仅消除默认端口差异（https:443、http:80 视为等价），非零默认端口保留；
+ * - 不做整体小写、不删除 scheme、不吞掉路径大小写。
+ */
 function normalizeEndpoint(url: string | null | undefined): string {
   if (!url) return "";
-  let s = String(url).trim().toLowerCase();
-  s = s.replace(/^https?:\/\//, "");
-  s = s.replace(/\/+$/, "");
-  return s;
+  const s = String(url).trim();
+  const m = /^([a-zA-Z][a-zA-Z0-9+.-]*):\/\/([^/?#]*)([^?#]*)/.exec(s);
+  if (!m) return s; // 非标准 URL：原样比较（偏严格，不跨方案复用）
+  const scheme = m[1].toLowerCase();
+  let host = m[2].toLowerCase();
+  const path = m[3] || "";
+  if (scheme === "https") host = host.replace(/:443$/, "");
+  else if (scheme === "http") host = host.replace(/:80$/, "");
+  return `${scheme}://${host}${path}`;
 }
 
 /**

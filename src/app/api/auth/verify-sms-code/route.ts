@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifySmsCode, consumeSmsCode } from "@/lib/sms-store";
+import { verifySmsCode } from "@/lib/sms-store";
 import { SignJWT } from "jose";
 import { getJwtSecretKey } from "@/lib/jwt-config";
-import type { VerifyPurpose } from "@/lib/verification-backend";
+import { newGrantId, type VerifyPurpose } from "@/lib/verification-backend";
 
 /**
  * 验证短信验证码（用于找回密码等场景）
@@ -31,8 +31,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 下发一次性 resetToken
-    const resetToken = await new SignJWT({ phone, purpose: "reset_password" })
+    // 下发一次性 resetToken，绑定已核验 challenge 身份 + 一次性授权 id。
+    if (!result.challengeId) {
+      return NextResponse.json({ message: "验证码校验状态不可用，请重新获取验证码" }, { status: 503 });
+    }
+    const resetToken = await new SignJWT({
+      phone,
+      purpose: "reset_password",
+      challengeId: result.challengeId,
+      jti: newGrantId(),
+    })
       .setProtectedHeader({ alg: "HS256" })
       .setExpirationTime("5m")
       .sign(getJwtSecretKey());

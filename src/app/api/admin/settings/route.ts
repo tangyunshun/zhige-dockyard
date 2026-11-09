@@ -188,20 +188,13 @@ async function assertAdmin(request: NextRequest): Promise<{ ok: true; adminId: s
   return { ok: true, adminId: result.user.id, adminName: result.user.name };
 }
 
-/** value 列扩容是否已在本进程内执行过（避免每次保存都触发表结构变更 DDL） */
-let valueColumnExpanded = false;
-
-/** 惰性扩容 system_config.value，突破 varchar(191) 限制，仅在写入报「过长」时触发一次 */
-async function expandValueColumn(): Promise<void> {
-  if (valueColumnExpanded) return;
-  try {
-    await prisma.$executeRawUnsafe(
-      "ALTER TABLE `system_config` MODIFY COLUMN `value` MEDIUMTEXT NULL"
-    );
-    valueColumnExpanded = true;
-  } catch (alterErr) {
-    console.warn("system_config.value 字段扩容失败（非致命）:", alterErr);
-  }
+/**
+ * [U12] system_config.value 列容量由离线迁移（MEDIUMTEXT）准备。
+ * 业务请求中绝不执行 ALTER TABLE；写入报「过长」时稳定返回 not-ready，
+ * 由管理员执行离线迁移后重试，不在请求内改表结构。
+ */
+function valueColumnNotReadyMessage(): string {
+  return "system_config.value 列容量未部署（需离线迁移扩容至 MEDIUMTEXT），本次配置未保存，请联系平台管理员执行迁移后重试";
 }
 
 /** 数值型安全策略配置的合法区间（防止负数 / 0 / 超大值写入导致策略失效） */
@@ -663,7 +656,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: validationErrors.join("；") }, { status: 400 });
     }
 
-    // 3. 稳健顺序写入 systemconfig 表（遇到「值过长」时惰性扩容一次后重试，不再每次保存都执行 DDL）
+    // 3. [U12] 单一原子事务：全部配置 upsert 与审计一起提交，任一失败整笔回滚，
+    // 不留下"部分配置已保存"的假成功；列容量不足时不在请求内执行 DDL。
+    const txOps: any[] = [];
     for (const [key, value] of Object.entries(settings)) {
       if (CONFIG_KEYS.includes(key)) {
         let valStr = String(value ?? "");
@@ -675,39 +670,37 @@ export async function POST(request: NextRequest) {
             // 保留原字符串
           }
         }
-        try {
-          await prisma.systemconfig.upsert({
-            where: { key },
-            create: { key, value: valStr },
-            update: { value: valStr },
-          });
-        } catch (writeErr: any) {
-          const rawMsg = String(writeErr?.message || "");
-          if (rawMsg.includes("too long") && !valueColumnExpanded) {
-            await expandValueColumn();
-            await prisma.systemconfig.upsert({
-              where: { key },
-              create: { key, value: valStr },
-              update: { value: valStr },
-            });
-          } else {
-            throw writeErr;
-          }
-        }
+        txOps.push(prisma.systemconfig.upsert({
+          where: { key },
+          create: { key, value: valStr },
+          update: { value: valStr },
+        }));
       }
     }
-
-    // 3. 记录管理员审计日志与消息提醒闭环
+    txOps.push(prisma.operationlog.create({
+      data: {
+        id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        userId: auth.adminId,
+        action: isOauthUpdate ? "system:update_oauth_channels" : "system:update_settings",
+        resource: isOauthUpdate ? "oauth_channels" : "system_config",
+        details: JSON.stringify(oauthAuditDetail || { updatedKeys: Object.keys(settings) }),
+      },
+    }));
     try {
-      await prisma.operationlog.create({
-        data: {
-          id: `log_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-          userId: auth.adminId,
-          action: isOauthUpdate ? "system:update_oauth_channels" : "system:update_settings",
-          resource: isOauthUpdate ? "oauth_channels" : "system_config",
-          details: JSON.stringify(oauthAuditDetail || { updatedKeys: Object.keys(settings) }),
-        },
-      });
+      await prisma.$transaction(txOps);
+    } catch (writeErr: any) {
+      const rawMsg = String(writeErr?.message || "");
+      if (rawMsg.includes("too long")) {
+        return NextResponse.json(
+          { error: valueColumnNotReadyMessage(), code: "SETTINGS_VALUE_COLUMN_NOT_READY" },
+          { status: 503 },
+        );
+      }
+      throw writeErr;
+    }
+
+    // 3. 消息提醒闭环（与配置提交的审计分离，尽力而为）
+    try {
 
       // 若为第三方登录渠道策略更新，同时写入一条系统通知，形成消息提醒闭环
       if (isOauthUpdate && oauthAuditDetail) {

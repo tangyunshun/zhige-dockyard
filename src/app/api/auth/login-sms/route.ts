@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { SignJWT } from "jose";
-import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
+import { verifySmsCode, consumeSmsCode } from "@/lib/sms-store";
 import crypto from "crypto";
 import { sessionCache } from "@/lib/session-cache";
 import { maybeFinalizeDeletionIfDue } from "@/lib/account-deletion";
@@ -41,6 +41,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: smsVerification.error || "验证码错误" },
         { status: 400 },
+      );
+    }
+
+    // [U02] 原子取得唯一消费权：并发多个请求即便都验证通过，只有成功消费的一方可继续提交会话。
+    // 消费失败（已被并发请求用掉 / 服务不可用）绝不继续发 token/cookie，也不写会话缓存。
+    const consumeRes = await consumeSmsCode(phone, "login", smsVerification.challengeId);
+    if (!consumeRes.ok) {
+      return NextResponse.json(
+        { error: consumeRes.error || "验证码已失效，请重新获取" },
+        { status: consumeRes.status === 503 ? 503 : 400 },
       );
     }
 
@@ -85,8 +95,7 @@ export async function POST(request: NextRequest) {
         data: { lastLoginAt: now, lastActivityAt: now },
       });
 
-      // 消耗验证码，防止重复使用
-      await deleteSmsCode(phone, "login");
+      // 验证码会话提交权已在验证通过后原子取得，此处不再重复消费。
 
       const deletionEnd = user.deletionRequestedAt
         ? new Date(user.deletionRequestedAt).getTime()
@@ -375,8 +384,7 @@ export async function POST(request: NextRequest) {
       expiresAt: sessionExpiresAt,
     });
 
-    // 消费登录验证码（一次性，防止重放）；用正确用途，不误删其他用途码
-    await deleteSmsCode(phone, "login");
+    // 唯一消费权已在验证通过后原子取得，此处只提交会话与用户状态。
 
     // 更新用户信息
     await prisma.user.update({

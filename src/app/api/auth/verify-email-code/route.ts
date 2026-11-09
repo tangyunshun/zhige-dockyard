@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyEmailCode } from "@/lib/email-code-store";
 import { SignJWT } from "jose";
 import { getJwtSecretKey } from "@/lib/jwt-config";
+import { newGrantId } from "@/lib/verification-backend";
 
 /**
  * 验证邮箱验证码（用于注册校验与找回密码等场景）。
@@ -34,9 +35,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 找回密码场景：下发一次性 resetToken
+    // 找回密码场景：下发一次性 resetToken。
+    // [U02] 绑定已核验 challenge 的不可替换身份 + 一次性授权 id，
+    // 使旧 token 不能消费后来签发的新码（服务端消费时按 challengeId 原子核对）。
     if (type === "reset-password" || type === "reset-password-email") {
-      const resetToken = await new SignJWT({ email, purpose: "reset_password" })
+      if (!result.challengeId) {
+        return NextResponse.json({ message: "验证码校验状态不可用，请重新获取验证码" }, { status: 503 });
+      }
+      const resetToken = await new SignJWT({
+        email,
+        purpose: "reset_password",
+        challengeId: result.challengeId,
+        jti: newGrantId(),
+      })
         .setProtectedHeader({ alg: "HS256" })
         .setExpirationTime("5m")
         .sign(getJwtSecretKey());

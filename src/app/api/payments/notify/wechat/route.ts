@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { verifyNotify, NOTIFY_RESPONSE } from "@/lib/payment/wechatpay";
 import { fulfillPaidOrder } from "@/lib/payment/fulfill";
+import { parseCents } from "@/lib/payment/receipt";
 
 /**
  * POST /api/payments/notify/wechat —— 微信支付异步回调（唯一在真实微信模式下产生入账动作的地方）
@@ -38,12 +39,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(NOTIFY_RESPONSE.success);
     }
 
-    // [R1] 收款事实必需字段必须来自验签解密后的密文：交易号与实付金额缺一不可，
-    // 缺失则拒绝入账（杜绝以 null 绕过金额核验）。
+    // [R1/U04] 收款事实必需字段必须来自验签解密后的密文：交易号与实付金额缺一不可。
+    // 金额（分）必须是正的安全整数，小数/字符串/NaN/Infinity/指数/超范围一律拒绝。
     const gatewayTransactionId = transaction_id ?? null;
-    const gatewayAmountCents = typeof amount?.total === "number" ? amount.total : null;
+    const gatewayAmountCents = parseCents(amount?.total);
     if (!gatewayTransactionId || gatewayAmountCents == null) {
-      console.warn(`[wxpay-notify] 收款事实不完整（transaction_id=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`);
+      console.warn(`[wxpay-notify] 收款事实不完整或金额非法（transaction_id=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`);
       return NextResponse.json({ code: "FAIL", message: "回调缺少交易号或金额" }, { status: 400 });
     }
 
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
       remark: "微信支付入账（Native 扫码，回调验签通过）",
       gatewayTransactionId,
       gatewayAmountCents,
+      merchantContext: (result.resource as any)?.mchid ?? null,
     });
 
     if (!fulfillment.ok) {

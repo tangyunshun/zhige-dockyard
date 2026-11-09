@@ -374,6 +374,8 @@ function seedFixture(opts: {
   omitPlanKey?: boolean;
   omitBillingCycle?: boolean;
   omitExpiresAt?: boolean;
+  // [U04] 订单支付渠道，默认微信；支付宝回调用例显式传 "ALIPAY" 以符合渠道一致性。
+  channel?: string;
   // [R0-B2-1] 期限偏置：相对"此刻"向后/向前偏移，用于构造"预检通过、进入事务前跨过截止"的窗口
   expiresOffsetMs?: number;
   planExpiresOffsetMs?: number;
@@ -401,7 +403,7 @@ function seedFixture(opts: {
     amount: opts.amount !== undefined ? opts.amount : 2600,
     currency: "CNY",
     status: opts.status ?? "PENDING",
-    channel: "WECHAT_PAY",
+    channel: opts.channel ?? "WECHAT_PAY",
     expiresAt: opts.expired ? new Date(Date.now() - 1000) : new Date(Date.now() + 3600_000),
     referenceId: "w1",
     metadata: meta,
@@ -873,7 +875,9 @@ describe("R0-B 下单契约与回归（不改变定价公式）", () => {
     };
     store.workspace["w1"] = { id: "w1", name: "w", type: "PERSONAL", ownerId: "u1", extraSeats: 0 };
     const r = await fulfillPaidOrder({
-      orderNo: "RC_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 1000,
+      // [U04] REAL 收款口径修正：底层强制交易号 + 精确金额，不能只给金额。
+      orderNo: "RC_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t",
+      gatewayTransactionId: "wx_rc_1", gatewayAmountCents: 1000,
     });
     expect(r.status).toBe("FULFILLED");
     expect(grantPoints).toHaveBeenCalledTimes(1);
@@ -888,7 +892,9 @@ describe("R0-B 下单契约与回归（不改变定价公式）", () => {
       title: "升级", metadata: {},
     };
     const r = await fulfillPaidOrder({
-      orderNo: "UP_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t", gatewayAmountCents: 19900,
+      // [U04] REAL 收款口径修正：底层强制交易号 + 精确金额。
+      orderNo: "UP_1", paymentMethod: "WECHAT_PAY", paymentMode: "REAL", remark: "t",
+      gatewayTransactionId: "wx_up_1", gatewayAmountCents: 19900,
     });
     expect(r.status).toBe("FULFILLED");
     expect(fulfillEnterpriseUpgradeFromOrder).toHaveBeenCalledWith("UP_1");
@@ -1224,8 +1230,9 @@ describe("R0-B1 F4：收银台状态/商品类型展示", () => {
 // R0-B1: 真实 notify 路由 ACK（验签 IO stub；模拟验签结果非实际交易）
 // ══════════════════════════════════════════════════════
 describe("R0-B1 notify 路由 ACK 契约", () => {
-  function seedSeatForNotify() {
-    seedFixture({ seats: 2, amount: 2600 });
+  function seedSeatForNotify(channel = "WECHAT_PAY") {
+    // [U04] 支付宝回调必须用 ALIPAY 渠道订单，避免用微信订单接支付宝收款。
+    seedFixture({ seats: 2, amount: 2600, channel });
     return "SA_test_1";
   }
 
@@ -1280,8 +1287,8 @@ describe("R0-B1 notify 路由 ACK 契约", () => {
   });
 
   it("支付宝：TRADE_SUCCESS → 入账 + 纯文本 success；拒绝 → fail 500", async () => {
-    const orderNo = seedSeatForNotify();
-    aliVerifyNotify.mockResolvedValue({ ok: true, outTradeNo: orderNo, tradeStatus: "TRADE_SUCCESS", totalAmount: "26.00", tradeNo: "ali_1" });
+    const orderNo = seedSeatForNotify("ALIPAY");
+    aliVerifyNotify.mockResolvedValue({ ok: true, outTradeNo: orderNo, tradeStatus: "TRADE_SUCCESS", totalAmount: "26.00", tradeNo: "ali_1", appId: "fixture-app" });
     const res = await aliNotifyPOST(new NextRequest("http://localhost/api/payments/notify/alipay", {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "a=1",
     }));
@@ -1289,8 +1296,8 @@ describe("R0-B1 notify 路由 ACK 契约", () => {
     expect(await res.text()).toBe("success");
     expect(store.workspace["w1"].extraSeats).toBe(2);
     // 拒绝路径：损坏订单（席位数无效）
-    seedFixture({ orderId: "SA_bad", seats: 0, amount: 2600 });
-    aliVerifyNotify.mockResolvedValue({ ok: true, outTradeNo: "SA_bad", tradeStatus: "TRADE_SUCCESS", totalAmount: "26.00", tradeNo: "ali_bad" });
+    seedFixture({ orderId: "SA_bad", seats: 0, amount: 2600, channel: "ALIPAY" });
+    aliVerifyNotify.mockResolvedValue({ ok: true, outTradeNo: "SA_bad", tradeStatus: "TRADE_SUCCESS", totalAmount: "26.00", tradeNo: "ali_bad", appId: "fixture-app" });
     const res2 = await aliNotifyPOST(new NextRequest("http://localhost/api/payments/notify/alipay", {
       method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: "a=1",
     }));

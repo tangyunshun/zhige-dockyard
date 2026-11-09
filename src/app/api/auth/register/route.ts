@@ -5,8 +5,8 @@ import { grantNewUserGift } from "@/lib/credit-service";
 import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-models";
 import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
 import { hashPassword } from "@/lib/auth";
-import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
-import { verifyEmailCode, deleteEmailCode } from "@/lib/email-code-store";
+import { verifySmsCode, consumeSmsCode } from "@/lib/sms-store";
+import { verifyEmailCode, consumeEmailCode } from "@/lib/email-code-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
 import crypto from "crypto";
 
@@ -96,6 +96,16 @@ export async function POST(request: NextRequest) {
         );
       }
 
+      // [U02/B5] 原子取得唯一消费权：并发注册只有一方能继续创建账号；
+      // 消费失败绝不创建账号/空间/权益，也不靠无返回值 delete 宣称已消费。
+      const phoneConsume = await consumeSmsCode(phone, "register", smsVerification.challengeId);
+      if (!phoneConsume.ok) {
+        return NextResponse.json(
+          { message: phoneConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: phoneConsume.status === 503 ? 503 : 400 },
+        );
+      }
+
       // 检查用户是否已存在
       const existingUser = await prisma.user.findUnique({
         where: { phone },
@@ -137,8 +147,7 @@ export async function POST(request: NextRequest) {
         console.error("[register] 注入默认通知失败:", e);
       });
 
-      // 删除验证码
-      await deleteSmsCode(phone, "register");
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(
@@ -186,6 +195,15 @@ export async function POST(request: NextRequest) {
             field: "smsCode",
           },
           { status: 400 },
+        );
+      }
+
+      // [U02/B5] 原子取得唯一消费权，消费失败不创建账号/空间/权益。
+      const usernameConsume = await consumeSmsCode(phone, "register", smsVerification.challengeId);
+      if (!usernameConsume.ok) {
+        return NextResponse.json(
+          { message: usernameConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: usernameConsume.status === 503 ? 503 : 400 },
         );
       }
 
@@ -242,8 +260,7 @@ export async function POST(request: NextRequest) {
         console.error("[register] 注入默认通知失败:", e);
       });
 
-      // 删除验证码
-      await deleteSmsCode(phone, "register");
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(
@@ -288,6 +305,15 @@ export async function POST(request: NextRequest) {
             field: "smsCode",
           },
           { status: 400 },
+        );
+      }
+
+      // [U02/B5] 原子取得唯一消费权，消费失败不创建账号/空间/权益。
+      const emailConsume = await consumeEmailCode(email, "register", emailVerification.challengeId);
+      if (!emailConsume.ok) {
+        return NextResponse.json(
+          { message: emailConsume.error || "验证码已失效，请重新获取", field: "smsCode" },
+          { status: emailConsume.status === 503 ? 503 : 400 },
         );
       }
 
@@ -342,8 +368,7 @@ export async function POST(request: NextRequest) {
         console.error("[register] 注入默认通知失败:", e);
       });
 
-      // 删除邮箱验证码
-      await deleteEmailCode(email, "register");
+      // 唯一消费权已在验证通过后原子取得，此处只提交注册结果与审计。
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(

@@ -33,6 +33,10 @@ function makePrisma() {
     billingrecord: {
       create: async (...a: any[]) => {
         const d = a[0].data;
+        // 忠实模拟 billingrecord.id 主键唯一约束：重复认领键抛 P2002，不静默覆盖。
+        if (state.orders[d.id]) {
+          throw Object.assign(new Error("Unique constraint failed on the fields: (`id`)"), { code: "P2002" });
+        }
         state.orders[d.id] = clone(d);
         return clone(d);
       },
@@ -131,7 +135,7 @@ const { POST: wechatNotifyPOST } = await import("@/app/api/payments/notify/wecha
 const { POST: alipayNotifyPOST } = await import("@/app/api/payments/notify/alipay/route");
 const { GET: orderGET } = await import("@/app/api/payments/order/route");
 
-function seedRecharge(id: string, status = "PENDING", amount = 1000) {
+function seedRecharge(id: string, status = "PENDING", amount = 1000, channel = "WECHAT_PAY") {
   state.orders[id] = {
     id,
     userId: "u1",
@@ -140,7 +144,8 @@ function seedRecharge(id: string, status = "PENDING", amount = 1000) {
     status,
     title: "充值",
     amount,
-    channel: "WECHAT_PAY",
+    // [U04] 收款渠道必须与订单渠道一致；支付宝回调用例显式传 "ALIPAY"。
+    channel,
     metadata: { points: 100 },
   };
 }
@@ -245,7 +250,8 @@ describe("R1-B 支付宝回调：透传 trade_no 作为网关交易号", () => {
     });
 
   it("trade_no + 金额齐全 → 入账成功，履约收到 trade_no", async () => {
-    seedRecharge("o1");
+    // [U04] 渠道口径修正：支付宝收款的订单渠道应为 ALIPAY，不能拿微信订单接支付宝回调。
+    seedRecharge("o1", "PENDING", 1000, "ALIPAY");
     state.aliForm = baseForm;
     const res = await alipayNotifyPOST(aliReq(baseForm));
     expect(res.status).toBe(200);
@@ -254,7 +260,7 @@ describe("R1-B 支付宝回调：透传 trade_no 作为网关交易号", () => {
   });
 
   it("缺 trade_no → 拒绝（400 fail），零入账", async () => {
-    seedRecharge("o1");
+    seedRecharge("o1", "PENDING", 1000, "ALIPAY");
     state.aliForm = { ...baseForm, trade_no: "" };
     const res = await alipayNotifyPOST(aliReq({ ...baseForm, trade_no: "" }));
     expect(res.status).toBe(400);
@@ -263,7 +269,7 @@ describe("R1-B 支付宝回调：透传 trade_no 作为网关交易号", () => {
   });
 
   it("缺 total_amount（金额不可解析）→ 拒绝（400 fail），零入账", async () => {
-    seedRecharge("o1");
+    seedRecharge("o1", "PENDING", 1000, "ALIPAY");
     state.aliForm = { ...baseForm, total_amount: "" };
     const res = await alipayNotifyPOST(aliReq({ ...baseForm, total_amount: "" }));
     expect(res.status).toBe(400);
@@ -322,7 +328,8 @@ describe("R1-D 取消/超时后收到已验收款：留存待恢复事实，不�
   });
 
   it("已 EXPIRED 且收款事实齐备 → RECEIPT_PENDING_RECOVERY，零发放", async () => {
-    seedRecharge("o1", "EXPIRED", 1000);
+    // [U04] 渠道口径修正：ALIPAY 收款对应 ALIPAY 订单。
+    seedRecharge("o1", "EXPIRED", 1000, "ALIPAY");
     const r = await fulfillPaidOrder({
       orderNo: "o1",
       paymentMethod: "ALIPAY",

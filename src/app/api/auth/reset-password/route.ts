@@ -53,6 +53,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // [U02] 凭证必须绑定已核验 challenge 身份与一次性授权 id；
+    // 缺少绑定关系的一律拒绝，不凭通用 JWT 验签成功直接改密。
+    const challengeId = payload.challengeId as string | undefined;
+    const jti = payload.jti as string | undefined;
+    if (!challengeId || !jti) {
+      return NextResponse.json(
+        { message: "重置凭证缺少一次性授权信息，请重新获取验证码" },
+        { status: 401 }
+      );
+    }
+
     // 3. 从 token 中解析账号（phone 或 email），并查库定位用户
     const phone = payload.phone as string | undefined;
     const email = payload.email as string | undefined;
@@ -81,11 +92,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 4. 一次性消费验证码（防止 token 被复制后重复使用）；消费失败绝不写密码
+    // 4. 一次性消费验证码（绑定 challenge 身份）；消费失败绝不写密码。
+    // 旧 token 绑定的 challenge 已用时，消费会因已用或 challenge 不匹配被拒，
+    // 更不能借后来签发的新码恢复改密权。
     const consumeRes: AdmitResult = phone
-      ? await consumeSmsCode(phone, "reset-password")
+      ? await consumeSmsCode(phone, "reset-password", challengeId)
       : email
-        ? await consumeEmailCode(email, "reset-password")
+        ? await consumeEmailCode(email, "reset-password", challengeId)
         : { ok: false, error: "缺少账号信息", status: 400 };
     if (!consumeRes.ok) {
       // 已使用 / 不存在 / 服务不可用 -> 拒绝，不写密码、不失效会话

@@ -32,6 +32,16 @@ function makeStores() {
 
   const budgetModel = {
     findUnique: async ({ where }: any) => (budget[where.id] ? { ...budget[where.id] } : null),
+    // 冷启动由 create 占有主键：重复键抛 P2002，忠实模拟唯一约束。
+    create: async ({ data }: any) => {
+      if (budget[data.id]) {
+        const e = new Error("unique");
+        (e as any).code = "P2002";
+        throw e;
+      }
+      budget[data.id] = { ...data };
+      return { ...budget[data.id] };
+    },
     upsert: async ({ where, create, update }: any) => {
       if (!budget[where.id]) {
         budget[where.id] = { ...create, id: where.id };
