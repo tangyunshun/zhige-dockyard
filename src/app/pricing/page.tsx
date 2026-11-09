@@ -197,7 +197,7 @@ export default function PricingPage() {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "会员升级失败，请稍后重试");
+        throw new Error(data.message || data.error || "会员升级失败，请稍后重试");
       }
       toast.success(data.message || "会员套餐已开通");
       setCheckoutPlan(null);
@@ -362,7 +362,7 @@ export default function PricingPage() {
     }
 
     return {
-      text: "立即支付升级",
+      text: "在线购买暂未开放",
       onClick: () =>
         setCheckoutPlan({
           level,
@@ -970,64 +970,24 @@ export default function PricingPage() {
 
       <ConfirmDialog
         isOpen={!!checkoutPlan}
-        title={checkoutPlan ? `确认开通${checkoutPlan.level.nameZh}` : "确认开通会员"}
+        title={checkoutPlan ? `确认购买会员（在线购买暂未开放）` : "确认购买会员（在线购买暂未开放）"}
         message={
           checkoutPlan
-            ? `本次通过${membershipPaymentMethod === "ALIPAY" ? "支付宝" : "微信支付"}完成在线支付，金额 ¥${(checkoutPlan.amount / 100).toFixed(2)}/${checkoutPlan.cycle === "YEAR" ? "年" : "月"}。确认后将立即开通并刷新企业空间数量与配额。`
+            ? "会员在线购买通道暂未开放。点击确认将由后端校验并返回明确结果，本次不会产生真实扣款或权益变更。"
             : ""
         }
-        warnings={["支付成功后，企业空间创建配额将按新会员等级立即生效"]}
+        warnings={["会员 / 空间套餐的在线购买尚未开放，确认后将返回明确提示，不会产生真实扣款或权益变更。"]}
         type="info"
         confirmText={
           upgradingMembership
-            ? "开通中..."
-            : checkoutPlan
-              ? `确认支付并开通(¥${(checkoutPlan.amount / 100).toFixed(2)})`
-              : "确认支付并开通"
+            ? "校验中..."
+            : "确认（后端校验）"
         }
         confirmButtonClass="bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/25"
         cancelText="取消"
         onConfirm={confirmMembershipUpgrade}
         onCancel={() => setCheckoutPlan(null)}
       >
-        <div className="mb-4 space-y-2.5">
-          <label className="block text-xs font-black text-slate-700">选择支付方式：</label>
-          <div className="grid grid-cols-2 gap-2.5">
-            {/* 微信支付 */}
-            <button
-              type="button"
-              onClick={() => setMembershipPaymentMethod("WECHAT_PAY")}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                membershipPaymentMethod === "WECHAT_PAY"
-                  ? "border-[#3182ce] bg-blue-50/80 ring-2 ring-[#3182ce]/20 text-[#2b6cb0]"
-                  : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
-              }`}
-            >
-              <img src="/icons/wechat-pay.png" alt="" className="w-5 h-5 object-contain shrink-0" />
-              <span>微信支付</span>
-            </button>
-
-            {/* 支付宝 */}
-            <button
-              type="button"
-              onClick={() => setMembershipPaymentMethod("ALIPAY")}
-              className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
-                membershipPaymentMethod === "ALIPAY"
-                  ? "border-[#3182ce] bg-blue-50/80 ring-2 ring-[#3182ce]/20 text-[#2b6cb0]"
-                  : "border-slate-200 bg-white hover:border-slate-300 text-slate-700"
-              }`}
-            >
-              <img src="/icons/alipay.png" alt="" className="w-5 h-5 object-contain shrink-0" />
-              <span>支付宝</span>
-            </button>
-          </div>
-          <div className="flex items-start gap-1.5 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2">
-            <span className="text-amber-500 font-black text-xs leading-none mt-0.5">※</span>
-            <p className="text-[11px] text-amber-700 font-bold leading-relaxed">
-              当前为<strong>演示支付</strong>：选择任一方式即可完成开通，仅用于功能演示，真实支付通道后续接入。
-            </p>
-          </div>
-        </div>
       </ConfirmDialog>
     </div>
   );

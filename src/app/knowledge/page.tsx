@@ -180,6 +180,8 @@ export default function KnowledgeLibraryPage() {
   // KB-V4：开始 / 结束时间筛选（按知识创建时间 createdAt 过滤）
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
 
   // 分页状态 (卡片每页9条，列表每页10条)
   const [currentPage, setCurrentPage] = useState(1);
@@ -824,6 +826,7 @@ export default function KnowledgeLibraryPage() {
                   <input
                     type="date"
                     value={startDate}
+                    max={endDate || today}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="w-full mt-0.5 px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-700"
                   />
@@ -834,10 +837,12 @@ export default function KnowledgeLibraryPage() {
                     type="date"
                     value={endDate}
                     min={startDate || undefined}
+                    max={today}
                     onChange={(e) => setEndDate(e.target.value)}
                     className="w-full mt-0.5 px-3 py-1.5 text-xs font-bold bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:border-[#3182ce] outline-none transition-all text-slate-700"
                   />
                 </label>
+
               </div>
               {(startDate || endDate) && (
                 <button

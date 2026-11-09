@@ -1,0 +1,225 @@
+/**
+ * [R0-K / 原 F14 K01] 隔离解析执行边界与生命周期。
+ *
+ * 真实 worker_threads Worker：硬 deadline、请求取消、worker 崩溃 / 初始化失败都会
+ * terminate() 并等待 exit 事件确认；只有确认结束后才允许释放共享准入名额。
+ * 迟到文本一律不接收；退出确认失败保守隔离占用并可诊断。
+ * 不靠 Promise.race 或 aborted 布尔值假装停止同步 CPU 重活。
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { Worker } from "node:worker_threads";
+import {
+  PARSE_CODES,
+  PARSE_LIMITS,
+  ParseResourceError,
+  type BudgetUsage,
+  type RootBudget,
+} from "./parse-policy";
+
+export type ParseTaskKind = "parse" | "table-preview" | "docx-html" | "__test_ok" | "__test_spin" | "__test_late" | "__test_crash" | "__test_error" | "__test_init_fail";
+
+export type ParseTask = {
+  kind: ParseTaskKind;
+  buffer?: number[];
+  fileName?: string;
+  mimeType?: string;
+  text?: string;
+  delayMs?: number;
+};
+
+export type ParseRunResult = {
+  text?: string;
+  html?: string;
+  type?: string;
+  sheetName?: string;
+  sheetNames?: string[];
+  rows?: unknown[];
+  needsOcr?: boolean;
+  usage: BudgetUsage;
+  stopped: true;
+};
+
+/** worker 产物定位：Next.js 产物用 outputFileTracingIncludes 纳入；绝不静默回退同进程解析 */
+export const PARSE_WORKER_CANDIDATES = [
+  "src/lib/parse-worker.cjs",
+  ".next/server/src/lib/parse-worker.cjs",
+  ".next/standalone/src/lib/parse-worker.cjs",
+];
+
+export function resolveParseWorkerPath(): string | null {
+  const override = process.env.PARSE_WORKER_PATH;
+  if (override && fs.existsSync(override)) return override;
+  for (const rel of PARSE_WORKER_CANDIDATES) {
+    const abs = path.isAbsolute(rel) ? rel : path.join(process.cwd(), rel);
+    if (fs.existsSync(abs)) return abs;
+  }
+  // 编译产物与源码同目录的情形
+  const near = path.join(__dirname, "parse-worker.cjs");
+  if (fs.existsSync(near)) return near;
+  return null;
+}
+
+/** 仅用于离线隔离测试：注入 worker 构造与时钟，不改生产路径 */
+type RunnerHooks = {
+  workerFactory?: ((file: string, opts: any) => Worker) | null;
+  clock?: (() => number) | null;
+  exitConfirmMs?: number | null;
+};
+let runnerHooks: RunnerHooks = {};
+export function __setParseRunnerHooks(hooks: RunnerHooks): void {
+  runnerHooks = { ...hooks };
+}
+export function __resetParseRunnerHooks(): void {
+  runnerHooks = {};
+}
+
+type StopReason = "timeout" | "cancelled" | "error" | "done";
+
+/**
+ * 运行一次隔离解析。返回时一定已确认 worker 结束（stopped:true）；
+ * 抛错时也一定已尽力终止并确认，未确认则抛 PARSE_STOP_UNCONFIRMED。
+ */
+export async function runIsolatedParse(opts: {
+  task: ParseTask;
+  budget: RootBudget;
+  deadlineMs?: number;
+  signal?: AbortSignal;
+}): Promise<ParseRunResult> {
+  const { task, budget, signal } = opts;
+  const deadlineMs = Math.max(1, Math.min(opts.deadlineMs ?? PARSE_LIMITS.HARD_DEADLINE_MS, budget.snapshot().remainingMs || 1));
+  const file = resolveParseWorkerPath();
+  if (!file) throw new ParseResourceError(PARSE_CODES.WORKER_NOT_READY);
+
+  const snapshot = budget.snapshot();
+  // 大 buffer 用 transferList 零拷贝移交 worker；不复制进 workerData 的结构化克隆
+  let transferList: ArrayBuffer[] = [];
+  let bufferArray: ArrayBuffer | undefined;
+  if (task.buffer && task.buffer.length > 0) {
+    const copy = Uint8Array.from(task.buffer);
+    bufferArray = copy.buffer;
+    transferList = [bufferArray];
+  }
+  const workerData = { task: { ...task, buffer: undefined }, bufferArray, remaining: snapshot.remaining };
+  const workerOpts: any = {
+    workerData,
+    transferList,
+    resourceLimits: { maxOldGenerationSizeMb: 192, maxYoungGenerationSizeMb: 32, stackSizeMb: 4 },
+  };
+  let worker: Worker;
+  try {
+    worker = runnerHooks.workerFactory
+      ? runnerHooks.workerFactory(file, workerOpts)
+      : new Worker(file, workerOpts);
+  } catch {
+    throw new ParseResourceError(PARSE_CODES.WORKER_NOT_READY);
+  }
+
+  let settled = false;
+  let stopReason: StopReason = "done";
+  let exitCode: number | null = null;
+  let exitConfirmed = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let confirmTimer: ReturnType<typeof setTimeout> | null = null;
+  const listeners: Array<() => void> = [];
+
+  // exit 监听独立于收口列表：退出确认必须在清理其它监听之后仍然可达
+  const exitPromise = new Promise<void>((resolve) => {
+    const onExit = (code: number) => { exitCode = code; exitConfirmed = true; resolve(); };
+    worker.on("exit", onExit);
+  });
+
+  /** 幂等收口：置 settled（迟到消息不再被接收）、清计时器/监听、terminate 并等 exit 确认 */
+  const stop = async (reason: StopReason): Promise<void> => {
+    if (stopReason === "done" || reason !== "done") {
+      if (!settled) { settled = true; stopReason = reason; }
+    }
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (signal && onAbort) signal.removeEventListener("abort", onAbort);
+    for (const off of listeners.splice(0)) off();
+    try {
+      // terminate() 的 Promise 在 worker 真正退出后以退出码 resolve，是可靠的物理结束确认
+      const code = await worker.terminate();
+      if (typeof code === "number") { exitCode = code; exitConfirmed = true; }
+    } catch { /* 仍等待 exit 事件确认 */ }
+    const grace = runnerHooks.exitConfirmMs ?? PARSE_LIMITS.EXIT_CONFIRM_MS;
+    if (!exitConfirmed) {
+      await Promise.race([
+        exitPromise,
+        new Promise<void>((r) => { confirmTimer = setTimeout(r, grace); }),
+      ]);
+      if (confirmTimer) { clearTimeout(confirmTimer); confirmTimer = null; }
+    }
+  };
+
+  let onAbort: (() => void) | null = null;
+
+  const outcome = new Promise<ParseRunResult>((resolve, reject) => {
+    const finishError = async (reason: StopReason, err: ParseResourceError) => {
+      if (settled) return;
+      settled = true;
+      await stop(reason);
+      if (!exitConfirmed) {
+        reject(new ParseResourceError(PARSE_CODES.STOP_UNCONFIRMED));
+      } else {
+        reject(err);
+      }
+    };
+
+    const onMessage = (msg: any) => {
+      // envelope 独立于业务字段：type:"table" 等结果不得被误判为迟到消息
+      if (settled || !msg || msg.envelope !== "result") return; // 迟到/重复输出一律丢弃
+      settled = true;
+      if (msg.error) {
+        const code = msg.error.r0kCode === "PARSE_BUDGET_EXCEEDED" ? PARSE_CODES.BUDGET_EXCEEDED : PARSE_CODES.FAILED;
+        void stop("done").then(() => {
+          if (!exitConfirmed) reject(new ParseResourceError(PARSE_CODES.STOP_UNCONFIRMED));
+          else reject(new ParseResourceError(code, undefined, msg.error.kind));
+        });
+        return;
+      }
+      const usage: BudgetUsage = msg.usage || {};
+      void stop("done").then(() => {
+        if (!exitConfirmed) { reject(new ParseResourceError(PARSE_CODES.STOP_UNCONFIRMED)); return; }
+        try {
+          budget.applyUsage(usage); // 根预算合并，嵌套/多文件不重置
+          resolve({ ...msg, usage, stopped: true });
+        } catch (e) {
+          reject(e instanceof ParseResourceError ? e : new ParseResourceError(PARSE_CODES.BUDGET_EXCEEDED));
+        }
+      });
+    };
+
+    const onError = (e: Error) => {
+      void finishError("error", new ParseResourceError(
+        e && String(e.message || "").includes("OUT_OF_MEMORY") ? PARSE_CODES.BUDGET_EXCEEDED : PARSE_CODES.FAILED,
+      ));
+    };
+    const onExitEarly = (code: number) => {
+      if (settled) return;
+      void finishError("error", new ParseResourceError(PARSE_CODES.FAILED));
+      void code;
+    };
+
+    worker.on("message", onMessage);
+    worker.on("error", onError);
+    worker.once("exit", onExitEarly);
+    listeners.push(() => worker.off("message", onMessage));
+    listeners.push(() => worker.off("error", onError));
+    listeners.push(() => worker.off("exit", onExitEarly));
+
+    timer = setTimeout(() => { void finishError("timeout", new ParseResourceError(PARSE_CODES.TIMEOUT)); }, deadlineMs);
+
+    if (signal) {
+      if (signal.aborted) {
+        void finishError("cancelled", new ParseResourceError(PARSE_CODES.CANCELLED));
+      } else {
+        onAbort = () => { void finishError("cancelled", new ParseResourceError(PARSE_CODES.CANCELLED)); };
+        signal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+    void exitCode;
+  });
+
+  return outcome;
+}

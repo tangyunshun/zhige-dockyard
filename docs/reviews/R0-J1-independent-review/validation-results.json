@@ -1,0 +1,97 @@
+{
+  "checkedAt": "2026-11-07T17:57:17.5483946Z",
+  "clientDate": "2026-11-08 Asia/Shanghai",
+  "verdict": "R0_J1_NOT_ACCEPTED",
+  "closedOriginalIssue": [
+    "J-PRIVATE"
+  ],
+  "partialOriginalIssues": [
+    "J-KEYS",
+    "J-WRITE-BOUND",
+    "J-RECONCILE"
+  ],
+  "remainingOriginalIssues": [
+    "J-UPLOAD",
+    "J-RELEASE",
+    "J-CLEAR",
+    "J-PARTIAL"
+  ],
+  "acceptedSubscenarios": [
+    "PRIVATE batch ownership",
+    "single parse after authorization",
+    "actual -1 to 0 tightening",
+    "S3 same key",
+    "single historical local candidate"
+  ],
+  "hashVerification": {
+    "matchedEntries": 42,
+    "startCopies": 7,
+    "endFiles": 7,
+    "protectedFiles": 28,
+    "clearDataUnchanged": true,
+    "missingDeclaredNew": [
+      "src/app/api/__tests__/r0j1-storage-ops.test.ts"
+    ],
+    "reference": "manifest-verification.json"
+  },
+  "verification": [
+    {
+      "kind": "formal targeted regression",
+      "files": 13,
+      "passed": 442,
+      "exitCode": 0,
+      "commandPrefix": ".\\node_modules\\.bin\\vitest.cmd run --no-color",
+      "fileDirectory": "src/app/api/__tests__/",
+      "fileList": [
+        "r0j-storage.test.ts",
+        "r0h-cost-admission.test.ts",
+        "r0i2-cold-quote.test.ts",
+        "r0g-cron-subscription-expire.test.ts",
+        "r0f-maintenance-readonly.test.ts",
+        "r0e-production-mock.test.ts",
+        "r0d-refund-approval.test.ts",
+        "r0c-pool-recycle.test.ts",
+        "r0b-seat-addon.test.ts",
+        "r0a-business-boundary.test.ts",
+        "r0a2-real-combo.test.ts",
+        "r0a3-combo-regression.test.ts",
+        "r0a4-combo-regression.test.ts"
+      ]
+    },
+    {
+      "kind": "independent actual-code validation",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-J1-independent-review/vitest.review.config.ts",
+      "files": 2,
+      "passed": 24,
+      "exitCode": 0,
+      "positiveAcceptances": 5,
+      "defectReproductions": 19,
+      "interpretation": "Reproduction PASS is not business acceptance"
+    },
+    {
+      "kind": "typecheck",
+      "command": ".\\node_modules\\.bin\\tsc.cmd --noEmit --incremental false -p tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "kind": "actual UI callbacks",
+      "command": "node docs/reviews/R0-J1-independent-review/verify-ui.cjs",
+      "scenarios": 6,
+      "exitCode": 0,
+      "browserDOM": false
+    }
+  ],
+  "fixtureContract": {
+    "uniqueOperationIdEnforced": true,
+    "requiredSchemaIdEnforcedInDedicatedCase": true,
+    "otherCases": "Permissive auto-id fixture isolates other protocol defects independently of the missing schema id",
+    "prismaTransaction": "In-memory serial transaction with rollback; no real MySQL isolation evidence"
+  },
+  "auditMutationScope": "New docs/reviews/R0-J1-independent-review files only; no official source/test edits or previous evidence writes",
+  "realDatabaseAccess": false,
+  "realCloudOrUserDiskIO": false,
+  "realModelOrPaymentCalls": false,
+  "migrationOrClientGenerationExecuted": false,
+  "nextPrompt": "IDE-R0-J2-PROMPT.md",
+  "nextGate": "Same original F13 scope; no F14"
+}

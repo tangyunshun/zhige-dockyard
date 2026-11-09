@@ -16,6 +16,7 @@ import {
   Users,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { resolveUpgradeResponse } from "@/lib/upgrade-response-protocol";
 
 interface PersonalWorkspace {
   id: string;
@@ -164,37 +165,58 @@ function UpgradeWorkspaceForm() {
         body: JSON.stringify({
           workspaceId: personalWorkspace.id,
           option: selectedOption,
+          targetPlan: "STANDARD",
         }),
       });
 
       const result = await res.json();
 
-
       if (!res.ok) {
         console.error("[Upgrade] API returned error:", result);
-        throw new Error(result.error || "升级失败");
+        throw new Error(result.message || result.error || "升级失败");
       }
 
-      toast.success(result.message || "升级成功！");
+      // [R0-A5 E5] 三入口统一协议：先验证业务成功（success===true），再处理支付地址/免费完成；
+      // success:false 携带 payUrl 不得跳转收银台、不得提示订单创建成功。
+      const action = resolveUpgradeResponse(result);
 
-      // 根据选项写入客户端升级标记，并跳转回空间中枢
-      if (selectedOption === "upgrade") {
-        // 方式2：原地升级（个人空间直接转企业）
-        localStorage.setItem("personalWorkspaceUpgraded", "true");
-        localStorage.setItem("upgradeMode", "relabel");
-        setTimeout(() => router.push("/workspace-hub"), 1000);
-      } else if (selectedOption === "delete") {
-        // 方式3：迁移升级（原个人空间转为只读归档）
-        localStorage.setItem("personalWorkspaceUpgraded", "true");
-        localStorage.setItem("personalWorkspaceArchived", "true");
-        localStorage.setItem("upgradeMode", "migrate");
-        setTimeout(() => router.push("/workspace-hub"), 1000);
-      } else {
-        // 方式1：并行创建（保留个人空间）
-        localStorage.setItem("personalWorkspaceUpgraded", "true");
-        localStorage.setItem("upgradeMode", "parallel");
-        setTimeout(() => router.push("/workspace-hub"), 1000);
+      if (action.kind === "failed") {
+        // 失败/协议不完整：不写已升级标记，保留当前选择
+        toast.error(action.message);
+        return;
       }
+
+      if (action.kind === "pay_redirect") {
+        // 已创建待支付订单，跳转收银台；尚未真正开通，不写已升级标记
+        toast.success(action.notice || "订单已创建，正在前往支付…");
+        window.location.href = action.payUrl;
+        return;
+      }
+
+      if (action.kind === "free_success") {
+        // 真正开通后才写入客户端升级标记，并跳转回空间中枢
+        toast.success(action.message);
+        if (selectedOption === "upgrade") {
+          // 方式2：原地升级（个人空间直接转企业）
+          localStorage.setItem("personalWorkspaceUpgraded", "true");
+          localStorage.setItem("upgradeMode", "relabel");
+        } else if (selectedOption === "delete") {
+          // 方式3：迁移升级（原个人空间转为只读归档）
+          localStorage.setItem("personalWorkspaceUpgraded", "true");
+          localStorage.setItem("personalWorkspaceArchived", "true");
+          localStorage.setItem("upgradeMode", "migrate");
+        } else {
+          // 方式1：并行创建（保留个人空间）
+          localStorage.setItem("personalWorkspaceUpgraded", "true");
+          localStorage.setItem("upgradeMode", "parallel");
+        }
+        setTimeout(() => router.push("/workspace-hub"), 1000);
+        return;
+      }
+
+      // pending：既无 payUrl 也非 free（不应出现），按待处理提示，不写成功标记
+      toast.success(action.message);
+      setTimeout(() => router.push("/workspace-hub"), 1000);
     } catch (error) {
       toast.error(
         error instanceof Error ? error.message : "升级失败，请稍后重试",
@@ -455,10 +477,10 @@ function UpgradeWorkspaceForm() {
                 </div>
               </div>
 
-              {/* 选项 C：迁移升级（新建企业 + 搬运 + 归档） */}
+              {/* 选项 C：迁移升级（新建企业 + 搬运 + 归档）—— [R0-A5 E5] 诚实禁用：直接显示「暂不可用」+ 原因，点击可触发提示 */}
               <div
-                onClick={() => setSelectedOption("delete")}
-                className={`zg-card cursor-pointer p-0 border-2 transition-all overflow-hidden hover:scale-[1.01] ${
+                onClick={() => { toast.error("迁移方式暂不可用：跨资产迁移的完整性修复中，请选择保留或原地升级"); }}
+                className={`zg-card cursor-not-allowed p-0 border-2 transition-all overflow-hidden opacity-50 ${
                   selectedOption === "delete"
                     ? "border-[#10b981] bg-[#10b981]/5 shadow-lg shadow-[#10b981]/20"
                     : "border-slate-200 hover:border-[#10b981]/40 hover:shadow-md"
@@ -482,13 +504,13 @@ function UpgradeWorkspaceForm() {
                         <h4 className="text-lg font-black text-slate-800">
                           迁移升级
                         </h4>
-                        <span className="px-2.5 py-1 bg-[#10b981]/10 text-[#10b981] text-xs font-bold rounded-full flex items-center gap-1">
-                          <CheckCircle className="w-3 h-3" />
-                          资料完整搬迁
+                        <span className="px-2.5 py-1 bg-[#f59e0b]/10 text-[#f59e0b] text-xs font-bold rounded-full flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3" />
+                          暂不可用
                         </span>
                       </div>
                       <p className="text-sm text-slate-600">
-                        新建企业空间并完整搬运个人资料，原个人空间转为只读归档
+                        跨资产迁移的完整性修复中，当前不可选择；请使用「保留个人空间」或「原地升级」
                       </p>
                     </div>
                     <div
@@ -537,7 +559,7 @@ function UpgradeWorkspaceForm() {
                     <li>升级操作不可逆，请谨慎选择</li>
                     <li>企业空间无法降级回个人空间</li>
                     <li>若选"原地升级"，个人空间将直接转为企业空间</li>
-                    <li>若选"迁移升级"，原个人空间会转为只读归档（资料已搬至企业空间，数据不丢）</li>
+                    <li>「迁移升级」方式暂不可用（迁移完整性修复中），当前请选择保留或原地升级</li>
                   </ul>
                 </div>
               </div>

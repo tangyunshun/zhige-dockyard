@@ -1,0 +1,69 @@
+{
+  "capturedAt": "2026-11-07T16:47:40.161Z",
+  "startCopies": 4,
+  "endHashes": 5,
+  "protectedFiles": 30,
+  "preflightReferenceDrift": [
+    {
+      "file": "src/lib/storage-quota.ts",
+      "declaredStart": "40c67567fc8f263c2ca576f450ba02b01669b170f89855df0a45e4060ed89487",
+      "currentPreflightHash": "898c6e174e3ece7ffcce11a5f6118fde4d540f562ddbdd3a4a61f88f3882657d"
+    },
+    {
+      "file": "src/lib/file-store.ts",
+      "declaredStart": "644844f307db72dd07e08b458408ae0377c002aaa1643192b9b5559ee99b5c15",
+      "currentPreflightHash": "a3d07e2a50b4116a1b57dff3a009fcf657a90c596d4614b4c444792b857547fd"
+    },
+    {
+      "file": "src/app/api/studio/handler.ts",
+      "declaredStart": "80fe316293fb007f858282bd7212aad5c881d3a31e4c0b42909b816060ed46d0",
+      "currentPreflightHash": "ee4b5ee7f94873a11440b3138c78694168c7752bfe0f42cfaca211d25cee8a66"
+    },
+    {
+      "file": "src/app/api/workspace/clear-data/route.ts",
+      "declaredStart": "98cdf678ad9a571815aa5856815b85e137f005706aaf9b7a7130814a800471a8",
+      "currentPreflightHash": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d"
+    }
+  ],
+  "sha256": {
+    "docs/reviews/R0-J-fix-snapshot/frozen-source/src__lib__storage-quota.ts.snapshot.txt": "40c67567fc8f263c2ca576f450ba02b01669b170f89855df0a45e4060ed89487",
+    "docs/reviews/R0-J-fix-snapshot/frozen-source/src__lib__file-store.ts.snapshot.txt": "644844f307db72dd07e08b458408ae0377c002aaa1643192b9b5559ee99b5c15",
+    "docs/reviews/R0-J-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt": "80fe316293fb007f858282bd7212aad5c881d3a31e4c0b42909b816060ed46d0",
+    "docs/reviews/R0-J-fix-snapshot/frozen-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt": "98cdf678ad9a571815aa5856815b85e137f005706aaf9b7a7130814a800471a8",
+    "src/lib/storage-quota.ts": "898c6e174e3ece7ffcce11a5f6118fde4d540f562ddbdd3a4a61f88f3882657d",
+    "src/lib/file-store.ts": "a3d07e2a50b4116a1b57dff3a009fcf657a90c596d4614b4c444792b857547fd",
+    "src/app/api/studio/handler.ts": "ee4b5ee7f94873a11440b3138c78694168c7752bfe0f42cfaca211d25cee8a66",
+    "src/app/api/workspace/clear-data/route.ts": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d",
+    "src/app/api/__tests__/r0j-storage.test.ts": "477e5f04797965ba872e12ff87d6fc75f0cf7b0ba5ea007d1f56e6ebbbfe07bb",
+    "src/app/api/billing/estimate/route.ts": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+    "src/lib/model-registry.ts": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+    "src/lib/workspace-byo-model.ts": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+    "src/app/api/__tests__/r0i2-cold-quote.test.ts": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+    "src/app/admin/models/byok-service-rate.tsx": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+    "src/app/api/billing/byok-preview/route.ts": "099c797e4b657c7055838a509c6e9deda29f0c586bc1b9cf7197bbf0145f9575",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "9af127d8f0ead2e6b51db32c4a48bd13427e7fa69aa78dc1fbe754b8d4cd3506",
+    "src/components/studio/WorkspaceModelPolicyTab.tsx": "93a7e73e1a11570ac1d219e102de53b887429baa94dab9d811a322b668cea6c9",
+    "src/lib/model-cost-admission.ts": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+    "src/app/api/cron/workspace-subscription-expire/route.ts": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+    "src/app/api/system/maintenance/route.ts": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+    "src/lib/maintenance.ts": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+    "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+    "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+    "src/lib/quota-cycle.ts": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+    "src/app/api/workspace/byo-model/test/route.ts": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+    "src/app/knowledge/page.tsx": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f",
+    "prisma/schema.prisma": "21cf68e19ecc886b06988a8e1c42c83fd0e7d3913741bfbe8be1270e7e4183f7"
+  }
+}

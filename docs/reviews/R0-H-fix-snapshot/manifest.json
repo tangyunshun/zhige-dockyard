@@ -1,0 +1,11 @@
+{
+  "capturedAtReal": "2026-11-07T15:05:40.508457+08:00",
+  "purpose": "R0-H batch start baseline (before F11 cost admission)",
+  "files": {
+    "src/app/api/studio/handler.ts": {
+      "sha256": "338bf06d56d82a4155a441b5e9370664ee18af0a36fb7f60e34690edf597d1fb",
+      "bytes": 334565,
+      "snapshotCopy": "docs/reviews/R0-H-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    }
+  }
+}

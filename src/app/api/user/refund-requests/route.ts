@@ -187,6 +187,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      // [R0-D] 能力事实：人工批准退点暂停，工单受理/查询/撤销仍可用。
+      // points / candidates[].points 是「历史累计扣点」的参考申请值，未扣除既有自动退款、
+      // 未按原扣款来源核验，本批不计算净可退额度、不新增 remainingRefundable 之类已核准金额字段。
+      capabilities: {
+        manualApprovalPaused: true,
+        manualApprovalCode: "MANUAL_REFUND_APPROVAL_PAUSED",
+        manualApprovalMessage: "人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包",
+        pointsAreReferenceOnly: true,
+      },
       data: { requests: enrichedRequests, candidates, summary },
     });
   } catch (error) {

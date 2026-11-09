@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { resolveUpgradeResponse } from "@/lib/upgrade-response-protocol";
 
 interface PlanOption {
   key: string;
@@ -103,18 +104,33 @@ export default function UpgradeModal({ open, onClose, workspaceType, workspaceId
         }),
       });
       const data = await res.json();
-      if (res.ok && data.success) {
-        // 付费套餐：跳转收银台完成支付，支付成功后服务端才真正开通
-        if (data.payUrl) {
-          window.location.href = data.payUrl;
+      if (res.ok) {
+        // [R0-A5 E5] 三入口统一协议：先验证业务成功（success===true），再处理支付地址/免费完成；
+        // success:false 携带 payUrl 不得跳转收银台
+        const action = resolveUpgradeResponse(data);
+        if (action.kind === "pay_redirect") {
+          // 待支付：跳转收银台，不写已开通标记、不触发完成回调
+          window.location.href = action.payUrl;
           return;
         }
-        toast.success(data.message || "空间升级成功！");
-        onSuccess?.();
-        onClose();
+        if (action.kind === "free_success") {
+          // 仅真实免费开通完成才触发完成回调
+          toast.success(action.message);
+          onSuccess?.();
+          onClose();
+          return;
+        }
+        if (action.kind === "pending") {
+          // success:true 但缺 payUrl/free → 待处理/异常响应，不当已开通
+          toast.info(action.message);
+          return;
+        }
+        // failed：success:false 或协议不完整
+        toast.error(action.message);
         return;
       }
-      toast.error(data.error || data.message || "升级失败，请稍后重试");
+      // HTTP 错误：显示错误说明
+      toast.error(data.message || data.error || "升级失败，请稍后重试");
     } catch {
       toast.error("网络异常，升级请求未完成，请稍后重试");
     } finally {

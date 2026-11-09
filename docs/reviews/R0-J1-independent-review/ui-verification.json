@@ -1,0 +1,174 @@
+{
+  "capturedAt": "2026-11-07T17:51:11.617Z",
+  "observations": [
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "partial",
+      "status": 207,
+      "response": {
+        "success": false,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [
+          {
+            "id": "failed",
+            "reason": "synthetic failure"
+          }
+        ],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": [
+            {
+              "id": "failed",
+              "reason": "synthetic failure"
+            }
+          ]
+        }
+      },
+      "visibleIds": [
+        "deleted"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已删除 1 项，1 项失败（synthetic failure）"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "success",
+      "status": 200,
+      "response": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": []
+        }
+      },
+      "visibleIds": [
+        "deleted"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已删除 1 项资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "denied",
+      "status": 403,
+      "response": {
+        "success": false,
+        "error": "synthetic permission denied"
+      },
+      "visibleIds": [],
+      "toasts": [
+        {
+          "kind": "info",
+          "message": "没有需要删除的资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "partial",
+      "status": 207,
+      "response": {
+        "success": false,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [
+          {
+            "id": "failed",
+            "reason": "synthetic failure"
+          }
+        ],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": [
+            {
+              "id": "failed",
+              "reason": "synthetic failure"
+            }
+          ]
+        }
+      },
+      "visibleIds": [
+        "deleted"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已移除 1 项。1 项删除失败（synthetic failure）"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "success",
+      "status": 200,
+      "response": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": []
+        }
+      },
+      "visibleIds": [
+        "deleted"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 1 项资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "denied",
+      "status": 403,
+      "response": {
+        "success": false,
+        "error": "synthetic permission denied"
+      },
+      "visibleIds": [],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 undefined 项资料"
+        }
+      ]
+    }
+  ],
+  "limits": "Actual callbacks via AST/transpile and synthetic fetch/state; no browser DOM. Predicate retains success IDs and removes failures/unrelated rows; 403 clears rows."
+}

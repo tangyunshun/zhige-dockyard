@@ -1,0 +1,19 @@
+describe('Original F13 same-object concurrency and pending accounting boundaries',()=>{
+ it('characterization: two actual deletion recovery requests read PENDING; second reports drift after first commits RELEASED',async()=>{
+  seedQuota('w1',30n,30n);pending();memFiles.set(abs(),Buffer.alloc(30));const firstReached=latch(),bothRead=latch(),finishSecond=latch();let arrivals=0;
+  h.setRawGate(async(sql:string)=>{if(sql.includes('storageUsed` = `storageUsed` -')){arrivals++;if(arrivals===1){firstReached.resolve();await bothRead.promise;}else if(arrivals===2){bothRead.resolve();await finishSecond.promise;}}});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const a=runStudioPost(removeReq(),makeDeps());await firstReached.promise;const b=runStudioPost(removeReq(),makeDeps());const ra=await a;const ba=await ra.json();finishSecond.resolve();const rb=await b;const bb=await rb.json();
+  expect(ra.status).toBe(200);expect(ba.data.pendingCleared).toBe(true);expect(rb.status).toBe(500);expect(bb.code).toBe('STORAGE_RELEASE_DRIFT');expect([...h.tables.storageoperation.values()][0].status).toBe('RELEASED');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('overlapping-finalizers-characterization',{a:{status:ra.status,body:ba},b:{status:rb.status,body:bb},used:0,op:[...h.tables.storageoperation.values()][0],limits:'Actual requests both read old PENDING; final database writes are serialized by the barrier, no concurrent rollback is simulated.'});
+ });
+ it('characterization: shared pending claim is retained but structured pendingCount says known zero',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','assets/w1/x.bin');doc('d2');pending();memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect([...h.tables.storageoperation.values()].filter((o:any)=>o.status==='PENDING_CLEANUP').length).toBe(1);
+  observe('shared-pending-count-characterization',{status:res.status,body,actualPendingClaims:1,used:30});
+ });
+ it('characterization: real unresolved usage drift also returns known zero pendingCount',async()=>{
+  seedQuota('w1',10n,30n);pending();const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.driftSkipped).toBe(1);expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(10n);
+  observe('drift-pending-count-characterization',{status:res.status,body,actualPendingClaims:1,used:10});
+ });
+});

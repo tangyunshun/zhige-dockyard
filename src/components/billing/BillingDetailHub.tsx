@@ -155,6 +155,8 @@ export default function BillingDetailHub() {
   const [invoiceTotalPages, setInvoiceTotalPages] = useState(1);
   const [invoiceStartDate, setInvoiceStartDate] = useState("");
   const [invoiceEndDate, setInvoiceEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
   const [invoiceTypeFilter, setInvoiceTypeFilter] = useState("ALL");
   const [invoiceStatusFilter, setInvoiceStatusFilter] = useState("ALL");
   const [loadingInvoiceRecords, setLoadingInvoiceRecords] = useState(false);
@@ -300,8 +302,7 @@ export default function BillingDetailHub() {
       statFilter = invoiceStatusFilter
     ) => {
       if (sDate && eDate && sDate > eDate) {
-        toast.warning("发票筛选时间不合法：结束日期不能早于开始日期");
-        return;
+        eDate = sDate;
       }
       try {
         setLoadingInvoiceRecords(true);
@@ -340,39 +341,24 @@ export default function BillingDetailHub() {
   const handleBillingStartDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      if (val && billingEndDate && val > billingEndDate) {
-        toast.warning("开始日期不能晚于结束日期，已自动为您重置结束日期");
-        setBillingStartDate(val);
-        setBillingEndDate("");
-        void loadBillingRecords(1, billingPageSize, val, "");
-        return;
-      }
       setBillingStartDate(val);
       void loadBillingRecords(1, billingPageSize, val, billingEndDate);
     },
-    [billingEndDate, billingPageSize, loadBillingRecords, toast]
+    [billingEndDate, billingPageSize, loadBillingRecords]
   );
 
   const handleBillingEndDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      if (val && billingStartDate && val < billingStartDate) {
-        toast.warning("结束日期不能早于开始日期，请重新选择");
-        return;
-      }
       setBillingEndDate(val);
       void loadBillingRecords(1, billingPageSize, billingStartDate, val);
     },
-    [billingStartDate, billingPageSize, loadBillingRecords, toast]
+    [billingStartDate, billingPageSize, loadBillingRecords]
   );
 
   const handleSearchBills = useCallback(() => {
-    if (billingStartDate && billingEndDate && billingStartDate > billingEndDate) {
-      toast.warning("查询失败：结束日期不能早于开始日期");
-      return;
-    }
     void loadBillingRecords(1, billingPageSize);
-  }, [billingStartDate, billingEndDate, billingPageSize, loadBillingRecords, toast]);
+  }, [billingPageSize, loadBillingRecords]);
 
   const handleResetBills = useCallback(() => {
     setBillingStartDate("");
@@ -386,39 +372,24 @@ export default function BillingDetailHub() {
   const handleInvoiceStartDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      if (val && invoiceEndDate && val > invoiceEndDate) {
-        toast.warning("开始日期不能晚于结束日期，已自动为您重置结束日期");
-        setInvoiceStartDate(val);
-        setInvoiceEndDate("");
-        void loadInvoiceRecords(1, invoicePageSize, val, "");
-        return;
-      }
       setInvoiceStartDate(val);
       void loadInvoiceRecords(1, invoicePageSize, val, invoiceEndDate);
     },
-    [invoiceEndDate, invoicePageSize, loadInvoiceRecords, toast]
+    [invoiceEndDate, invoicePageSize, loadInvoiceRecords]
   );
 
   const handleInvoiceEndDateChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const val = e.target.value;
-      if (val && invoiceStartDate && val < invoiceStartDate) {
-        toast.warning("结束日期不能早于开始日期，请重新选择");
-        return;
-      }
       setInvoiceEndDate(val);
       void loadInvoiceRecords(1, invoicePageSize, invoiceStartDate, val);
     },
-    [invoiceStartDate, invoicePageSize, loadInvoiceRecords, toast]
+    [invoiceStartDate, invoicePageSize, loadInvoiceRecords]
   );
 
   const handleSearchInvoices = useCallback(() => {
-    if (invoiceStartDate && invoiceEndDate && invoiceStartDate > invoiceEndDate) {
-      toast.warning("查询失败：结束日期不能早于开始日期");
-      return;
-    }
     void loadInvoiceRecords(1, invoicePageSize);
-  }, [invoiceStartDate, invoiceEndDate, invoicePageSize, loadInvoiceRecords, toast]);
+  }, [invoicePageSize, loadInvoiceRecords]);
 
   const handleResetInvoices = useCallback(() => {
     setInvoiceStartDate("");
@@ -747,7 +718,7 @@ export default function BillingDetailHub() {
                   <span className="text-slate-600 font-bold shrink-0 text-xs">交易时间</span>
                   <input
                     type="date"
-                    max={billingEndDate || undefined}
+                    max={billingEndDate || today}
                     value={billingStartDate}
                     onChange={handleBillingStartDateChange}
                     className="text-xs !h-6 !py-0 !px-1.5 !w-[116px] shrink-0 text-slate-700 font-medium bg-slate-50/70 border border-slate-200/80 rounded cursor-pointer hover:bg-white focus:bg-white focus:border-[#3182ce] focus:outline-none transition-colors"
@@ -757,6 +728,7 @@ export default function BillingDetailHub() {
                   <input
                     type="date"
                     min={billingStartDate || undefined}
+                    max={today}
                     value={billingEndDate}
                     onChange={handleBillingEndDateChange}
                     className="text-xs !h-6 !py-0 !px-1.5 !w-[116px] shrink-0 text-slate-700 font-medium bg-slate-50/70 border border-slate-200/80 rounded cursor-pointer hover:bg-white focus:bg-white focus:border-[#3182ce] focus:outline-none transition-colors"
@@ -1056,7 +1028,7 @@ export default function BillingDetailHub() {
                   <span className="text-slate-600 font-bold shrink-0 text-xs">申请时间</span>
                   <input
                     type="date"
-                    max={invoiceEndDate || undefined}
+                    max={invoiceEndDate || today}
                     value={invoiceStartDate}
                     onChange={handleInvoiceStartDateChange}
                     className="text-xs !h-6 !py-0 !px-1.5 !w-[116px] shrink-0 text-slate-700 font-medium bg-slate-50/70 border border-slate-200/80 rounded cursor-pointer hover:bg-white focus:bg-white focus:border-[#3182ce] focus:outline-none transition-colors"
@@ -1066,6 +1038,7 @@ export default function BillingDetailHub() {
                   <input
                     type="date"
                     min={invoiceStartDate || undefined}
+                    max={today}
                     value={invoiceEndDate}
                     onChange={handleInvoiceEndDateChange}
                     className="text-xs !h-6 !py-0 !px-1.5 !w-[116px] shrink-0 text-slate-700 font-medium bg-slate-50/70 border border-slate-200/80 rounded cursor-pointer hover:bg-white focus:bg-white focus:border-[#3182ce] focus:outline-none transition-colors"

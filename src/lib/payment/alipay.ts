@@ -140,6 +140,8 @@ export interface AlipayNotifyVerifyResult {
   outTradeNo?: string;
   tradeStatus?: string;
   totalAmount?: string;
+  /** 支付宝网关交易号（trade_no）：履约层幂等/对账/跨订单唯一约束所需的可信事实 */
+  tradeNo?: string;
 }
 
 /**
@@ -170,5 +172,6 @@ export async function verifyNotify(form: Record<string, string>): Promise<Alipay
     outTradeNo: form.out_trade_no,
     tradeStatus: form.trade_status,
     totalAmount: form.total_amount,
+    tradeNo: form.trade_no,
   };
 }

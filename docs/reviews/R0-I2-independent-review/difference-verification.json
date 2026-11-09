@@ -1,0 +1,34 @@
+{
+  "capturedAt": "2026-11-07T14:40:35.967Z",
+  "results": [
+    {
+      "file": "src/app/api/billing/estimate/route.ts",
+      "priorSha256": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+      "matched": true,
+      "description": "Only default branch adds server-side read-only flag",
+      "method": "In-memory inverse of reviewed changes; hash matched previous independent review. Not an original captured snapshot."
+    },
+    {
+      "file": "src/lib/model-registry.ts",
+      "priorSha256": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+      "matched": true,
+      "description": "Only default resolver parameter and forwarding added",
+      "method": "In-memory inverse of reviewed changes; hash matched previous independent review. Not an original captured snapshot."
+    },
+    {
+      "file": "src/lib/workspace-byo-model.ts",
+      "priorSha256": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+      "matched": true,
+      "description": "Only optional helper parameter and forwarding added",
+      "method": "In-memory inverse of reviewed changes; hash matched previous independent review. Not an original captured snapshot."
+    },
+    {
+      "file": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "priorSha256": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+      "matched": true,
+      "description": "Only raw SQL classifier/self-check added and two write assertions corrected",
+      "method": "In-memory inverse of reviewed changes; hash matched previous independent review. Not an original captured snapshot."
+    }
+  ],
+  "sourceFilesWritten": 0
+}

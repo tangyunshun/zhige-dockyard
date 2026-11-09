@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { normalizeUserRole, isAdminRole } from "@/lib/role-utils";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import {
@@ -20,6 +20,7 @@ import {
   Calendar,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useToast } from "@/components/Toast";
 import { getEmailSuggestions } from "@/lib/validators";
 import { useAppContext } from "@/contexts/AppContext";
@@ -79,7 +80,9 @@ export default function UserProfilePage() {
   const [deleteProgress, setDeleteProgress] = useState(0);
   const [hasAgreed, setHasAgreed] = useState(false);
   const [showNoticeModal, setShowNoticeModal] = useState(false);
+  useEscapeKey(showNoticeModal, () => setShowNoticeModal(false));
   const [showCheckModal, setShowCheckModal] = useState(false);
+  useEscapeKey(showCheckModal, () => setShowCheckModal(false));
   const [checkComplete, setCheckComplete] = useState(false);
   const [showStepUpModal, setShowStepUpModal] = useState(false);
   const [checkResults, setCheckResults] = useState<{ item: string; status: string; detail: string }[]>([]);
@@ -89,6 +92,7 @@ export default function UserProfilePage() {
   const [deletionDaysRemaining, setDeletionDaysRemaining] = useState<number | null>(null);
   const [cancelDeletionLoading, setCancelDeletionLoading] = useState(false);
   const [showCancelConfirmModal, setShowCancelConfirmModal] = useState(false);
+  useEscapeKey(showCancelConfirmModal, () => setShowCancelConfirmModal(false));
   const [originalPhone, setOriginalPhone] = useState("");
   const [originalEmail, setOriginalEmail] = useState("");
   const [smsCode, setSmsCode] = useState("");
@@ -113,6 +117,36 @@ export default function UserProfilePage() {
 
   const isPhoneChanged = (formData.phone || "").trim() !== (originalPhone || "").trim();
   const isEmailChanged = (formData.email || "").trim() !== (originalEmail || "").trim();
+
+  // 即时占用预检：手机号/邮箱输完即校验是否已被其他账号绑定，而非等到提交才报错
+  const phoneValueRef = useRef("");
+  const checkBindingAvailability = async (
+    type: "phone" | "email",
+    value: string,
+  ): Promise<{ available: boolean; message?: string }> => {
+    try {
+      const res = await fetch(
+        `/api/user/check-binding?type=${type}&value=${encodeURIComponent(value)}`,
+      );
+      if (!res.ok) return { available: true }; // 预检异常不阻塞输入，提交时后端仍会兜底校验
+      const data = await res.json();
+      return { available: data.available !== false, message: data.message };
+    } catch {
+      return { available: true };
+    }
+  };
+
+  /** 手机号输入完成（11 位有效且非原号码）时的即时占用校验 */
+  const verifyPhoneAvailability = (value: string) => {
+    const t = value.trim();
+    if (!/^1[3-9]\d{9}$/.test(t) || t === (originalPhone || "").trim()) return;
+    checkBindingAvailability("phone", t).then((r) => {
+      // 丢弃过期结果：用户在请求返回前又改了输入，则不覆盖当前状态
+      if (phoneValueRef.current === t && !r.available) {
+        setPhoneError(r.message || "该手机号码已被其他账号绑定，请更换其他号码");
+      }
+    });
+  };
 
   // 邮箱自动补全交互状态（严格与登录页、注册页保持统一）
   const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
@@ -381,6 +415,13 @@ export default function UserProfilePage() {
       return;
     }
 
+    // 发码前预检占用：已被其他账号绑定的号码不再下发短信，直接行内报错
+    const availability = await checkBindingAvailability("phone", targetPhone);
+    if (!availability.available) {
+      setPhoneError(availability.message || "该手机号码已被其他账号绑定，请更换其他号码");
+      return;
+    }
+
     try {
       setSendingCode(true);
       setPhoneError(null);
@@ -394,7 +435,8 @@ export default function UserProfilePage() {
       if (res.ok && (data.success || data.code)) {
         setCountdown(60);
         setSmsDebugCode(data.debugCode || null);
-        if (data.debugCode) {
+        if (data.debugCode && process.env.NODE_ENV !== "production") {
+          // KN-SEC：debugCode 仅开发环境回显，生产不下发到界面（自查清单安全红线）
           setSmsMessage(`验证码已发送：${data.debugCode}，60秒后可重新发送`);
         } else {
           setSmsMessage("验证码已发送，60秒后可重新发送");
@@ -1011,14 +1053,21 @@ export default function UserProfilePage() {
                       type="tel"
                       value={formData.phone}
                       onChange={(e) => {
-                        setFormData({ ...formData, phone: e.target.value });
+                        const val = e.target.value;
+                        phoneValueRef.current = val.trim();
+                        setFormData({ ...formData, phone: val });
                         if (phoneError) setPhoneError(null);
+                        // 输完 11 位有效手机号立即校验占用情况，无需等到提交
+                        verifyPhoneAvailability(val);
                       }}
                       onBlur={() => {
                         const val = (formData.phone || "").trim();
                         if (val && !/^1[3-9]\d{9}$/.test(val)) {
                           setPhoneError("手机号不规范，请输入规范的 11 位有效手机号码");
+                          return;
                         }
+                        // 失焦兜底：格式正确但尚未触发过即时校验（如粘贴完整号码后直接点击别处）
+                        verifyPhoneAvailability(val);
                       }}
                       className={`w-full pl-9 pr-3 py-2 text-xs rounded-lg border outline-none transition-all font-mono ${
                         phoneError
@@ -1107,7 +1156,7 @@ export default function UserProfilePage() {
                           <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                           {smsMessage}
                         </span>
-                        {smsDebugCode && (
+                        {smsDebugCode && process.env.NODE_ENV === "development" && (
                           <button
                             type="button"
                             onClick={() => {

@@ -368,54 +368,66 @@ function RegisterContent() {
       return;
     }
 
-    // 根据账号类型确定发送验证码的手机号
+    // 根据账号类型确定发送验证码的目标（手机走短信，邮箱走邮件）
     let targetPhone = "";
+    let apiEndpoint = "";
+    let requestBody: any = {};
+    let errorField: "account" | "phone" = "phone";
 
     if (accountType === "phone") {
       targetPhone = formData.account;
+      apiEndpoint = "/api/auth/send-sms";
+      requestBody = { phone: targetPhone, type: "register" };
+      errorField = "account";
     } else if (accountType === "username") {
       targetPhone = formData.phone;
+      apiEndpoint = "/api/auth/send-sms";
+      requestBody = { phone: targetPhone, type: "register" };
+      errorField = "phone";
+    } else if (accountType === "email") {
+      // 邮箱注册：向邮箱发送验证码（真实邮件通道），绑定手机号仅作账号信息留存
+      const emailValidation = validateAccount(formData.account);
+      if (!emailValidation.valid || emailValidation.type !== "email") {
+        setErrors({ account: "请输入正确的邮箱地址" });
+        return;
+      }
+      targetPhone = formData.account; // 复用下方校验变量名，实际为邮箱
+      apiEndpoint = "/api/auth/send-email-code";
+      requestBody = { email: formData.account, type: "register" };
+      errorField = "account";
     } else {
-      // 邮箱注册，应该发送邮件验证码
-      setErrors({ account: "邮箱注册功能开发中" });
+      setErrors({ account: "请先输入账号" });
       return;
     }
 
-    const phoneValidation = validatePhone(targetPhone);
-    if (!phoneValidation.valid) {
-      setErrors({
-        ...(accountType === "phone"
-          ? { account: phoneValidation.message }
-          : { phone: phoneValidation.message }),
-      });
-      return;
+    // 手机号注册 / 用户名注册需校验手机号格式；邮箱注册已在分支内校验过邮箱
+    if (accountType !== "email") {
+      const phoneValidation = validatePhone(targetPhone);
+      if (!phoneValidation.valid) {
+        setErrors({ [errorField]: phoneValidation.message });
+        return;
+      }
     }
 
-    setErrors({
-      ...(accountType === "phone"
-        ? { account: undefined }
-        : { phone: undefined }),
-    });
+    setErrors({ [errorField]: undefined });
     setSmsMessage(null); // 清除旧的消息
     setLoading(true); // 设置加载状态
 
     try {
-      const res = await fetch("/api/auth/send-sms", {
+      const res = await fetch(apiEndpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          phone: targetPhone,
-          type: "register",
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await res.json();
 
-      console.log("注册 API 响应:", res.status, data);
+      console.log("注册验证码发送响应:", res.status, data);
 
       if (res.ok) {
         setSmsCountdown(60);
         setSmsCodeSent(true); // 标记验证码已发送
+        const channelLabel = accountType === "email" ? "邮箱" : "手机";
         const timer = setInterval(() => {
           setSmsCountdown((prev) => {
             if (prev <= 1) {
@@ -430,26 +442,15 @@ function RegisterContent() {
                 `验证码已发送：${data.debugCode}，${newCount}秒后可重新发送`,
               );
             } else {
-              setSmsMessage(`验证码已发送，${newCount}秒后可重新发送`);
+              setSmsMessage(
+                `验证码已发送至${channelLabel}，请查收（${newCount}秒后可重发）`,
+              );
             }
             return newCount;
           });
         }, 1000);
       } else {
-        // 显示错误在对应字段下方
-        if (data.field === "phone") {
-          setErrors({
-            ...(accountType === "phone"
-              ? { account: data.message }
-              : { phone: data.message }),
-          });
-        } else {
-          setErrors({
-            ...(accountType === "phone"
-              ? { account: data.message }
-              : { phone: data.message }),
-          });
-        }
+        setErrors({ [errorField]: data.message || "发送失败" });
       }
     } catch (error) {
       setErrors({

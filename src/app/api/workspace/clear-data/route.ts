@@ -89,26 +89,121 @@ export async function POST(req: NextRequest) {
     });
 
     // 3. 删除归档文档资料与分析报告（含 knowledge 类型的知识库条目）
-    //    先取出物理文件路径逐一删除真实文件（uploads/assets/{workspaceId}/），
-    //    再清空记录并把空间存储用量归零，保证「出厂重置」后存储统计与磁盘一致。
+    //    [R0-J3 §三 J-CLEAR] 可恢复认领协议：
+    //    - 破坏性步骤之前持久认领（确定性 opId，物理失败/提交失败/重启后都可重试完成）；
+    //    - 物理确认删除 → 条件删行认领 → 同一事务 { 条件扣减 + 认领终态 }（元数据终态与额度释放原子绑定）；
+    //    - 扣减/提交失败：认领保持待清理（占用保持计量），重试可完成且不重复扣减；
+    //    - 扫描后新上传完整保留；共享引用（别名身份）保留文件/记录/计量。
     const removingDocs = await prisma.document.findMany({
       where: { workspaceId },
-      select: { filePath: true },
+      select: { id: true, filePath: true, fileSize: true, title: true },
     });
-    await prisma.document.deleteMany({
-      where: { workspaceId },
-    });
-    if (removingDocs.length > 0) {
-      const { deleteAssetFile } = await import("@/lib/file-store");
-      await Promise.all(removingDocs.map((d) => deleteAssetFile(d.filePath)));
-    }
+    const { deleteAssetFile } = await import("@/lib/file-store");
+    const { claimObjectCleanup, finalizeObjectCleanup, countOtherReferences, objectPathAliases } = await import("@/lib/storage-quota");
+    let clearedCount = 0;
+    const failedObjects: Array<{ id: string; title: string | null; reason: string }> = [];
+    let sharedRefKept = 0;
+    let concurrentSkipped = 0;
+    let driftSkipped = 0;
+    let pendingRecovered = 0;
+    let pendingStill = 0;
+    let recoveryCheckFailed = false;
+    let recoveryCheckFailureCount = 0;
+    const claimFailureIds: string[] = [];
+    // 0. 恢复重试：上次运行/删除遗留的待清理认领 → 终结释放（条件扣减 + 终态同一事务，幂等）
     try {
-      await prisma.workspacequota.updateMany({
-        where: { workspaceId },
-        data: { storageUsed: BigInt(0) },
+      const { prisma: prismaLib } = await import("@/lib/prisma");
+      const pendingClaims = await (prismaLib as any).storageoperation.findMany({
+        where: { workspaceId, opType: "RELEASE", status: "PENDING_CLEANUP" },
+        select: { opId: true, filePath: true, bytes: true },
       });
-    } catch (storageErr) {
-      console.error(`[clear-data] 重置空间存储用量失败:`, storageErr);
+      for (const claim of pendingClaims) {
+        try {
+          // [R0-J4 J3-01] 恢复段删除前先复核共享引用：仍被其他资料引用的对象保留文件/记录/计量，计入 sharedRefKept
+          const stillReferenced = await countOtherReferences(workspaceId, claim.filePath, []);
+          if (stillReferenced > 0) {
+            sharedRefKept++;
+            continue;
+          }
+          const fileDel = await deleteAssetFile(claim.filePath, workspaceId);
+          if (!fileDel.ok) { pendingStill++; continue; } // 物理仍在且删除失败：保持待清理（占用保持计量）
+          const fin = await finalizeObjectCleanup(workspaceId, claim.opId, Number(claim.bytes ?? 0));
+          if (fin.drift) { driftSkipped++; continue; }
+          if (fin.conflicted) { pendingStill++; continue; } // 大小矛盾：保留占用与认领待人工核实
+          pendingRecovered++;
+        } catch (claimErr) {
+          // [R0-J4 J3-04] 单条恢复失败必须如实记录为待处理，不得编造 0；保留占用与认领待恢复
+          console.warn("[clear-data] 单条待清理认领恢复失败（保持待处理）:", (claimErr as Error)?.message);
+          pendingStill++;
+        }
+      }
+    } catch (recoverErr) {
+      // [R0-J5 J3-04] 查询失败 = 状态未知：只记「检查失败次数」，不递增「认领条数」。
+      // 未知不是 0 也不是 1；调用方须能区分「确认没有 pending」与「未查到事实」。
+      console.warn("[clear-data] 待清理认领恢复检查失败（数量未知）:", (recoverErr as Error)?.message);
+      recoveryCheckFailureCount++;
+      recoveryCheckFailed = true;
+    }
+    for (const d of removingDocs) {
+      // 共享引用保护（别名一致身份）：同对象仍有其他在库文档引用 → 保留文件/记录/计量
+      if (d.filePath) {
+        const stillReferenced = await countOtherReferences(workspaceId, d.filePath, [d.id]);
+        if (stillReferenced > 0) {
+          sharedRefKept++;
+          continue;
+        }
+      }
+      // 1. 破坏性步骤之前持久认领：失败 → 中止本对象（记录/文件/占用全保留，如实计入失败）
+      let claim: Awaited<ReturnType<typeof claimObjectCleanup>>;
+      try {
+        // [R0-J5 J3-03] 传原始 fileSize：未知/非法/负数与真实 0 分开，不得用 ?? 0 把 null 伪装成可信零字节
+        claim = await claimObjectCleanup(workspaceId, d.filePath, d.fileSize, { userId, documentId: d.id, source: "clear-data" });
+      } catch (claimErr) {
+        if (claimErr instanceof Error && (claimErr as any).code) {
+          failedObjects.push({ id: d.id, title: d.title ?? null, reason: "清理认领持久化失败（" + ((claimErr as any).code || "未知") + "），记录与占用已保留" });
+          claimFailureIds.push(d.id);
+          continue;
+        }
+        throw claimErr;
+      }
+      // [R0-J5 J3-03] blocked 必须在任何文件删除/最后元数据删除之前停止本对象，
+      // 保留原资料/文件/占用/恢复事实，并给出实际阻断原因（不靠后续 finalize 漂移补救）
+      if (claim.state === "blocked") {
+        failedObjects.push({ id: d.id, title: d.title ?? null, reason: "清理大小未知或与历史认领矛盾（" + (claim.reason ?? "未知原因") + "）：资料、文件、占用与认领均已保留，请人工核实" });
+        continue;
+      }
+      if (claim.state === "already-released") {
+        // 此前待清理已终结：记录若仍在则只删记录，不再扣减
+        const claimed = await prisma.document.deleteMany({ where: { id: d.id, workspaceId } });
+        if (claimed.count === 1) clearedCount++;
+        else concurrentSkipped++;
+        continue;
+      }
+      // 2. 物理删除（数据库短事务之外）：失败保留记录与计量（认领待清理，可重试）
+      const fileDel = await deleteAssetFile(d.filePath, workspaceId);
+      if (!fileDel.ok) {
+        console.error(`[clear-data] 物理文件删除失败，保留记录与计量: ${d.id}`, fileDel.error);
+        failedObjects.push({ id: d.id, title: d.title ?? null, reason: "物理文件删除失败（" + (fileDel.error || "未知原因") + "）" + (fileDel.ambiguous ? "（多候选位置待人工核实）" : "") });
+        continue;
+      }
+      // 3. 条件删行认领：count=1 才由本次清空负责释放；count=0 只说明本请求没删到资料
+      const claimed = await prisma.document.deleteMany({ where: { id: d.id, workspaceId } });
+      if (claimed.count !== 1) {
+        // [R0-J5 J3-02] 曾创建认领不代表拥有独占执行权，count=0 也不证明对方已完成扣量；
+        // 不关闭共用认领，保留 PENDING_CLEANUP 由完成方/受授权恢复者推进到真实终态。
+        concurrentSkipped++;
+        pendingStill++; // 未核实的共用认领按待处理如实计入，不能一律等同成功
+        continue;
+      }
+      // 4. 终结：同一事务 { 条件扣减 + 认领 RELEASED 终态 }；漂移/提交失败 → 认领保持待清理（占用保留，重试可完成）
+      const fin = claim.claimOpId
+        ? await finalizeObjectCleanup(workspaceId, claim.claimOpId, d.fileSize)
+        : { released: false, drift: false, finalized: true, alreadyReleased: false };
+      if (fin.drift) {
+        driftSkipped++;
+        continue;
+      }
+      clearedCount++;
     }
 
     // 4. 删除该空间的历史操作审计日志 (确保空间彻底还原为物理出厂初始状态)
@@ -138,10 +233,71 @@ export async function POST(req: NextRequest) {
     const { clearServerCache } = await import("@/lib/serverCache");
     clearServerCache();
 
+    // [R0-J6 J3-04] pendingCount 以最终可核实的持久事实为准：本授权空间中仍未终结的
+    // RELEASE/PENDING_CLEANUP 认领，按唯一 opId 计数（同一认领被恢复循环/资料循环碰到不重复计）。
+    // pendingStill 仅为本请求已知逐项失败/未完成数，不代表全部尚存认领。
+    // 最终核实本身失败 = 数量未知：不掉成 known=true/count=0，也不伪装完全完成；失败如实可诊断。
+    let pendingCountKnown = false;
+    let pendingCount: number | null = null;
+    if (!recoveryCheckFailed) {
+      try {
+        const { prisma: prismaLib } = await import("@/lib/prisma");
+        const remaining = await (prismaLib as any).storageoperation.findMany({
+          where: { workspaceId, opType: "RELEASE", status: "PENDING_CLEANUP" },
+          select: { opId: true },
+        });
+        pendingCount = new Set(remaining.map((r: any) => r.opId)).size;
+        pendingCountKnown = true;
+      } catch (finalCheckErr) {
+        console.warn("[clear-data] 待清理认领最终核实失败（数量未知）:", (finalCheckErr as Error)?.message);
+        recoveryCheckFailureCount++;
+        recoveryCheckFailed = true;
+      }
+    }
+
+    // [R0-J3 §三] 结果如实呈现：只有没有任何保留/失败/待处理/未知/并发跳过时才可称为出厂重置完成
+    // [R0-J5 J3-02] concurrentSkipped 说明共用认领完成状态未核实，不得报完整出厂重置
+    // [R0-J6 J3-04] 仍有尚未终结认领时也不得报完整出厂重置
+    const hasRetention = failedObjects.length > 0 || driftSkipped > 0 || sharedRefKept > 0 || pendingStill > 0 || claimFailureIds.length > 0 || recoveryCheckFailed || concurrentSkipped > 0 || (pendingCount !== null && pendingCount > 0);
+    const retentionParts: string[] = [];
+    if (failedObjects.length > 0) retentionParts.push(`${failedObjects.length} 个对象物理删除失败（记录与计量已保留，可重试）`);
+    if (claimFailureIds.length > 0) retentionParts.push(`${claimFailureIds.length} 个对象清理认领持久化失败（记录与计量已保留）`);
+    if (driftSkipped > 0) retentionParts.push(`${driftSkipped} 个对象释放漂移（占用保留待人工核对，待清理认领已登记）`);
+    if (sharedRefKept > 0) retentionParts.push(`${sharedRefKept} 个对象因共享引用保留（文件/记录/计量均保留）`);
+    // [R0-J5 J3-02/04] 并发跳过是「完成状态待核实」，不是已完成的成功；查询失败只说数量未知，不编造条数
+    if (concurrentSkipped > 0) retentionParts.push(`${concurrentSkipped} 个对象因并发删除跳过（共用认领完成状态待核实，占用保持计量）`);
+    if (pendingStill > 0) retentionParts.push(`${pendingStill} 条历史待清理认领仍未完成（占用保持计量）`);
+    // [R0-J6 J3-04] 尚存认领总数以最终核实为准；不计入 pendingStill 的保留事实也如实提示
+    if (pendingCount !== null && pendingCount > pendingStill) retentionParts.push(`当前仍有 ${pendingCount} 条清理认领尚未终结（占用保持计量，请稍后处理）`);
+    if (recoveryCheckFailed) retentionParts.push(`恢复检查失败，待清理数量未知（占用保持计量，请稍后核对）`);
+    const retentionNote = retentionParts.length > 0 ? `注意：${retentionParts.join("；")}。` : "";
+    const recoveredNote = pendingRecovered > 0 ? `本次已恢复完成 ${pendingRecovered} 条历史待清理认领。` : "";
+
     return NextResponse.json({
       success: true,
-      message: "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配",
+      message: hasRetention
+        ? `空间已重置：${clearedCount} 个资料对象已彻底清除，但尚有未完成清理项。${recoveredNote}${retentionNote}`
+        : `个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配。${recoveredNote}`,
       resetAt: new Date().toISOString(),
+      storage: {
+        clearedCount,
+        failedCount: failedObjects.length,
+        failedObjects,
+        sharedRefKept,
+        concurrentSkipped,
+        driftSkipped,
+        pendingRecovered,
+        pendingStill,
+        // [R0-J5 J3-04] 结构化未知状态：调用方无需解析中文即可区分「确认没有 pending」与「未查到事实」
+        recoveryCheckFailed,
+        recoveryCheckFailureCount,
+        // [R0-J6 J3-04] pendingCount = 本空间尚未终结的唯一认领数（最终只读核实）；
+        // pendingStillScope 说明 pendingStill 只是本请求已知逐项失败数，不代表全部尚存认领
+        pendingStillScope: "本请求已知逐项失败/未完成数，非全部尚存认领",
+        pendingCountKnown,
+        pendingCount,
+        claimFailureCount: claimFailureIds.length,
+      },
     });
   } catch (error) {
     console.error("Clear workspace data error:", error);

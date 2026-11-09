@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
+import { PROTECTED_ACTION_PATTERN } from "@/lib/log-protection";
 
 // 全系统最完整的操作类型映射（中文友好名称与语义徽章样式）
 const ACTION_META: Record<string, { label: string; color: string; category: string }> = {
@@ -201,6 +202,8 @@ export async function GET(request: NextRequest) {
     const timeRange = searchParams.get("timeRange") || "all";
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+    // 空间维度筛选：all=全部；personal=无空间归属（个人空间动作）；否则为具体 workspaceId
+    const workspaceFilterParam = (searchParams.get("workspaceId") || "all").trim();
 
     // 规定生命周期：最长保留 1 年（365天），超期流水自动出清
     const oneYearAgo = new Date();
@@ -218,6 +221,11 @@ export async function GET(request: NextRequest) {
       userId,
       createdAt: { gte: oneYearAgo },
     };
+
+    // 空间维度筛选：仅看个人空间动作，或某个具体企业空间内的动作
+    if (workspaceFilterParam && workspaceFilterParam !== "all") {
+      where.workspaceId = workspaceFilterParam === "personal" ? null : workspaceFilterParam;
+    }
 
     // 模块分类过滤（精准覆盖全部 10+ 业务模块）
     if (category !== "ALL") {
@@ -436,6 +444,39 @@ export async function GET(request: NextRequest) {
       }),
     ]);
 
+    // 空间维度信息：用户作为所有者或被授权成员的全部空间，用于筛选下拉与每条日志的身份标注
+    // （区分「个人空间（无空间归属）」与企业空间内「所有者/管理员/协同者」视角）
+    const ownedWs = await prisma.workspace.findMany({
+      where: { ownerId: userId },
+      select: { id: true, name: true },
+    });
+    const memberRows = await prisma.workspacemember.findMany({
+      where: { userId },
+      select: { workspaceId: true, role: true },
+    });
+    const memberWs = memberRows.length
+      ? await prisma.workspace.findMany({
+          where: { id: { in: memberRows.map((m) => m.workspaceId) } },
+          select: { id: true, name: true },
+        })
+      : [];
+    const memberWsNameMap = new Map(memberWs.map((w) => [w.id, w.name]));
+    const wsMap = new Map<string, { name: string; myRole: string | null }>();
+    for (const w of ownedWs) wsMap.set(w.id, { name: w.name, myRole: "OWNER" });
+    for (const m of memberRows) {
+      if (!wsMap.has(m.workspaceId)) {
+        wsMap.set(m.workspaceId, {
+          name: memberWsNameMap.get(m.workspaceId) || "未命名空间",
+          myRole: m.role,
+        });
+      }
+    }
+    const workspaces = Array.from(wsMap.entries()).map(([id, v]) => ({
+      id,
+      name: v.name,
+      myRole: v.myRole,
+    }));
+
     // 格式化输出数据：消除英文代码，全面转换为中文
     const activities = logs.map((log) => {
       let parsedDetails: any = null;
@@ -493,15 +534,66 @@ export async function GET(request: NextRequest) {
         resourceLabel,
         resourceId: log.resource,
         workspaceId: log.workspaceId,
+        workspaceName: log.workspaceId ? wsMap.get(log.workspaceId)?.name ?? null : null,
+        myRole: log.workspaceId ? wsMap.get(log.workspaceId)?.myRole ?? null : null,
         ipAddress: cleanIp,
         createdAt: log.createdAt.toISOString(),
         metadata: parsedDetails,
       };
     });
 
+    // ID→名称解析：把附带信息里裸露的内部编号翻译成人能看懂的名称
+    // （用户 cuid → 姓名/邮箱；ws-xxx → 空间名称），遵循「名称为主标识、编号弱化」口径
+    const NAME_USER_KEYS = ["userId", "targetUserId", "reviewer", "operator", "subUserId", "fromOwnerId", "toOwnerId"];
+    const NAME_WS_KEYS = ["workspaceId", "viewingWorkspaceId", "billingWorkspaceId"];
+    const isCuid = (v: unknown) => typeof v === "string" && /^cm[a-z0-9]{20,}$/.test(v);
+    const isWsId = (v: unknown) => typeof v === "string" && /^ws-[a-z0-9-]+$/.test(v);
+
+    const userIds = new Set<string>();
+    const metaWsIds = new Set<string>();
+    for (const a of activities) {
+      const meta = a.metadata;
+      if (!meta || typeof meta !== "object") continue;
+      for (const [k, v] of Object.entries(meta)) {
+        if (NAME_USER_KEYS.includes(k) && isCuid(v)) userIds.add(v as string);
+        if (NAME_WS_KEYS.includes(k) && isWsId(v)) metaWsIds.add(v as string);
+      }
+    }
+    const unknownWsIds = [...metaWsIds].filter((id) => !wsMap.has(id));
+    const [metaUsers, extraWsRows] = await Promise.all([
+      userIds.size
+        ? prisma.user.findMany({ where: { id: { in: [...userIds] } }, select: { id: true, name: true, email: true } })
+        : Promise.resolve([] as Array<{ id: string; name: string | null; email: string | null }>),
+      unknownWsIds.length
+        ? prisma.workspace.findMany({ where: { id: { in: unknownWsIds } }, select: { id: true, name: true } })
+        : Promise.resolve([] as Array<{ id: string; name: string | null }>),
+    ]);
+    const resolvedNames: Record<string, string> = {};
+    for (const u of metaUsers) resolvedNames[u.id] = u.name || u.email || "已注销用户";
+    for (const w of extraWsRows) resolvedNames[w.id] = w.name || "未命名空间";
+    for (const [id, v] of wsMap) if (v.name) resolvedNames[id] = v.name;
+
+    // 直接把附带信息里的「人 / 空间」内部编号替换为真实名称写回返回数据，
+    // 前端无需再依赖附加映射即可显示姓名；原始编号另存 metadataRaw 供「原始 JSON / 复制」审计使用
+    for (const a of activities) {
+      const meta = a.metadata;
+      const raw = meta && typeof meta === "object" ? meta : null;
+      const humanized: Record<string, any> = raw ? { ...raw } : meta;
+      if (raw) {
+        for (const [k, v] of Object.entries(raw)) {
+          if ((NAME_USER_KEYS.includes(k) || NAME_WS_KEYS.includes(k)) && typeof v === "string" && resolvedNames[v]) {
+            humanized[k] = resolvedNames[v];
+          }
+        }
+      }
+      (a as any).metadata = humanized;
+      (a as any).metadataRaw = raw;
+    }
+
     return NextResponse.json({
       success: true,
       data: activities,
+      workspaces,
       pagination: {
         page,
         limit,
@@ -527,12 +619,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// 安全敏感动作关键字：命中这些关键字的审计日志不允许用户自行删除
-// （登录/密码/支付/退款/转让/注销/踢出/二次验证等属合规溯源记录，用户侧只读）
-const PROTECTED_ACTION_PATTERN =
-  /password|login|logout|pay|recharge|refund|transfer|deletion|delete[-_ ]?account|kick|stepup|verify/i;
-
-// 过滤掉受保护日志，返回可删除的 id 集合
+// 过滤掉受保护日志（合规溯源记录：登录/密码/支付/退款/转让/注销等），返回可删除的 id 集合
 async function filterDeletable(userId: string, candidateIds: string[]) {
   if (candidateIds.length === 0) return { deletable: [] as string[], protectedCount: 0 };
   const rows = await prisma.operationlog.findMany({

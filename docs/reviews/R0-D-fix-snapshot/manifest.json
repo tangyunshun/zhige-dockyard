@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-11-07T00:32:57+08:00",
+  "purpose": "R0-D：原方案 F07 人工退款权限与错误发放止损（唯一任务）",
+  "note": "改动前保存的真实原始副本在 frozen-source/，结束态在 end-source/；两者加 .frozen 后缀以退出 tsconfig 的 **/*.ts(x) 编译收集，内容逐字节未变。frozen-source 的 5 个 SHA256 与 R0-C 独立审核 next-refund-verification.json 的 sha256 字段逐项一致。历史报告、审核材料、历史反例脚本均未改动。",
+  "gitHead": "761684be8d5661d6ed288f3b91d1fedfdc795a75",
+  "gitStatusAtStart": { "total": 118, "modified": 104, "untracked": 14 },
+  "startSource": "docs/reviews/R0-D-fix-snapshot/frozen-source/",
+  "endSource": "docs/reviews/R0-D-fix-snapshot/end-source/",
+  "files": [
+    { "path": "src/app/api/admin/refund-requests/[id]/resolve/route.ts", "startSha256": "61c31ee193dc189ae98e2bb4d9b8d478302cc968b551079d8ced3c61aa3e9a2b", "endSha256": "3bc318e1f5345b37215ebf8c7e8dee988d1285f9cc8c766deb371e4947380ce3", "diff": "+49 / -79" },
+    { "path": "src/app/api/admin/refund-requests/route.ts", "startSha256": "24c2fc56bdcf80eef5c26d6a7108170df872ac71731595ff5ca62e57306312cd", "endSha256": "76f3a31b70f70d9c9d7d6dca7bb9d51e92b40c2fa7faa9e9787975822ae33188", "diff": "+9 / 0" },
+    { "path": "src/app/admin/finance/refund-requests/page.tsx", "startSha256": "a9e97fb623a44cfcb78f3764c666d84ccdf4aa918471abb79cc6ab871b26d623", "endSha256": "d224befcd96dfbb401b7317863a0f29f842b48cb2368320ac43de1a5b0de7c72", "diff": "+52 / -36" },
+    { "path": "src/app/api/user/refund-requests/route.ts", "startSha256": "b9513aff0e422794710fc2fab600b6aa0c6807e05e748fd2b8aec074739dc04c", "endSha256": "ab996378759b65b9fe23267fc86d8903f4c8716b049d9328b5e79f445bdc9f82", "diff": "+9 / 0" },
+    { "path": "src/components/UserRefundRequests.tsx", "startSha256": "b51c14ad9be5bff5f75084ac1ed4a254378215c707ac5915f5988c5d8867bfae", "endSha256": "583d3bee77d466b9f28aa135048407f9af9210a9fcccb0a527e79665eb3d7c6a", "diff": "+16 / -10" }
+  ],
+  "newFiles": [
+    "src/app/api/__tests__/r0d-refund-approval.test.ts",
+    "docs/reviews/R0-D-fix-report.md",
+    "docs/reviews/R0-D-fix-snapshot/manifest.json",
+    "docs/reviews/R0-D-fix-snapshot/verify-r0d-pages.cjs",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/*",
+    "docs/reviews/R0-D-fix-snapshot/end-source/*"
+  ],
+  "permissionContract": {
+    "key": "order:refund_approve",
+    "catalogSource": "src/app/api/admin/permissions/route.ts:423 (level=high, 终审并将资金原路退回)",
+    "readOnlyKey": "order:read (level=read, 查看支付订单流水)",
+    "checkedBefore": "读取指定申请与任何业务写",
+    "autoGrant": false,
+    "dbPermissionConfigChanged": false
+  },
+  "pausedContract": {
+    "code": "MANUAL_REFUND_APPROVAL_PAUSED",
+    "httpStatus": 409,
+    "success": false,
+    "message": "人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包",
+    "rejectedBefore": "读取指定申请、grantPoints、钱包/池/桶/流水/账单写、APPROVED 状态变更、成功通知",
+    "configSwitchAdded": false,
+    "bypassEndpointAdded": false
+  },
+  "protectedUnchanged": {
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e…（grantPoints/refundConsumedPoints/自动退款恢复队列零差量）",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c…",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18…",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc59…",
+    "src/lib/order-expiry.ts": "15b9395be8037720…",
+    "docs/reviews/R0-C-independent-review/verify-next-refund.cjs": "d208b260a01b0993…（未运行、未修改）"
+  },
+  "reproduction": {
+    "method": "把 3 个后端文件临时换成 frozen-source 原始副本，在完全相同的 D01—D08 断言上跑；finally 恢复并逐项校验哈希",
+    "startCopyResult": "11 failed / 5 passed, exit 1",
+    "fixedResult": "16 passed, exit 0",
+    "restoredAll": true,
+    "workspaceRollbackPerformed": false
+  },
+  "isolation": "内存 Prisma / 权限 / 通知 / 审计夹具；vm 转译执行真实组件；零真实库写入、迁移、清账、补账、退款、支付、模型调用、部署、依赖下载。"
+}

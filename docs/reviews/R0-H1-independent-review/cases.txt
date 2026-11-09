@@ -1,0 +1,64 @@
+// Expected residual-finding assertions are reproduction evidence, not acceptance.
+import { afterEach, afterAll } from "vitest";
+import fsReview from "node:fs";
+import cryptoReview from "node:crypto";
+const evidence: Array<Record<string,unknown>>=[];
+beforeEach(()=>{vi.stubEnv("NODE_ENV","test");vi.stubEnv("TEST_TOKEN_SETTLEMENT_ENABLED","false");vi.stubEnv("MODEL_MAX_OUTPUT_TOKENS","2000");});
+afterEach(()=>vi.unstubAllEnvs());
+describe("independent bounded R0-H1 review",()=>{
+  it("arithmetic: exact 100/101/150/200/201 under current byte formula",async()=>{
+    const {decidePlatformModelCostAdmission:decide}=await import("@/lib/model-cost-admission");
+    const results=[];
+    for(const points of [100,101,150,200,201]){
+      const d=decide({pricing:trustedPricing({costInputMicrosPerMillion:points*10000,costOutputMicrosPerMillion:0}),systemPrompt:"x".repeat(1000000-128),userPrompt:"",maxOutputTokens:0,budgetPoints:100,markupRateBps:0});
+      expect(d.allowed).toBe(points===100);if(d.allowed){expect(d.inputTokenUpperBound).toBe(1000000);expect(d.conservativeCostPoints).toBe(100);}results.push({points,decision:d});
+    }
+    evidence.push({scenario:"arithmetic_only",results,limitation:"Arithmetic correctness does not certify the protocol allowance or tokenizer applicability."});
+  });
+  it("H-BOUND remains: no model/protocol-specific bound evidence, yet all protocols are admitted",async()=>{
+    const {decidePlatformModelCostAdmission:decide}=await import("@/lib/model-cost-admission");
+    const rows=[];
+    for(const protocol of ["OPENAI_COMPATIBLE","ANTHROPIC","GEMINI"]){
+      seed();fx.pricing=trustedPricing({costInputMicrosPerMillion:1000000,costOutputMicrosPerMillion:1000});
+      const deps=makeDeps();
+      (deps.resolveDefaultDeployment as any).mockResolvedValue({deploymentId:"dep-1",providerId:"prov-1",modelId:"model-1",upstreamModelId:"model-1",protocol,contextLimit:0,pricing:fx.pricing});
+      const r=await call({},deps);expect(r.status).toBe(200);expect(fx.adapterExecuteCalls).toHaveLength(1);expect(fx.consumeCalls).toHaveLength(1);
+      const request=fx.adapterExecuteCalls[0],d=decide({pricing:fx.pricing,systemPrompt:request.systemPrompt,userPrompt:request.userPrompt,maxOutputTokens:request.maxOutputTokens,budgetPoints:100,markupRateBps:0});
+      expect(d.allowed).toBe(true);const bytes=Buffer.byteLength(request.systemPrompt,"utf8")+Buffer.byteLength(request.userPrompt,"utf8");
+      if(d.allowed){expect(d.inputTokenUpperBound).toBe(bytes+128);expect(d.inputBoundSource).toBe("UTF8_BYTES_PLUS_FRAMING");}
+      rows.push({protocol,contextLimit:0,httpStatus:r.status,consumeCalls:fx.consumeCalls.length,executeCalls:fx.adapterExecuteCalls.length,promptBytes:bytes,decision:d});
+    }
+    evidence.push({id:"H-BOUND-REMAINDER",scenario:"protocol_and_verified_bound_not_required",rows,limitation:"Adapter creation/execution and registry are isolated IO. No real provider token counts or financial loss claimed. Shows handler cannot reject a missing/unsupported applicability proof because the formula is unconditional."});
+  });
+  it("unknown rules/cache costs now reject, empty rules and explicit free retain positive controls",async()=>{
+    const rows=[];
+    for(const patch of [{rules:{unexplainedCost:{amountMicros:2000000}}},{costCacheWriteMicrosPerMillion:1000}]){
+      seed();fx.pricing=trustedPricing(patch);const r=await call();expect(r.status).toBe(422);expect(r.body.code).toBe("MODEL_COST_NOT_TRUSTWORTHY");expect(fx.consumeCalls).toHaveLength(0);expect(fx.holdCalls).toHaveLength(0);expect(fx.adapterExecuteCalls).toHaveLength(0);expect(h.tables.componenttask.size).toBe(0);rows.push({patch,status:r.status,code:r.body.code});
+    }
+    seed();fx.pricing=trustedPricing({priceStatus:"FREE",costInputMicrosPerMillion:0,costOutputMicrosPerMillion:0,rules:{}});const free=await call();expect(free.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(100);
+    evidence.push({scenario:"rules_cache_and_free",rows,freeStatus:free.status});
+  });
+  it("actual modes: compatibility is guarded; synthetic ready settlement and BYOK avoid that fixed guard",async()=>{
+    fx.pricing=trustedPricing({costInputMicrosPerMillion:2000000000,costOutputMicrosPerMillion:0,priceSource:"VERIFIED"});
+    const compat=await call({inputMaterial:"Ж".repeat(5000)});expect(compat.status).toBe(400);expect(fx.adapterExecuteCalls).toHaveLength(0);
+    seed();vi.stubEnv("TEST_TOKEN_SETTLEMENT_ENABLED","true");h.tables.systemconfig.set("mode",{key:"billing.settlementMode",value:"ALL"});
+    fx.pricing=trustedPricing({costInputMicrosPerMillion:2000000000,costOutputMicrosPerMillion:0,priceSource:"VERIFIED",priceInputMicrosPerMillion:null,priceOutputMicrosPerMillion:null});
+    const {evaluateSettlementReadiness}=await import("@/lib/model-pricing");expect(evaluateSettlementReadiness(fx.pricing,{settlementFeatureEnabled:true})).toBe(true);
+    const settlement=await call({inputMaterial:"Ж".repeat(5000)});expect([200,202]).toContain(settlement.status);expect(fx.holdCalls).toHaveLength(1);expect(fx.consumeCalls).toHaveLength(0);expect(fx.adapterExecuteCalls).toHaveLength(1);
+    const settlementCounters={hold:fx.holdCalls.length,execute:fx.adapterExecuteCalls.length};
+    seed();vi.stubEnv("TEST_TOKEN_SETTLEMENT_ENABLED","false");estimatePoints.mockResolvedValue({basis:"CONVERTED_PRICE",points:7,snapshot:{fixture:true},blockedReason:null} as any);fx.pricing=trustedPricing({costInputMicrosPerMillion:2000000000});
+    const byo=await call({deploymentId:"byo:w1"});expect(byo.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(7);
+    evidence.push({scenario:"mode_matrix",compatStatus:compat.status,settlementStatus:settlement.status,settlementCounters,byoStatus:byo.status,byoPoints:fx.consumeCalls[0].points,limitation:"Only synthetic test-only flag and in-memory config; no production switch/actual hold/provider."});
+  });
+  it("normal request and upstream failure keep task and refund invocation behavior",async()=>{
+    const success=await call();expect(success.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(100);expect([...h.tables.componenttask.values()][0].status).toBe("SUCCESS");
+    seed();fx.adapterBehavior="throw";const failure=await call();expect(failure.status).toBe(502);expect(fx.refundCalls).toHaveLength(1);expect([...h.tables.componenttask.values()][0].status).toBe("FAILED");
+    evidence.push({scenario:"task_and_refund_calls",successStatus:success.status,failureStatus:failure.status,refundCalls:fx.refundCalls.length,limitation:"Accounting functions are IO spies, not real source-ledger verification."});
+  });
+});
+afterAll(()=>{
+  if(evidence.length!==5)return;
+  const files=["src/app/api/studio/handler.ts","src/lib/model-cost-admission.ts","src/app/api/__tests__/r0h-cost-admission.test.ts","src/lib/model-adapter.ts","src/lib/model-pricing.ts","src/lib/token-settlement-service.ts","src/components/WorkspaceInternalLayoutV3.tsx","tsconfig.json"];
+  const sha256=Object.fromEntries(files.map(p=>[p,cryptoReview.createHash("sha256").update(fsReview.readFileSync(p)).digest("hex")]));
+  fsReview.writeFileSync("docs/reviews/R0-H1-independent-review/handler-verification.json",JSON.stringify({capturedAt:new Date().toISOString(),verdict:"NOT ACCEPTED: one original H-BOUND remainder (unconditional UTF8 + unverified 128 framing for every model/protocol)",evidence,sha256,isolation:"Actual handler/helper; copied closed-IO fixtures, no business-source edits/DB/network/paid calls. Passing expected-defect assertions means reproduction, not acceptance."},(_k,v)=>typeof v==="bigint"?v.toString():v,2));
+});

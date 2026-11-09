@@ -1,0 +1,15 @@
+{
+  "capturedAt": "2026-11-08T09:00:55.662Z",
+  "mode": "actual Studio handler/storage service/parser/real local worker; Prisma, auth, disk, credit and external IO isolated; shared admission explicitly refuses",
+  "observations": [
+    {
+      "name": "studio-upload-admission-bypass",
+      "status": 200,
+      "acquireCalls": 0,
+      "workerStarts": 1,
+      "documents": 1,
+      "used": "47",
+      "responseSuccess": true
+    }
+  ]
+}

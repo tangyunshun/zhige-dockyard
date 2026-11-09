@@ -1852,6 +1852,17 @@ export default function AdminModelsPage() {
     if (!pricePanelId) return;
     const errs: Record<string, string> = {};
     if (!periodForm.name.trim()) errs.name = "时段名称不能为空";
+    // 区间顺序校验（与后端口径一致）：开始时间不能晚于结束时间；开始日期不能晚于结束日期
+    const sTime = periodForm.startTime.trim();
+    const eTime = periodForm.endTime.trim();
+    const sDate = periodForm.startDate.trim();
+    const eDate = periodForm.endDate.trim();
+    if (sTime && eTime && sTime >= eTime) errs.startTime = "开始时间不能晚于结束时间";
+    if (sDate && eDate && sDate > eDate) errs.startDate = "开始日期不能晚于结束日期";
+    if (
+      sDate && eDate && sDate === eDate &&
+      sTime && eTime && sTime >= eTime
+    ) errs.startTime = "同一天内开始时间不能晚于结束时间";
     setPeriodErrors(errs);
     if (Object.keys(errs).length) return;
     const body: Record<string, unknown> = {

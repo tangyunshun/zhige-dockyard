@@ -1,0 +1,138 @@
+{
+  "capturedAt": "2026-11-08T06:06:44.078Z",
+  "startCopies": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "hash": "222e56f4474b4688d85e5ad824f2320a49d4ef6f939c343518f686bf215fc10d"
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "hash": "b74714f7fd1b99355b2fd0fa55f5a440a914f609d896d2067b3c6038952f8f36"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "hash": "78e7775f6107d492974562aef524fcf087ff45bd351b349067e5293011ef7ffc"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "hash": "82b92abaae2f6dc7df4135796c2ec21e824fbc964a206d8967d8c52089f7afea"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "hash": "914825d751389cefd496f6765b8fe3b6e4fdd3ec944663acfd03ec70216e7c4f"
+    }
+  ],
+  "endCopies": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "hash": "b98803dff5a8386f0984efa48f1deeeeb26a5aaf7776aa7e868e2fb60de3e803"
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "hash": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "hash": "adc29f8718c4f0a2f271721e0c4f3fbaf4e7d12e97d42bcaac3ca24c6c62fc18"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "hash": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "hash": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "hash": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47"
+    }
+  ],
+  "changed": [
+    "src/lib/storage-quota.ts",
+    "src/app/api/studio/handler.ts",
+    "src/app/api/workspace/clear-data/route.ts",
+    "src/app/api/__tests__/r0j2-storage-close.test.ts",
+    "src/app/api/__tests__/r0j4-storage-fixes.test.ts"
+  ],
+  "unchanged": [
+    "src/lib/file-store.ts",
+    "src/components/WorkspaceInternalLayoutV3.tsx",
+    "prisma/schema.prisma",
+    "src/app/api/__tests__/r0j-storage.test.ts",
+    "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+    "src/app/api/workspace/assets/[assetId]/file/route.ts",
+    "src/app/api/workspace/assets/[assetId]/preview/route.ts",
+    "src/app/api/billing/estimate/route.ts",
+    "src/lib/model-registry.ts",
+    "src/lib/workspace-byo-model.ts",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts",
+    "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+    "src/app/admin/models/byok-service-rate.tsx",
+    "src/app/api/billing/byok-preview/route.ts",
+    "src/components/studio/WorkspaceModelPolicyTab.tsx",
+    "src/lib/model-cost-admission.ts",
+    "src/app/api/cron/workspace-subscription-expire/route.ts",
+    "src/app/api/system/maintenance/route.ts",
+    "src/lib/maintenance.ts",
+    "src/lib/credit-service.ts",
+    "src/lib/payment-gateway.ts",
+    "src/lib/payment/fulfill.ts",
+    "src/lib/payment/seat-addon-fulfill.ts",
+    "src/lib/security.ts",
+    "src/middleware.ts",
+    "src/app/admin/maintenance/page.tsx",
+    "src/lib/point-rate.ts",
+    "src/lib/component-cost-floor.ts",
+    "src/lib/model-pricing.ts",
+    "src/lib/model-adapter.ts",
+    "src/lib/billing/billing-config.ts",
+    "src/lib/billing/pricing-center.ts",
+    "src/lib/quota-cycle.ts",
+    "src/app/api/workspace/byo-model/test/route.ts",
+    "src/app/knowledge/page.tsx"
+  ],
+  "sha256": {
+    "src/lib/storage-quota.ts": "b98803dff5a8386f0984efa48f1deeeeb26a5aaf7776aa7e868e2fb60de3e803",
+    "src/app/api/studio/handler.ts": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4",
+    "src/app/api/workspace/clear-data/route.ts": "adc29f8718c4f0a2f271721e0c4f3fbaf4e7d12e97d42bcaac3ca24c6c62fc18",
+    "src/app/api/__tests__/r0j2-storage-close.test.ts": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005",
+    "src/app/api/__tests__/r0j4-storage-fixes.test.ts": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef",
+    "src/app/api/__tests__/r0j5-remaining-branches.test.ts": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+    "src/lib/file-store.ts": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "7c0dd62c88bf644b333feb094226debcef3fa74abdc2af426e34f442c570be5b",
+    "prisma/schema.prisma": "dd5955984bbe35f8db4e214d618a25722401db19930ab33044ab3bef0e692905",
+    "src/app/api/__tests__/r0j-storage.test.ts": "44e4f40635c32227b575544a48b409fc4811e89b285c7065fccf814cedf8e0ee",
+    "src/app/api/__tests__/r0j3-recovery-close.test.ts": "d7f9e9543fefe16d537907ef9be7bc57c60e5d35658ad43ce7d1e106be59f64e",
+    "src/app/api/workspace/assets/[assetId]/file/route.ts": "d4ac28fcb0036d3fdb36fe0046c42648cbdb095093f6c4fd7b7eab4536b90204",
+    "src/app/api/workspace/assets/[assetId]/preview/route.ts": "6d3bd0c5a4071a55110191fdf28dea3bddf20b4bc70e042e21f56a0335d5d3f8",
+    "src/app/api/billing/estimate/route.ts": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+    "src/lib/model-registry.ts": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+    "src/lib/workspace-byo-model.ts": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+    "src/app/api/__tests__/r0i2-cold-quote.test.ts": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+    "src/app/admin/models/byok-service-rate.tsx": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+    "src/app/api/billing/byok-preview/route.ts": "099c797e4b657c7055838a509c6e9deda29f0c586bc1b9cf7197bbf0145f9575",
+    "src/components/studio/WorkspaceModelPolicyTab.tsx": "93a7e73e1a11570ac1d219e102de53b887429baa94dab9d811a322b668cea6c9",
+    "src/lib/model-cost-admission.ts": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+    "src/app/api/cron/workspace-subscription-expire/route.ts": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+    "src/app/api/system/maintenance/route.ts": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+    "src/lib/maintenance.ts": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+    "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+    "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+    "src/lib/quota-cycle.ts": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+    "src/app/api/workspace/byo-model/test/route.ts": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+    "src/app/knowledge/page.tsx": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f"
+  }
+}

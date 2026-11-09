@@ -67,13 +67,18 @@ function parseKnowledgeCardInfo(item: KnowledgeItem, catalogList?: any[]) {
   const found = catalogMap.get(rawComp);
   const compInfo = found 
     ? { code: found.id, name: found.title || found.name || "组件知识", full: `[${found.id}] ${found.title || found.name || "组件知识"}`, category: found.category || "💡 团队知识" }
-    : { code: rawComp, name: "空间组件知识", full: `[${rawComp}] 空间组件知识`, category: "💡 团队知识" };
+    : { code: rawComp, name: "空间组件知识", full: "空间组件知识", category: "💡 团队知识" };
 
   let knowledgeTitle = item.title || `${compInfo.name}沉淀知识`;
   let sourceTaskName = item.sourceTaskName?.trim();
+  // KN-UI：后端兜底返回的 UUID 串同样不裸显（用户红线）
+  if (sourceTaskName && /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(sourceTaskName)) {
+    sourceTaskName = "历史空间任务（已归档）";
+  }
   if (!sourceTaskName) {
     if (item.sourceTaskId && item.sourceTaskId !== item.componentId) {
-      sourceTaskName = item.sourceTaskId;
+      // KN-UI：来源任务无法解析出名称（任务已归档/删除）时显示中文归档描述，不裸显 UUID（用户红线）
+      sourceTaskName = "历史空间任务（已归档）";
     } else if (compInfo.code !== "CORE") {
       sourceTaskName = `${compInfo.name}任务`;
     } else {
@@ -121,6 +126,8 @@ export default function KnowledgeTab({
   const [timeRange, setTimeRange] = useState<"ALL" | "7DAYS" | "30DAYS" | "CUSTOM">("ALL");
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [reviewModalTarget, setReviewModalTarget] = useState<{ item: KnowledgeItem; approve: boolean } | null>(null);
   const [reviewModalComment, setReviewModalComment] = useState("");
@@ -282,7 +289,8 @@ export default function KnowledgeTab({
                 <span className="text-[11px] text-slate-500 font-bold">开始:</span>
                 <input 
                   type="date" 
-                  value={customStartDate} 
+                  value={customStartDate}
+                  max={customEndDate || today}
                   onChange={(e) => setCustomStartDate(e.target.value)}
                   className="p-0.5 px-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#3182ce] bg-white text-slate-800"
                 />
@@ -290,10 +298,13 @@ export default function KnowledgeTab({
                 <span className="text-[11px] text-slate-500 font-bold">结束:</span>
                 <input 
                   type="date" 
-                  value={customEndDate} 
+                  value={customEndDate}
+                  min={customStartDate || undefined}
+                  max={today}
                   onChange={(e) => setCustomEndDate(e.target.value)}
                   className="p-0.5 px-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#3182ce] bg-white text-slate-800"
                 />
+
                 {(customStartDate || customEndDate) && (
                   <button 
                     type="button" 

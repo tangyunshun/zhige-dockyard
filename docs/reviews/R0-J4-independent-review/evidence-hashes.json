@@ -1,0 +1,18 @@
+{
+  "capturedAt": "2026-11-08T05:03:14.229Z",
+  "sha256": {
+    "build-review.cjs": "4639d0983cf170e27c9b3ef571e1822114802e0df9de79126992df065e303067",
+    "cases.txt": "a651cca0a8146c3b512b08f3f233a80ba0f511c035299c305249c999568aa44f",
+    "finalize-review.cjs": "e1c08670a13c8b5320dc94a2eee2915686591f5238c4b64e1bfd8315a19ca879",
+    "handler-verification.json": "1562df1700d5ea8239c239d3dd18e86c31b0fe601cc2b280e8525cb596dc36eb",
+    "IDE-R0-J5-PROMPT.md": "95fec5daff11dadf97c30060a3fffb164680976d0dffc00bd9ffdc4613404216",
+    "manifest-verification.json": "f8b1bd5c2bcb836428dc4ecfc4e02c6f8c4cc0ca511d2905a53529dfc829bcc9",
+    "REVIEW.md": "29b4636600159d964de762256ab7a13f186f30d15eb531f9c84c72a7a8e399ed",
+    "review.test.ts": "123611e74fd543e1aee0e3f90b6a97c150dded6b9b7768bbfd5b596f9c55fe61",
+    "ui-verification.json": "89e864ed9964de765f0c91ad3ef300d2d46bf3308f797eeaf5de13709e22f4b5",
+    "validation-results.json": "cf24dbf9293b1da22d0ae7e8786bfdba5e0959345e72e7f9bd35b8d502f6b953",
+    "verify-ui.cjs": "6c2ab3bd5c708ff83aff08da8df3219bc9b1548bb848cd71346e91d4ca0dbdd0",
+    "vitest-results.json": "f40cd84b3016556fa891c6ecaedfb60a5a900438552d1e5ae8e0800c235903e1",
+    "vitest.review.config.ts": "e174819c45322e0e2aa8997e10e250e1c5dd40f12a12fb995893a98e8670089b"
+  }
+}

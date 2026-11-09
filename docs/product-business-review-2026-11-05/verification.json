@@ -1,0 +1,45 @@
+{
+  "capturedAt": "2026-11-05T13:26:26.681Z",
+  "kind": "offline isolated source reproduction; no production or external calls",
+  "cases": [
+    {
+      "case": "membership_upgrade_without_payment_and_double_balance",
+      "status": 200,
+      "resultingMembership": "PAID",
+      "paymentGatewayDependencies": 0,
+      "successfulBillingRecords": 1,
+      "quotaBalance": "200",
+      "grantRemaining": "100",
+      "explanation": "Real route and real grantPoints; persistence and authentication are isolated stubs. Target quota is 100, actual snapshot becomes 200."
+    },
+    {
+      "case": "two_concurrent_seat_notifications",
+      "purchasedSeats": 2,
+      "grantedSeats": 4,
+      "results": [
+        "FULFILLED",
+        "FULFILLED"
+      ],
+      "explanation": "Both callbacks read PENDING before serialized transactions; real fulfillment function increments twice. This is a controlled interleaving, not a live DB concurrency test."
+    },
+    {
+      "case": "enterprise_recycle_source_grant_not_reduced",
+      "poolSnapshot": "0",
+      "walletSnapshot": "100",
+      "originalWorkspaceGrantRemaining": "100",
+      "allGrantRemaining": "200",
+      "explanation": "Real recycle function creates destination grant but does not reduce source grants. Does not prove the extra amount can be spent through every execution path."
+    },
+    {
+      "case": "explicit_mock_mode_in_production",
+      "resolvedMode": "MOCK",
+      "explanation": "Conditional configuration exposure; no claim that production currently uses this setting."
+    },
+    {
+      "case": "byok_multiplier",
+      "serviceRateBps": 1500,
+      "appliedMultiplierBps": 11500,
+      "explanation": "Formula applies 115% of registered model base price, not only 15%; charging policy and active paths still need approval/verification."
+    }
+  ]
+}

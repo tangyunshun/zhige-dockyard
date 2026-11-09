@@ -1,0 +1,125 @@
+{
+  "capturedAt": "2026-11-07T07:43:18.524Z",
+  "verdict": "NOT ACCEPTED: unproven cost-bound admission and settlement scope interception",
+  "reviewEvidence": [
+    {
+      "scenario": "exact_boundaries",
+      "results": [
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 80,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "800000",
+            "conservativeCostPoints": 80,
+            "budgetPoints": 100
+          }
+        },
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 100,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "1000000",
+            "conservativeCostPoints": 100,
+            "budgetPoints": 100
+          }
+        },
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 101,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 150,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 200,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "nominalBudget": 100,
+          "independentCostPoints": 201,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        }
+      ]
+    },
+    {
+      "id": "H-BOUND",
+      "scenario": "heuristic_only_handler_admission",
+      "httpStatus": 200,
+      "materialCharacters": 1000,
+      "heuristicTokens": 413,
+      "utf8Bytes": 2535,
+      "nominalBudget": 100,
+      "consumeCalls": 1,
+      "executeCalls": 1,
+      "outputCap": 300,
+      "limitation": "No real provider token count or loss asserted. This proves actual handler admits using only the unproven character heuristic, without a reliable-bound rejection path."
+    },
+    {
+      "id": "H-BOUND",
+      "scenario": "unknown_cost_rule_ignored",
+      "httpStatus": 200,
+      "rule": {
+        "reviewFixtureUnknownSurchargeMicrosPerRequest": 2000000
+      },
+      "decision": {
+        "allowed": true,
+        "conservativeCostMicros": "1",
+        "conservativeCostPoints": 1,
+        "budgetPoints": 100
+      },
+      "executeCalls": 1,
+      "limitation": "Rule is deliberately synthetic and unsupported, not a claim about a real provider fee. Original policy requires rejecting unexplained monetary rules rather than silently ignoring them."
+    },
+    {
+      "id": "H-MODE",
+      "scenario": "settlement_true_intercepted_by_new_compatibility_guard",
+      "settlementEnabled": true,
+      "settlementReady": true,
+      "httpStatus": 400,
+      "responseCode": "MODEL_COST_EXCEEDS_BUDGET",
+      "holdCalls": 0,
+      "executeCalls": 0,
+      "limitation": "Synthetic test-only flag/config, no production enablement, DB or actual hold. Demonstrates scope interception, not a requirement to enable or relax settlement."
+    },
+    {
+      "scenario": "positive_and_negative_controls",
+      "rejectedStatus": 422,
+      "successStatus": 200,
+      "chargedPoints": 100
+    }
+  ],
+  "sha256": {
+    "src/app/api/studio/handler.ts": "0c486109d2f51e3df6d1f7d25c3b49b6c6df595f4f6b140aa650e92037138150",
+    "src/lib/model-cost-admission.ts": "46f02efaf85d2d410899c6bbe53d08410823c3870bdbea392726e6208bae5514",
+    "src/lib/token-estimate.ts": "2b2badba13a77883a505a0b9ef978e51187b833f9338f45f52ce81935cc2823e",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-registry.ts": "3c0a0bd9d2a0b0c719d67fa7fecfe33d362af7d517f03dbb2dc83c295f7b7ee2",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/token-settlement-service.ts": "ac1440924110c3300282b64f0d44f0b583a7a17d0d19f85c44aba7258139a659",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": "1160d748e83b5203aaee2bbf922d5c2bb3360190da5dde8cae594b5fa4085874",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02"
+  },
+  "isolation": "Actual runStudioPost and admission helper; copied closed-IO IDE fixtures, no business-source edits or network/DB. Expected-defect assertions passing is successful reproduction, not acceptance. Debit/refund functions are IO spies, not real ledger verification."
+}

@@ -1,0 +1,555 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
+import { requirePlatformPermission } from "@/lib/security";
+import {
+  isMaintenanceMode,
+  getMaintenanceMessage,
+  withMaintenanceAudit,
+  setMaintenanceModeTx,
+  setMaintenanceCache,
+} from "@/lib/maintenance";
+
+/**
+ * 系统维护模式API（PRD G-02：持久化到 DB，重启后仍生效）
+ */
+
+// 真实系统工程基准版本（来自项目 package.json）
+import packageJson from "../../../../../package.json";
+const BASE_SYSTEM_VERSION = `v${packageJson.version || "1.0.0"}`;
+
+// 系统发版更新日志字典键名
+const RELEASE_NOTES_KEY = "SYSTEM_RELEASE_NOTES_V1";
+// 系统计划维护任务字典键名
+const MAINTENANCE_SCHEDULES_KEY = "SYSTEM_MAINTENANCE_SCHEDULES_V1";
+// 系统发版与更新设置配置键名
+const UPDATE_SETTINGS_KEY = "SYSTEM_UPDATE_SETTINGS_V1";
+
+export interface SystemUpdateSettings {
+  autoCheckUpdate: boolean;
+  notifyModalEnabled: boolean;
+  forceUpdate: boolean;
+  minSupportedVersion: string;
+  releaseChannel: "STABLE" | "BETA";
+  customDownloadUrl: string;
+  popupTitle: string;
+}
+
+const DEFAULT_UPDATE_SETTINGS: SystemUpdateSettings = {
+  autoCheckUpdate: true,
+  notifyModalEnabled: true,
+  forceUpdate: false,
+  minSupportedVersion: "v1.0.0",
+  releaseChannel: "STABLE",
+  customDownloadUrl: "",
+  popupTitle: "知阁·舟坊新版本发布公告",
+};
+
+async function getUpdateSettingsFromDB(): Promise<SystemUpdateSettings> {
+  try {
+    const row = await prisma.systemconfig.findUnique({ where: { key: UPDATE_SETTINGS_KEY } });
+    if (row && row.value) {
+      const parsed = JSON.parse(row.value);
+      return { ...DEFAULT_UPDATE_SETTINGS, ...parsed };
+    }
+  } catch (err) {
+    console.error("读取更新设置失败:", err);
+  }
+  return DEFAULT_UPDATE_SETTINGS;
+}
+
+// 识别并清洗旧代码中误写入 DB 的捏造假数据标识
+const FAKE_RELEASE_IDS = new Set(["rel-20260908-01", "rel-20260825-01", "rel-20260810-01"]);
+const FAKE_SCHEDULE_IDS = new Set(["maint-20260920-01", "maint-20260905-01"]);
+
+async function getReleasesFromDB() {
+  try {
+    const row = await prisma.systemconfig.findUnique({ where: { key: RELEASE_NOTES_KEY } });
+    if (row && row.value) {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) {
+        // 仅内存过滤历史遗留的捏造假数据，绝不回写数据库（GET/读取路径零写）
+        return parsed.filter((r: any) => !FAKE_RELEASE_IDS.has(r.id));
+      }
+    }
+    return [];
+  } catch (err) {
+    console.error("读取发版记录失败:", err);
+    return [];
+  }
+}
+
+async function getSchedulesFromDB() {
+  try {
+    const row = await prisma.systemconfig.findUnique({ where: { key: MAINTENANCE_SCHEDULES_KEY } });
+    if (row && row.value) {
+      const parsed = JSON.parse(row.value);
+      if (Array.isArray(parsed)) {
+        // 仅内存过滤历史遗留的捏造假数据，绝不回写数据库（GET/读取路径零写）
+        return parsed.filter((s: any) => !FAKE_SCHEDULE_IDS.has(s.id));
+      }
+    }
+    return [];
+  } catch (err) {
+    console.error("读取维护计划失败:", err);
+    return [];
+  }
+}
+
+/**
+ * 获取系统维护状态、维护计划与发版公告（100% 真实数据库持久化数据）
+ */
+export async function GET(request: NextRequest) {
+  try {
+    // 公开 GET 全程只读：历史危险参数 emergency_disable 曾可无认证解除维护。
+    // 公开查询不得产生任何持久化写，明确拒绝该写操作（不关闭维护、不写库、不清会话）。
+    const action = request.nextUrl.searchParams.get("action");
+    if (action === "emergency_disable") {
+      return NextResponse.json(
+        { error: "维护变更须通过授权写操作", code: "MAINTENANCE_DISABLE_REQUIRES_AUTH" },
+        { status: 400 },
+      );
+    }
+    const inMaintenance = await isMaintenanceMode();
+    const message = await getMaintenanceMessage();
+    
+    // 从数据库读取预计维护耗时
+    const estRow = await prisma.systemconfig.findUnique({ where: { key: "maintenance_estimated" } });
+    const estimatedMinutes = estRow?.value || "30";
+
+    const [releases, schedules, updateSettings] = await Promise.all([
+      getReleasesFromDB(),
+      getSchedulesFromDB(),
+      getUpdateSettingsFromDB(),
+    ]);
+
+    // 生产当前版本真实计算逻辑：
+    // 1. 优先取数据库最新生效并公示的发布版本；
+    // 2. 其次取数据库系统配置中的版本指定值；
+    // 3. 最终以项目工程真实版本（package.json v1.0.0）为准，严禁捏造假版本。
+    const publishedReleases = releases.filter((r: any) => r.isPublished);
+    const latestRelease = publishedReleases.length > 0 ? publishedReleases[0].version : null;
+    const versionConfigRow = await prisma.systemconfig.findUnique({ where: { key: "system_version" } });
+    const currentVersion = latestRelease || versionConfigRow?.value || BASE_SYSTEM_VERSION;
+
+    return NextResponse.json({
+      success: true,
+      maintenanceMode: inMaintenance,
+      maintenanceMessage: message,
+      estimatedMinutes,
+      currentVersion,
+      updateSettings,
+      releases,
+      schedules,
+      currentTime: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error("获取系统维护及发版信息失败:", err);
+    return NextResponse.json({ error: "获取维护信息失败" }, { status: 500 });
+  }
+}
+
+/**
+ * 设置系统维护状态、维护计划与发版公告（仅管理员）
+ */
+export async function POST(request: NextRequest) {
+  try {
+    const body = await request.json();
+    const { action } = body;
+
+    // 未知 action 直接拒绝，避免落入默认维护切换造成副作用
+    const PUBLISH_ACTIONS = [
+      "create_schedule",
+      "update_schedule",
+      "delete_schedule",
+      "create_release",
+      "update_release",
+      "delete_release",
+      "toggle_release_publish",
+      "save_update_settings",
+    ];
+    if (action && !PUBLISH_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: "未知的操作类型", code: "UNKNOWN_ACTION" },
+        { status: 400 },
+      );
+    }
+
+    // 权限前置：在任何数据/会话/审计写之前完成校验。
+    // 维护计划/公告/展示配置需要 maintenance:publish；基础维护开关（无 action 的 enabled/message/estimatedMinutes）需要 system:maintenance_toggle。
+    // requirePlatformPermission 多键为 OR 语义；本批如需同时满足，分别校验（见下方 syncMaintenanceMode 分支），不可当 AND 使用。
+    const perm = action
+      ? await requirePlatformPermission(request, "maintenance:publish")
+      : await requirePlatformPermission(request, "system:maintenance_toggle");
+    if (!perm.authorized) return perm.errorResponse;
+    const user = perm.user!;
+    const adminId = user.id;
+
+    // 维护计划同步模式会改写维护状态时，须同时满足 maintenance:publish 与 system:maintenance_toggle
+    const willSyncMaintenance =
+      (action === "create_schedule" || action === "update_schedule") &&
+      body.syncMaintenanceMode &&
+      (body.schedule?.status === "IN_PROGRESS" ||
+        body.schedule?.status === "COMPLETED" ||
+        body.schedule?.status === "CANCELLED");
+    if (willSyncMaintenance) {
+      const togglePerm = await requirePlatformPermission(request, "system:maintenance_toggle");
+      if (!togglePerm.authorized) return togglePerm.errorResponse;
+    }
+
+    // 业务闭环 1：维护计划的增删改
+    if (action === "create_schedule" || action === "update_schedule") {
+      const scheduleData = body.schedule;
+      if (!scheduleData || !scheduleData.title || !scheduleData.startTime) {
+        return NextResponse.json({ error: "缺少维护任务标题或开始时间" }, { status: 400 });
+      }
+      // 区间顺序校验：结束时间已设置且非"待定"时，不能早于开始时间
+      if (
+        scheduleData.endTime &&
+        scheduleData.endTime !== "待定" &&
+        scheduleData.startTime > scheduleData.endTime
+      ) {
+        return NextResponse.json(
+          { error: "维护结束时间不能早于开始时间" },
+          { status: 400 },
+        );
+      }
+
+      const schedules = await getSchedulesFromDB();
+      let updatedSchedules: any[];
+
+      if (action === "create_schedule") {
+        const isDowntime =
+          scheduleData.isDowntime !== undefined
+            ? Boolean(scheduleData.isDowntime)
+            : scheduleData.type === "UPGRADE" || scheduleData.type === "DATABASE";
+
+        const newSchedule = {
+          id: `maint-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          title: scheduleData.title.trim(),
+          type: scheduleData.type || "UPGRADE",
+          status: scheduleData.status || "SCHEDULED",
+          isDowntime,
+          startTime: scheduleData.startTime,
+          endTime: scheduleData.endTime || "待定",
+          manager: scheduleData.manager || user.name || "平台运维组",
+          scope: scheduleData.scope || "全站系统服务",
+          description: scheduleData.description || "",
+          actualResult: "",
+        };
+        updatedSchedules = [newSchedule, ...schedules];
+      } else {
+        updatedSchedules = schedules.map((s: any) =>
+          s.id === scheduleData.id
+            ? {
+                ...s,
+                ...scheduleData,
+                isDowntime:
+                  scheduleData.isDowntime !== undefined
+                    ? Boolean(scheduleData.isDowntime)
+                    : s.isDowntime !== undefined
+                    ? s.isDowntime
+                    : s.type === "UPGRADE" || s.type === "DATABASE",
+              }
+            : s
+        );
+      }
+
+      const maintMsg =
+        `系统正在进行【${scheduleData.title}】\n影响范围：${scheduleData.scope || "全站系统服务"}\n` +
+        (scheduleData.description ? `详细说明：${scheduleData.description}` : "");
+
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:schedule_save",
+        { action, scheduleId: scheduleData.id, syncMaintenanceMode: body.syncMaintenanceMode ?? false },
+        async (tx) => {
+          await tx.systemconfig.upsert({
+            where: { key: MAINTENANCE_SCHEDULES_KEY },
+            create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
+            update: { value: JSON.stringify(updatedSchedules) },
+          });
+          if (willSyncMaintenance) {
+            if (scheduleData.status === "IN_PROGRESS") {
+              await setMaintenanceModeTx(tx, true);
+              await tx.systemconfig.upsert({
+                where: { key: "maintenance_message" },
+                create: { key: "maintenance_message", value: maintMsg },
+                update: { value: maintMsg },
+              });
+            } else {
+              await setMaintenanceModeTx(tx, false);
+            }
+          }
+        },
+      );
+      if (willSyncMaintenance) {
+        setMaintenanceCache(scheduleData.status === "IN_PROGRESS");
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: action === "create_schedule" ? "维护计划已成功登记落库！" : "维护计划已更新！",
+        schedules: updatedSchedules,
+        maintenanceMode: await isMaintenanceMode(),
+      });
+    }
+
+    if (action === "delete_schedule") {
+      const { scheduleId } = body;
+      if (!scheduleId) {
+        return NextResponse.json({ error: "缺少维护计划 ID" }, { status: 400 });
+      }
+      const schedules = await getSchedulesFromDB();
+      const updatedSchedules = schedules.filter((s: any) => s.id !== scheduleId);
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:schedule_delete",
+        { scheduleId },
+        async (tx) => {
+          await tx.systemconfig.upsert({
+            where: { key: MAINTENANCE_SCHEDULES_KEY },
+            create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
+            update: { value: JSON.stringify(updatedSchedules) },
+          });
+        },
+      );
+      return NextResponse.json({
+        success: true,
+        message: "已成功从数据库删除该维护计划记录",
+        schedules: updatedSchedules,
+      });
+    }
+
+    // 业务闭环 2：发版更新日志的增删改与公示控制
+    if (
+      action === "create_release" ||
+      action === "update_release" ||
+      action === "delete_release" ||
+      action === "toggle_release_publish"
+    ) {
+      if (action === "create_release" || action === "update_release") {
+        const releaseData = body.release;
+        if (!releaseData || !releaseData.version || !releaseData.title) {
+          return NextResponse.json({ error: "缺少版本号或版本说明标题" }, { status: 400 });
+        }
+
+        const releases = await getReleasesFromDB();
+        let updatedReleases: any[];
+        if (action === "create_release") {
+          const newRelease = {
+            id: `rel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            version: releaseData.version.trim(),
+            title: releaseData.title.trim(),
+            type: releaseData.type || "FEATURE",
+            publishDate: releaseData.publishDate || new Date().toISOString().split("T")[0],
+            isPublished: releaseData.isPublished ?? true,
+            author: releaseData.author || user.name || "平台研发组",
+            items: Array.isArray(releaseData.items)
+              ? releaseData.items.filter((it: string) => it.trim().length > 0)
+              : [releaseData.title.trim()],
+          };
+          updatedReleases = [newRelease, ...releases];
+        } else {
+          updatedReleases = releases.map((r: any) =>
+            r.id === releaseData.id ? { ...r, ...releaseData } : r
+          );
+        }
+        await withMaintenanceAudit(
+          user.id,
+          "maintenance:release_save",
+          { action, releaseId: releaseData.id },
+          async (tx) => {
+            await tx.systemconfig.upsert({
+              where: { key: RELEASE_NOTES_KEY },
+              create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+              update: { value: JSON.stringify(updatedReleases) },
+            });
+          },
+        );
+        return NextResponse.json({
+          success: true,
+          message: action === "create_release" ? "新版本发版记录已成功录入数据库！" : "发版记录已更新！",
+          releases: updatedReleases,
+        });
+      }
+
+      if (action === "delete_release") {
+        const { releaseId } = body;
+        if (!releaseId) {
+          return NextResponse.json({ error: "缺少发版记录 ID" }, { status: 400 });
+        }
+        const releases = await getReleasesFromDB();
+        const updatedReleases = releases.filter((r: any) => r.id !== releaseId);
+        await withMaintenanceAudit(
+          user.id,
+          "maintenance:release_delete",
+          { releaseId },
+          async (tx) => {
+            await tx.systemconfig.upsert({
+              where: { key: RELEASE_NOTES_KEY },
+              create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+              update: { value: JSON.stringify(updatedReleases) },
+            });
+          },
+        );
+        return NextResponse.json({
+          success: true,
+          message: "已成功删除该发版记录",
+          releases: updatedReleases,
+        });
+      }
+
+      // toggle_release_publish
+      const { releaseId, isPublished } = body;
+      const releases = await getReleasesFromDB();
+      const updatedReleases = releases.map((r: any) =>
+        r.id === releaseId ? { ...r, isPublished: Boolean(isPublished) } : r
+      );
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:release_publish_toggle",
+        { releaseId, isPublished: Boolean(isPublished) },
+        async (tx) => {
+          await tx.systemconfig.upsert({
+            where: { key: RELEASE_NOTES_KEY },
+            create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+            update: { value: JSON.stringify(updatedReleases) },
+          });
+        },
+      );
+      return NextResponse.json({
+        success: true,
+        message: isPublished ? "该版本更新已设为全网公示" : "已隐藏该版本的前台公示",
+        releases: updatedReleases,
+      });
+    }
+
+    if (action === "save_update_settings") {
+      const { settings } = body;
+      if (!settings) {
+        return NextResponse.json({ error: "缺少更新设置参数" }, { status: 400 });
+      }
+      const current = await getUpdateSettingsFromDB();
+      const updated: SystemUpdateSettings = {
+        ...current,
+        ...(settings.autoCheckUpdate !== undefined ? { autoCheckUpdate: Boolean(settings.autoCheckUpdate) } : {}),
+        ...(settings.notifyModalEnabled !== undefined ? { notifyModalEnabled: Boolean(settings.notifyModalEnabled) } : {}),
+        ...(settings.forceUpdate !== undefined ? { forceUpdate: Boolean(settings.forceUpdate) } : {}),
+        ...(settings.minSupportedVersion ? { minSupportedVersion: String(settings.minSupportedVersion).trim() } : {}),
+        ...(settings.releaseChannel ? { releaseChannel: settings.releaseChannel } : {}),
+        ...(settings.customDownloadUrl !== undefined ? { customDownloadUrl: String(settings.customDownloadUrl).trim() } : {}),
+        ...(settings.popupTitle ? { popupTitle: String(settings.popupTitle).trim() } : {}),
+      };
+
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:update_settings",
+        { systemVersion: settings.systemVersion },
+        async (tx) => {
+          await tx.systemconfig.upsert({
+            where: { key: UPDATE_SETTINGS_KEY },
+            create: { key: UPDATE_SETTINGS_KEY, value: JSON.stringify(updated) },
+            update: { value: JSON.stringify(updated) },
+          });
+          if (settings.systemVersion) {
+            await tx.systemconfig.upsert({
+              where: { key: "system_version" },
+              create: { key: "system_version", value: String(settings.systemVersion).trim() },
+              update: { value: String(settings.systemVersion).trim() },
+            });
+          }
+        },
+      );
+
+      return NextResponse.json({
+        success: true,
+        message: "系统发版与更新设置已成功保存到数据库！",
+        updateSettings: updated,
+      });
+    }
+
+    // 业务闭环 3：系统维护模式开关与维护说明修改（需 system:maintenance_toggle，配置变更与审计同事务）
+    const { enabled, message, estimatedMinutes } = body;
+    const target = enabled !== undefined ? Boolean(enabled) : await isMaintenanceMode();
+
+    await withMaintenanceAudit(
+      user.id,
+      "system:maintenance_toggle",
+      { enabled: target, hasMessage: message !== undefined, estimatedMinutes },
+      async (tx) => {
+        await setMaintenanceModeTx(tx, target);
+        if (message !== undefined) {
+          await tx.systemconfig.upsert({
+            where: { key: "maintenance_message" },
+            create: { key: "maintenance_message", value: message.trim() },
+            update: { value: message.trim() },
+          });
+        }
+        if (estimatedMinutes !== undefined) {
+          await tx.systemconfig.upsert({
+            where: { key: "maintenance_estimated" },
+            create: { key: "maintenance_estimated", value: String(estimatedMinutes) },
+            update: { value: String(estimatedMinutes) },
+          });
+        }
+        // 开启维护时，清除普通用户的登录会话（强制退出）；与配置变更同事务，回滚时不残留
+        if (target) {
+          await tx.user.updateMany({
+            where: {
+              role: { notIn: [...ADMIN_ROLE_VALUES] },
+              sessionToken: { not: null },
+            },
+            data: {
+              sessionToken: null,
+              sessionExpiresAt: null,
+              refreshToken: null,
+              refreshTokenExpiresAt: null,
+              lastForcedLogoutAt: new Date(),
+            },
+          });
+        }
+      },
+    );
+    setMaintenanceCache(target);
+    console.log(`[系统维护] 管理员 ${adminId} 设置维护模式: ${target}`);
+
+    return NextResponse.json({
+      success: true,
+      maintenanceMode: target,
+      maintenanceMessage: message || (await getMaintenanceMessage()),
+      estimatedMinutes: estimatedMinutes || "30",
+      message: target ? "系统维护模式已开启，普通用户访问已被拦截" : "系统维护已结束，全平台已恢复正常对外服务",
+    });
+  } catch (error) {
+    console.error("处理维护管理操作失败:", error);
+    return NextResponse.json({ error: "操作处理失败，请稍后重试" }, { status: 500 });
+  }
+}
+
+/**
+ * 关闭维护模式（需 system:maintenance_toggle，配置变更与审计同事务）
+ */
+export async function DELETE(request: NextRequest) {
+  try {
+    const perm = await requirePlatformPermission(request, "system:maintenance_toggle");
+    if (!perm.authorized) return perm.errorResponse;
+    const user = perm.user!;
+
+    await withMaintenanceAudit(
+      user.id,
+      "system:maintenance_toggle",
+      { action: "disable" },
+      async (tx) => {
+        await setMaintenanceModeTx(tx, false);
+      },
+    );
+    setMaintenanceCache(false);
+    console.log(`[系统维护] 管理员 ${user.id} 关闭维护模式`);
+
+    return NextResponse.json({ success: true, message: "系统维护模式已关闭，已恢复正常运行" });
+  } catch (error) {
+    console.error("关闭维护模式失败:", error);
+    return NextResponse.json({ error: "操作失败" }, { status: 500 });
+  }
+}

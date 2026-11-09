@@ -212,11 +212,9 @@ export default function WorkspacePlanSection({
         await loadWorkspacePlan(planData.workspace.id);
         onUpgraded?.();
       } else {
-        toast.error(data.error || "空间套餐扩容失败");
-        // 失败后强制回源刷新：避免页面套餐状态与数据库不一致（如后端已生效但本地未感知），
-        // 防止用户对同一目标套餐重复点击后命中「当前已是该套餐」的矛盾提示
+        toast.error(data.message || data.error || "空间套餐扩容失败");
+        // 后端拒绝（如在线购买暂未开放）时不触发成功回调 / 已升级状态，保留错误提示与输入
         await loadWorkspacePlan(planData.workspace.id);
-        onUpgraded?.();
       }
     } catch (err) {
       console.error("扩容空间套餐失败:", err);
@@ -508,7 +506,7 @@ export default function WorkspacePlanSection({
                   ) : (
                     <>
                       <ArrowUpRight className="w-3.5 h-3.5" />
-                      扩容至{plan.name}
+                      在线购买暂未开放
                     </>
                   )}
                 </button>
@@ -806,8 +804,8 @@ export default function WorkspacePlanSection({
         </div>
       )}
 
-      {/* 定制版咨询入口：让用户知道存在「定制版」选项并可主动发起咨询；平台管理员不展示 */}
-      {!isPlatformAdmin && (
+      {/* 定制版咨询入口（兜底）：上方已渲染「定制版」通栏卡片（含申请按钮）时不再重复展示，避免同屏两个相同入口；平台管理员不展示 */}
+      {!isPlatformAdmin && !(planData.allPlans || []).some((plan: any) => plan.purchasable === false) && (
       <div className="mt-4 p-4 bg-slate-50/80 border border-slate-200 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-black text-slate-800 flex items-center gap-1.5">

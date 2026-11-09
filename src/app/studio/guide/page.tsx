@@ -202,7 +202,7 @@ const faqs = [
 
 企业空间：
 - 支持团队协作
-- 解锁全量 16 个高阶组件
+- 解锁全量 {guideSections.reduce((acc, sec) => acc + sec.items.length, 0)} 个组件教程
 - 支持成员管理和资源共享
 - 完整业务流程`,
   },
@@ -241,6 +241,24 @@ export default function StudioGuide() {
   const handleGoToStudio = () => {
     router.push("/studio");
   };
+
+  // KN-UI：搜索过滤（自查清单指令一，此前 searchQuery 从未使用属死功能）
+  const q = searchQuery.trim().toLowerCase();
+  const filteredSections = q
+    ? guideSections
+        .map((sec) => ({
+          ...sec,
+          items: sec.items.filter(
+            (item) =>
+              (item.title || "").toLowerCase().includes(q) ||
+              (item.description || "").toLowerCase().includes(q)
+          ),
+        }))
+        .filter((sec) => sec.items.length > 0)
+    : guideSections;
+  const filteredFaqs = q
+    ? faqs.filter((f) => (f.question || "").toLowerCase().includes(q) || (f.answer || "").toLowerCase().includes(q))
+    : faqs;
 
   return (
     <div className="min-h-screen w-full relative bg-[#f0f8ff]">
@@ -314,9 +332,23 @@ export default function StudioGuide() {
             </div>
           </div>
 
+          {/* 搜索无结果提示 */}
+          {q && filteredSections.length === 0 && filteredFaqs.length === 0 && (
+            <div className="mb-8 p-10 text-center bg-white/60 rounded-2xl border border-slate-200/60">
+              <p className="text-sm font-bold text-slate-500">未找到与「{searchQuery}」匹配的教程或常见问题</p>
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="mt-3 px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-xl cursor-pointer"
+              >
+                清空搜索
+              </button>
+            </div>
+          )}
+
           {/* 教程分类 */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
-            {guideSections.map((section) => (
+            {filteredSections.map((section) => (
               <div
                 key={section.title}
                 className="bg-white/80 backdrop-blur-xl rounded-xl p-6 border shadow-sm"
@@ -369,7 +401,7 @@ export default function StudioGuide() {
               </h2>
             </div>
             <div className="space-y-3">
-              {faqs.map((faq, index) => (
+              {filteredFaqs.map((faq, index) => (
                 <div
                   key={index}
                   className="border border-[#e2e8f0] rounded-lg overflow-hidden"

@@ -1,0 +1,1482 @@
+{
+  "capturedAt": "2026-11-05T15:31:56.361Z",
+  "isolation": "Actual business source and extracted UI handlers, closed dependency stubs; no DB/network/model/payment calls. Gift migration IO failure intentionally injected after real asset-move function.",
+  "limits": "Memory persistence does not prove actual MySQL incidence/constraints. Asset table has no Prisma workspace relation; actual deployed foreign keys not queried. Snapshot config change simulated at naming IO boundary. UI checks are handler execution, not React DOM/browser tests.",
+  "controls": [
+    {
+      "scenario": "stable_free_upgrade",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 2
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "update"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [
+        {
+          "storageLimit": "104857600",
+          "enterpriseSlots": "2"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "stable_free_retain",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "已创建企业空间，个人空间已保留",
+        "workspaceId": "ws-ent-1793892715657-p3rxz0",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        },
+        {
+          "id": "ws-ent-1793892715657-p3rxz0",
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 2
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "create"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        }
+      ],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [
+        {
+          "storageLimit": "104857600",
+          "enterpriseSlots": "2"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "stable_free_delete",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "已创建企业空间，原个人空间已转为只读归档",
+        "workspaceId": "ws-ent-1793892715723-fv5x20",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "status": "ARCHIVED",
+          "plan": "FREE"
+        },
+        {
+          "id": "ws-ent-1793892715723-fv5x20",
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 2
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "create"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "asset",
+          "method": "updateMany"
+        },
+        {
+          "table": "conversation",
+          "method": "updateMany"
+        },
+        {
+          "table": "document",
+          "method": "updateMany"
+        },
+        {
+          "table": "integration",
+          "method": "updateMany"
+        },
+        {
+          "table": "project",
+          "method": "updateMany"
+        },
+        {
+          "table": "operationlog",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacepost",
+          "method": "updateMany"
+        },
+        {
+          "table": "postmember",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacekickhistory",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspaceinvitation",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspace_byo_model",
+          "method": "updateMany"
+        },
+        {
+          "table": "user_byo_model_assignment",
+          "method": "updateMany"
+        },
+        {
+          "table": "modelapplication",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspace_member_model_preference",
+          "method": "updateMany"
+        },
+        {
+          "table": "quotaapply",
+          "method": "updateMany"
+        },
+        {
+          "table": "componentusage",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacemember",
+          "method": "updateMany"
+        },
+        {
+          "table": "componenttask",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws-ent-1793892715723-fv5x20",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [
+        {
+          "storageLimit": "104857600",
+          "enterpriseSlots": "2"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "gift_migration"
+        }
+      ]
+    },
+    {
+      "scenario": "mixed_price_rejected_0_MONTH",
+      "status": 400,
+      "response": {
+        "error": "PLAN_MIXED_PRICING",
+        "message": "该套餐存在混合定价配置（某一周期为 0 另一周期为正价），暂不可升级，请确认套餐配置"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 10000,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "mixed_price_rejected_0_YEAR",
+      "status": 400,
+      "response": {
+        "error": "PLAN_MIXED_PRICING",
+        "message": "该套餐存在混合定价配置（某一周期为 0 另一周期为正价），暂不可升级，请确认套餐配置"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 10000,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "mixed_price_rejected_5000_MONTH",
+      "status": 400,
+      "response": {
+        "error": "PLAN_MIXED_PRICING",
+        "message": "该套餐存在混合定价配置（某一周期为 0 另一周期为正价），暂不可升级，请确认套餐配置"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 5000,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "mixed_price_rejected_5000_YEAR",
+      "status": 400,
+      "response": {
+        "error": "PLAN_MIXED_PRICING",
+        "message": "该套餐存在混合定价配置（某一周期为 0 另一周期为正价），暂不可升级，请确认套餐配置"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 5000,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "inactive_before_request_upgrade",
+      "status": 400,
+      "response": {
+        "error": "PLAN_INACTIVE",
+        "message": "套餐「Fixture plan」已停用，暂不可升级"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": false,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "inactive_before_request_retain",
+      "status": 400,
+      "response": {
+        "error": "PLAN_INACTIVE",
+        "message": "套餐「Fixture plan」已停用，暂不可升级"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": false,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "inactive_before_request_delete",
+      "status": 400,
+      "response": {
+        "error": "PLAN_INACTIVE",
+        "message": "套餐「Fixture plan」已停用，暂不可升级"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": false,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "client_verified_snapshot_ignored",
+      "status": 200,
+      "response": {
+        "success": true,
+        "orderNo": "UP_1793892716073_07def644",
+        "amountCents": 19900,
+        "paymentMode": "MOCK",
+        "payUrl": "/isolated-checkout",
+        "planName": "Fixture plan",
+        "notice": "当前为【模拟支付】，不会产生真实扣款；支付确认后企业空间才会开通。"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "livePlan": {
+        "key": "PRO",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 19900,
+        "priceYearly": 199000,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [],
+      "bills": [
+        {
+          "amount": 19900,
+          "status": "PENDING"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "charge",
+          "amount": 19900
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "scenario": "live_config_disabled_after_initial_read_still_opens_snapshot",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 2
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "update"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": false,
+        "purchasable": true,
+        "priceMonthly": 19900,
+        "priceYearly": 199000,
+        "maxMembers": 99,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws1",
+          "workspaceExists": true
+        }
+      ],
+      "quotas": [
+        {
+          "storageLimit": "104857600",
+          "enterpriseSlots": "2"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "fixture_config_change"
+        }
+      ]
+    },
+    {
+      "scenario": "delete_gift_IO_fails_after_asset_move_cleanup_deletes_destination",
+      "status": 500,
+      "response": {
+        "error": "创建升级订单失败",
+        "details": "INJECTED_GIFT_IO_FAILURE"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "id": "ws1",
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "create"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "asset",
+          "method": "updateMany"
+        },
+        {
+          "table": "conversation",
+          "method": "updateMany"
+        },
+        {
+          "table": "document",
+          "method": "updateMany"
+        },
+        {
+          "table": "integration",
+          "method": "updateMany"
+        },
+        {
+          "table": "project",
+          "method": "updateMany"
+        },
+        {
+          "table": "operationlog",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacepost",
+          "method": "updateMany"
+        },
+        {
+          "table": "postmember",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacekickhistory",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspaceinvitation",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspace_byo_model",
+          "method": "updateMany"
+        },
+        {
+          "table": "user_byo_model_assignment",
+          "method": "updateMany"
+        },
+        {
+          "table": "modelapplication",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspace_member_model_preference",
+          "method": "updateMany"
+        },
+        {
+          "table": "quotaapply",
+          "method": "updateMany"
+        },
+        {
+          "table": "componentusage",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacemember",
+          "method": "updateMany"
+        },
+        {
+          "table": "componenttask",
+          "method": "updateMany"
+        },
+        {
+          "table": "workspacemember",
+          "method": "deleteMany"
+        },
+        {
+          "table": "workspace",
+          "method": "deleteMany"
+        }
+      ],
+      "livePlan": {
+        "key": "STANDARD",
+        "name": "Fixture plan",
+        "description": "",
+        "isActive": true,
+        "purchasable": true,
+        "priceMonthly": 0,
+        "priceYearly": 0,
+        "maxMembers": 2,
+        "maxComponents": 2,
+        "maxStorage": 100,
+        "maxApiCalls": 100,
+        "sortOrder": 20,
+        "trialGift": {
+          "enabled": false,
+          "points": 0,
+          "expireDays": 0
+        }
+      },
+      "assets": [
+        {
+          "id": "asset1",
+          "workspaceId": "ws-ent-1793892716147-msqs6r",
+          "workspaceExists": false
+        }
+      ],
+      "quotas": [
+        {
+          "storageLimit": "104857600",
+          "enterpriseSlots": "2"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "gift_migration"
+        }
+      ]
+    }
+  ],
+  "uiResults": [
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending",
+        "payUrl": "/isolated-checkout"
+      },
+      "success": [],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "/isolated-checkout",
+      "scenario": "checkout"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "free_complete"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending"
+      },
+      "success": [],
+      "info": [
+        "升级请求已受理，请稍后确认结果"
+      ],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "pending_without_checkout"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "fixture failure"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "business_failure"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "fixture failure"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "HTTP_failure"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {},
+      "success": [],
+      "info": [],
+      "errors": [
+        "网络异常，升级请求未完成，请稍后重试"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "network_failure"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "升级失败，请稍后重试"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "conflicting_failure_free_flag"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "free_without_workspace"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending",
+        "payUrl": "/isolated-checkout"
+      },
+      "success": [],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "/isolated-checkout",
+      "scenario": "checkout"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "free_complete"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending"
+      },
+      "success": [],
+      "info": [
+        "升级请求已受理，请稍后确认结果"
+      ],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "pending_without_checkout"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "fixture failure"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "business_failure"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "fixture failure"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "HTTP_failure"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {},
+      "success": [],
+      "info": [],
+      "errors": [
+        "网络请求失败，请稍后重试"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "network_failure"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": false,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "升级失败，请重试"
+      ],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "conflicting_failure_free_flag"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "free_without_workspace"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending",
+        "payUrl": "/isolated-checkout"
+      },
+      "success": [
+        "订单已创建，正在前往支付…"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "/isolated-checkout",
+      "scenario": "checkout"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": true,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [
+        "/workspace-hub"
+      ],
+      "redirect": "",
+      "scenario": "free_complete"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "pending"
+      },
+      "success": [
+        "升级处理中，请稍后查看"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [
+        "/workspace-hub"
+      ],
+      "redirect": "",
+      "scenario": "pending_without_checkout"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [
+        "fixture failure"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [
+        "/workspace-hub"
+      ],
+      "redirect": "",
+      "scenario": "business_failure"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": false,
+        "message": "fixture failure"
+      },
+      "success": [],
+      "info": [],
+      "errors": [
+        "fixture failure"
+      ],
+      "storageWrites": [
+        [
+          "personalWorkspaceDeleted",
+          "false"
+        ],
+        [
+          "personalWorkspaceUpgraded",
+          "false"
+        ]
+      ],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "HTTP_failure"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {},
+      "success": [],
+      "info": [],
+      "errors": [
+        "INJECTED_NETWORK"
+      ],
+      "storageWrites": [
+        [
+          "personalWorkspaceDeleted",
+          "false"
+        ],
+        [
+          "personalWorkspaceUpgraded",
+          "false"
+        ]
+      ],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "",
+      "scenario": "network_failure"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": false,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [
+        "/workspace-hub"
+      ],
+      "redirect": "",
+      "scenario": "conflicting_failure_free_flag"
+    },
+    {
+      "file": "src/app/workspace/upgrade/page.tsx",
+      "payload": {
+        "success": true,
+        "free": true
+      },
+      "success": [
+        "升级成功！"
+      ],
+      "info": [],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [
+        "/workspace-hub"
+      ],
+      "redirect": "",
+      "scenario": "free_without_workspace"
+    }
+  ],
+  "sha256": {
+    "src/constants/workspace-plans.ts": "caaf9d799be130fbcf5f505eb6722652f63926e389444a3c03164492eef2e78a",
+    "src/lib/limit-utils.ts": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a",
+    "src/lib/workspace-plan-service.ts": "ad70260b22588ad412d0b8838fda7abd4d8bdda769a71d309dff67f56609b9ee",
+    "src/lib/workspace-upgrade-service.ts": "5b454b3243a42ae5f2c6b09097bd11448a74c5bfef62bb938315079d7f0c8839",
+    "src/app/api/workspace/upgrade/route.ts": "661b07f506ea42ad12c0ac8602ff4bdcee9666b9bc76045683ecb2e637bc6b7e",
+    "src/components/studio/UpgradeModal.tsx": "7bb904a76efc3946d3cfbc39f4ac74d6547b8856a07bfbd00f81099d5f7884e7",
+    "src/components/workspace-hub/modals/UpgradeModal.tsx": "1173866fdb2d9da5e946ded9e7733d87b14219a9a94da2e6fd5cf2868bc320d9",
+    "src/app/workspace/upgrade/page.tsx": "7202ca5ef42356287ddea644e3581ff4eb1ef791510355c5f47fc15de1b6bec4",
+    "prisma/schema.prisma": "21cf68e19ecc886b06988a8e1c42c83fd0e7d3913741bfbe8be1270e7e4183f7",
+    "src/app/api/__tests__/r0a3-combo-regression.test.ts": "c2524f5f7a37d8be2987739477cc47834262b47f89eaf9b4a707e363238eafbb",
+    "docs/reviews/R0-A3-fix-report.md": "ee5c44279c55f58844ee55d6a46d99b18634c4a8637129ee72ef1859b62c2b94",
+    "src/lib/__tests__/refund-integration.test.ts": "cab48fac95d1347d2bff61cc4880a3ae663799dd02f6a7f295e0a197e598de7c",
+    "vitest.config.ts": "cd7031c48740103bcf91809a13756d625519e8dd99fb6264c34ec18a06be5e1a"
+  }
+}

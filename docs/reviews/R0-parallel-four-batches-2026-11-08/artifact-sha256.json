@@ -1,0 +1,14 @@
+{
+  "capturedAt": "2026-11-08T13:24:23.573Z",
+  "artifacts": {
+    "01-A-F14.md": "495402dcebd15460665c9e75a3a0580fbda0f1c64ef1e92c7e184bf142ad4c9d",
+    "02-B-F15.md": "ef27a5ea8c709fb3f49d8eaa4995a3cb1177ec42b225470e78239e969d270079",
+    "03-A-F16.md": "c9f6dd276a910ecb45a1a1aa11859ce6393e78cfd0fae0dfdeb897d7242db240",
+    "04-B-INTEGRATION.md": "afca58c6ccfb7114b42e7a51705996f2edeb55b885baaa4a7e7a5528b9111fea",
+    "COMMON-RULES.md": "f78363aaef8935d29c0988222930a50288e3bb236c3cd3b393e7f04bac0db3b8",
+    "HANDOFF-REGISTER.md": "58fdf573c9acbb2cb6f1b3c96a954d019872ad18b94d9d208416ab7a35793c9e",
+    "planning-evidence.json": "6e9503295dfab78faf8ef012664f2ae321a456243232e5763efc171210776f17",
+    "README.md": "d98ed6fcd5690277c6a2cb9e3e3608c3d472d184c0903a8dc3a32bae40cddcd6",
+    "verify-package.cjs": "541f775eb0f7a48f754d02bda243050fc26c56f5bf4574f0ed24afb5ddd70cf7"
+  }
+}

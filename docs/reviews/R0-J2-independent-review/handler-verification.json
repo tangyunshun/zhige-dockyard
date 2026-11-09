@@ -1,0 +1,564 @@
+{
+  "capturedAt": "2026-11-07T18:51:00.786Z",
+  "evidence": [
+    {
+      "case": "IDs and quota fixed",
+      "accepted": true,
+      "first": 200,
+      "second": {
+        "status": 403,
+        "body": {
+          "success": false,
+          "code": "STORAGE_LIMIT_ZERO",
+          "error": "空间存储上限为 0，无法上传文件。请联系空间管理员配置存储额度。",
+          "storageOpId": "e3a61967-e832-4ba9-a9fc-b6e0504ec11b"
+        }
+      },
+      "used": "3",
+      "operations": [
+        {
+          "opId": "12eb0397-20fb-43c4-ac41-b0632336e9c1",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "CONFIRMED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T18:51:00.678Z",
+          "id": "auto_m412flku4qb",
+          "filePath": "assets/w1/c3a7ffd1-39a7-4c28-b5d1-be116858741f.txt",
+          "documentId": "d30ab9a3-4b4b-4230-a3ff-b7491c71a44a"
+        }
+      ]
+    },
+    {
+      "case": "cleanup pending uncharged",
+      "deletion": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "code": "STORAGE_CLEANUP_PENDING",
+          "data": {
+            "id": "d1",
+            "status": "REMOVED",
+            "filePath": "w1/d1"
+          },
+          "message": "资料记录已删除，但物理文件清理未完成（已登记待清理），请联系管理员核实。"
+        }
+      },
+      "newUploadStatus": 200,
+      "quota": 30,
+      "used": "30",
+      "physicalBytes": 60,
+      "operations": [
+        {
+          "opId": "orphan-eb7cb6d1-ccd6-4928-bff9-5a5c90480cc2",
+          "workspaceId": "w1",
+          "userId": "system",
+          "opType": "RELEASE",
+          "status": "PENDING_CLEANUP",
+          "filePath": "w1/d1",
+          "bytes": 30,
+          "note": "remove_asset: 记录已删除但物理文件清理失败",
+          "id": "auto_fyn5xzoimn5"
+        },
+        {
+          "opId": "28428c52-65a0-46bb-aedf-d0719f0845df",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "CONFIRMED",
+          "bytes": 30,
+          "updatedAt": "2026-11-07T18:51:00.693Z",
+          "id": "auto_iovf5bbxs2",
+          "filePath": "assets/w1/92fbbfc9-7347-4f3f-99c7-a2ef89c9ca3d.txt",
+          "documentId": "1803ea6c-7184-43ca-bfc6-ac4b6f82a0ce"
+        }
+      ]
+    },
+    {
+      "case": "cleanup lead insert failed",
+      "status": 200,
+      "body": {
+        "success": true,
+        "code": "STORAGE_CLEANUP_PENDING",
+        "data": {
+          "id": "d1",
+          "status": "REMOVED",
+          "filePath": "w1/d1"
+        },
+        "message": "资料记录已删除，但物理文件清理未完成（已登记待清理），请联系管理员核实。"
+      },
+      "used": "0",
+      "objects": 1,
+      "documents": 0,
+      "operations": []
+    },
+    {
+      "case": "batch cleanup response batch_delete_assets",
+      "status": 200,
+      "body": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failedCount": 0,
+        "failed": [],
+        "cleanupPendingIds": [
+          "deleted"
+        ]
+      },
+      "used": "0",
+      "objects": 1,
+      "operations": [
+        {
+          "opId": "orphan-5acb3589-5551-4805-87d9-57ae5fbea9ec",
+          "workspaceId": "w1",
+          "userId": "system",
+          "opType": "RELEASE",
+          "status": "PENDING_CLEANUP",
+          "filePath": "w1/deleted",
+          "bytes": 30,
+          "note": "batch_delete_assets: 记录已删除但物理文件清理失败",
+          "id": "auto_s9gp3ql068"
+        }
+      ]
+    },
+    {
+      "case": "batch cleanup response batch_remove_assets",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "removedCount": 1,
+          "skippedCount": 0,
+          "notifiedCount": 0,
+          "failedCount": 0,
+          "failed": [],
+          "succeededIds": [
+            "deleted"
+          ]
+        }
+      },
+      "used": "0",
+      "objects": 1,
+      "operations": [
+        {
+          "opId": "orphan-9ed14199-0b3d-4df3-95c4-4a950c71ab88",
+          "workspaceId": "w1",
+          "userId": "system",
+          "opType": "RELEASE",
+          "status": "PENDING_CLEANUP",
+          "filePath": "w1/deleted",
+          "bytes": 30,
+          "note": "batch_remove_assets: 记录已删除但物理文件清理失败",
+          "id": "auto_cyigq79bn4"
+        }
+      ]
+    },
+    {
+      "case": "clear claim then release fails",
+      "status": 500,
+      "used": "30",
+      "documents": 0,
+      "objects": 0,
+      "operations": []
+    },
+    {
+      "case": "clear new upload fixed",
+      "accepted": true,
+      "status": 200,
+      "used": "3",
+      "documents": 1,
+      "objects": 1
+    },
+    {
+      "case": "clear physical failure fixed",
+      "accepted": true,
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，1 个失败对象已保留可重试依据。其中 1 个对象的物理文件删除失败（已保留记录与计量）、0 个对象释放漂移已登记待核实。",
+        "resetAt": "2026-11-07T18:51:00.746Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 1,
+          "failedObjects": [
+            {
+              "id": "d1",
+              "title": "d1",
+              "reason": "物理文件删除失败（EACCES: permission denied）"
+            }
+          ],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0
+        }
+      },
+      "used": "30"
+    },
+    {
+      "case": "clear shared-only false completion",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配",
+        "resetAt": "2026-11-07T18:51:00.751Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 2,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0
+        }
+      },
+      "remainingDocuments": 2,
+      "used": "30"
+    },
+    {
+      "case": "shared object alias missed",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "a",
+          "status": "REMOVED",
+          "notifiedCount": 0
+        },
+        "message": "资料删除成功"
+      },
+      "remainingDoc": {
+        "id": "b",
+        "workspaceId": "w1",
+        "title": "b",
+        "status": "APPROVED",
+        "visibility": "PRIVATE",
+        "filePath": "w1/shared",
+        "fileSize": 30,
+        "uploaderId": "u1",
+        "type": "doc"
+      },
+      "objects": 0,
+      "used": "0"
+    },
+    {
+      "case": "ordinary unknown save unreachable marker",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic write response lost after persistence"
+      },
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\85d3995c-6694-4cbb-8225-23aa34187494.txt"
+      ],
+      "operations": [
+        {
+          "opId": "dd88ae90-623e-42c5-877b-22c100227faf",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T18:51:00.756Z",
+          "id": "auto_nudrqyxo9ij"
+        }
+      ]
+    },
+    {
+      "case": "attachment unknown save unreachable marker",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "服务器内部错误"
+      },
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\d9c7e649-f8b5-41f4-9dbd-3315b0ac9377.txt"
+      ],
+      "operations": [
+        {
+          "opId": "5c069efe-5141-4d30-bb48-c1f73c654ce7",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T18:51:00.759Z",
+          "id": "auto_9xuvn0ot5dc"
+        }
+      ]
+    },
+    {
+      "case": "cleaned failure stale reservation",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic document insert failed"
+      },
+      "used": "0",
+      "operations": [
+        {
+          "opId": "4ecfe2b5-4f40-41df-8d54-7af99c1a67e4",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T18:51:00.775Z",
+          "id": "auto_j86wodwqk4l"
+        }
+      ],
+      "report": {
+        "quota": {
+          "present": true,
+          "used": "0",
+          "limit": "1000",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 0,
+          "uniqueObjects": 0,
+          "duplicateRefs": [],
+          "physicalBytesSum": "0",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": [],
+          "conflictingSizes": []
+        },
+        "operations": {
+          "reserved": 1,
+          "pendingCleanup": 0,
+          "confirmed": 0,
+          "reservedBytes": "3",
+          "pendingCleanupBytes": "0",
+          "items": [
+            {
+              "opId": "4ecfe2b5-4f40-41df-8d54-7af99c1a67e4",
+              "status": "RESERVED",
+              "filePath": null,
+              "bytes": 3
+            }
+          ]
+        },
+        "physical": {
+          "checked": false,
+          "missingFiles": [],
+          "orphanObjects": [],
+          "sizeMismatches": []
+        },
+        "usageDrift": {
+          "quotaUsed": "0",
+          "uniqueObjectBytesSum": "0",
+          "diff": "0",
+          "inFlightBytes": "3"
+        },
+        "notes": [
+          "存在 1 个在途预留（3 字节）/ 0 个待清理操作（0 字节）",
+          "物理存在性未核实（未提供 fileExists/listObjects），占用与记录一致性仅限数据库层面"
+        ],
+        "coverage": {
+          "physicalVerified": false,
+          "objectListProvided": false,
+          "operationStatesIncluded": true,
+          "caseSensitive": true
+        }
+      }
+    },
+    {
+      "case": "confirmation plus metadata cleanup failure",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic confirm failed"
+      },
+      "used": "0",
+      "documents": [
+        {
+          "id": "23c3818d-efda-486c-8ece-c099f9bfa081",
+          "workspaceId": "w1",
+          "title": "synthetic",
+          "content": "提取的文本内容",
+          "type": "doc",
+          "status": "APPROVED",
+          "uploaderId": "u1",
+          "visibility": "PRIVATE",
+          "fileSize": 3,
+          "fileExt": "txt",
+          "summary": null,
+          "filePath": "assets/w1/d297d208-b27c-4ce3-949e-b5544ac1f9d1.txt",
+          "mimeType": "text/plain",
+          "originalName": "test.txt",
+          "updatedAt": "2026-11-07T18:51:00.779Z"
+        }
+      ],
+      "objects": 0,
+      "operations": [
+        {
+          "opId": "ce0c9d33-414a-4278-ba14-7659bf5518d7",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T18:51:00.779Z",
+          "id": "auto_aq5skb721sg"
+        }
+      ]
+    },
+    {
+      "case": "delegate readiness",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "Cannot read properties of undefined (reading 'findUnique')"
+      },
+      "used": "0"
+    },
+    {
+      "case": "unique conflict actor check omitted",
+      "result": {
+        "unlimited": false,
+        "deduped": true,
+        "opConflict": false
+      },
+      "operations": [
+        {
+          "id": "other-commit",
+          "opId": "race",
+          "workspaceId": "w1",
+          "userId": "u-other",
+          "bytes": 3,
+          "opType": "RESERVE",
+          "status": "CONFIRMED"
+        }
+      ],
+      "limits": "Injected another committed operation and its occupancy between lookup and create; no claim of real MySQL scheduling"
+    },
+    {
+      "case": "exact shared reference fixed",
+      "accepted": true,
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "a",
+          "status": "REMOVED",
+          "notifiedCount": 0,
+          "physicalFileRetained": true
+        },
+        "message": "资料记录已删除；该文件仍被其他资料引用，物理文件与对应占用已保留"
+      },
+      "used": "30",
+      "objects": 1
+    },
+    {
+      "case": "reconcile original gaps fixed",
+      "accepted": true,
+      "empty": {
+        "quota": {
+          "present": true,
+          "used": "30",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 0,
+          "uniqueObjects": 0,
+          "duplicateRefs": [],
+          "physicalBytesSum": "0",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": [],
+          "conflictingSizes": []
+        },
+        "operations": {
+          "reserved": 0,
+          "pendingCleanup": 0,
+          "confirmed": 0,
+          "reservedBytes": "0",
+          "pendingCleanupBytes": "0",
+          "items": []
+        },
+        "physical": {
+          "checked": true,
+          "missingFiles": [],
+          "orphanObjects": [
+            {
+              "key": "w1/orphan",
+              "size": "30"
+            }
+          ],
+          "sizeMismatches": []
+        },
+        "usageDrift": {
+          "quotaUsed": "30",
+          "uniqueObjectBytesSum": "0",
+          "diff": "30",
+          "inFlightBytes": "0"
+        },
+        "notes": [
+          "配额占用与唯一对象记录求和不一致（diff=30 字节），需人工核实"
+        ],
+        "coverage": {
+          "physicalVerified": true,
+          "objectListProvided": true,
+          "operationStatesIncluded": false,
+          "caseSensitive": true
+        }
+      },
+      "caseSensitive": {
+        "quota": {
+          "present": true,
+          "used": "60",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 2,
+          "uniqueObjects": 2,
+          "duplicateRefs": [],
+          "physicalBytesSum": "60",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": [],
+          "conflictingSizes": []
+        },
+        "operations": {
+          "reserved": 0,
+          "pendingCleanup": 0,
+          "confirmed": 0,
+          "reservedBytes": "0",
+          "pendingCleanupBytes": "0",
+          "items": []
+        },
+        "physical": {
+          "checked": false,
+          "missingFiles": [],
+          "orphanObjects": [],
+          "sizeMismatches": []
+        },
+        "usageDrift": {
+          "quotaUsed": "60",
+          "uniqueObjectBytesSum": "60",
+          "diff": "0",
+          "inFlightBytes": "0"
+        },
+        "notes": [
+          "物理存在性未核实（未提供 fileExists/listObjects），占用与记录一致性仅限数据库层面"
+        ],
+        "coverage": {
+          "physicalVerified": false,
+          "objectListProvided": false,
+          "operationStatesIncluded": false,
+          "caseSensitive": true
+        }
+      }
+    },
+    {
+      "case": "invalid usage write bound fixed",
+      "accepted": true,
+      "used": "-10",
+      "operations": []
+    }
+  ],
+  "limits": "Actual handlers/services; existing memory Prisma/fs with fault hooks. No real DB, user storage, cloud, provider or payment. Positive cases marked accepted; other PASS asserts current defect reproduction."
+}

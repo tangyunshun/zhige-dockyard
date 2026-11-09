@@ -1,0 +1,454 @@
+{
+  "capturedAt": "2026-11-05T14:55:22.397Z",
+  "isolation": "Actual route/plan reader/provisioning and extracted actual UI handlers; persistence, auth, payment, gift, naming and browser APIs are local stubs. No DB, network, real charges or models.",
+  "limits": "In-memory IO does not prove production occurrence or MySQL transaction/concurrency behavior. Price/quota drift models a configuration change between two reads. UI missing-payUrl case is a defensive contract test; the current successful payment gateway supplies a URL. Fixture prices are not business pricing.",
+  "passingControls": [
+    {
+      "scenario": "explicit_STANDARD_stable_free",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 2,
+      "finalWorkspaces": [
+        {
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 2
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "update"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "missing_target_rejected",
+      "status": 400,
+      "response": {
+        "error": "MISSING_TARGET_PLAN",
+        "message": "请选择要升级的企业套餐"
+      },
+      "planReads": 0,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "inactive_first_read_rejected",
+      "status": 400,
+      "response": {
+        "error": "PLAN_INACTIVE",
+        "message": "套餐「Fixture plan」已停用，暂不可升级"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "zero_PRO_rejected",
+      "status": 400,
+      "response": {
+        "error": "PLAN_CYCLE_PRICE_INVALID",
+        "message": "该套餐当前计费周期价格无效或不可免费开通，请确认套餐与计费周期"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "paid_PRO_only_PENDING",
+      "status": 200,
+      "response": {
+        "success": true,
+        "orderNo": "UP_1793890522102_a654b6c3",
+        "amountCents": 19900,
+        "paymentMode": "MOCK",
+        "payUrl": "/isolated-checkout",
+        "planName": "Fixture plan",
+        "notice": "当前为【模拟支付】，不会产生真实扣款；支付确认后企业空间才会开通。"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "bills": [
+        {
+          "amount": 19900,
+          "status": "PENDING"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "charge",
+          "amount": 19900
+        }
+      ]
+    }
+  ],
+  "counterexamples": [
+    {
+      "scenario": "second_read_STANDARD_becomes_paid_still_free",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 2,
+      "finalWorkspaces": [
+        {
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 99
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "update"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 19900,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "second_read_same_free_key_limits_changed_silently",
+      "status": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "planReads": 2,
+      "finalWorkspaces": [
+        {
+          "type": "ENTERPRISE",
+          "plan": "STANDARD",
+          "maxMembers": 99
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "table": "workspacequota",
+          "method": "update"
+        },
+        {
+          "table": "operationlog",
+          "method": "create"
+        },
+        {
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "bills": [
+        {
+          "amount": 0,
+          "status": "SUCCESS"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "second_read_inactive_retain_writes_before_reject",
+      "status": 400,
+      "response": {
+        "error": "目标企业套餐不存在"
+      },
+      "planReads": 2,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "deleteMany"
+        },
+        {
+          "table": "workspace",
+          "method": "deleteMany"
+        }
+      ],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "second_read_inactive_delete_writes_before_reject",
+      "status": 400,
+      "response": {
+        "error": "目标企业套餐不存在"
+      },
+      "planReads": 2,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [
+        {
+          "table": "workspace",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "create"
+        },
+        {
+          "table": "workspacemember",
+          "method": "deleteMany"
+        },
+        {
+          "table": "workspace",
+          "method": "deleteMany"
+        }
+      ],
+      "bills": [],
+      "calls": []
+    },
+    {
+      "scenario": "mixed_zero_positive_BASE_YEAR_creates_order",
+      "status": 200,
+      "response": {
+        "success": true,
+        "orderNo": "UP_1793890522320_f6085531",
+        "amountCents": 10000,
+        "paymentMode": "MOCK",
+        "payUrl": "/isolated-checkout",
+        "planName": "Fixture plan",
+        "notice": "当前为【模拟支付】，不会产生真实扣款；支付确认后企业空间才会开通。"
+      },
+      "planReads": 1,
+      "finalWorkspaces": [
+        {
+          "type": "PERSONAL",
+          "plan": "FREE"
+        }
+      ],
+      "writes": [],
+      "bills": [
+        {
+          "amount": 10000,
+          "status": "PENDING"
+        }
+      ],
+      "calls": [
+        {
+          "kind": "charge",
+          "amount": 10000
+        }
+      ]
+    }
+  ],
+  "uiResults": [
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "isolated-pending"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": ""
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "isolated-pending",
+        "payUrl": "/isolated-checkout"
+      },
+      "success": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "/isolated-checkout"
+    },
+    {
+      "file": "src/components/studio/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": ""
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "isolated-pending"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": ""
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "orderNo": "isolated-pending",
+        "payUrl": "/isolated-checkout"
+      },
+      "success": [],
+      "errors": [],
+      "storageWrites": [],
+      "completedCallbacks": 0,
+      "closed": 0,
+      "navigations": [],
+      "redirect": "/isolated-checkout"
+    },
+    {
+      "file": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "payload": {
+        "success": true,
+        "free": true,
+        "workspaceId": "ws1"
+      },
+      "success": [
+        "空间升级成功！"
+      ],
+      "errors": [],
+      "storageWrites": [
+        [
+          "personalWorkspaceUpgraded",
+          "true"
+        ],
+        [
+          "upgradeMode",
+          "relabel"
+        ]
+      ],
+      "completedCallbacks": 1,
+      "closed": 1,
+      "navigations": [],
+      "redirect": ""
+    }
+  ],
+  "sha256": {
+    "src/constants/workspace-plans.ts": "caaf9d799be130fbcf5f505eb6722652f63926e389444a3c03164492eef2e78a",
+    "src/lib/limit-utils.ts": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a",
+    "src/lib/workspace-plan-service.ts": "e32e919f1464ef7c229d5d7e70e15171be8773265c416eb47fbc44968d090cbf",
+    "src/lib/workspace-upgrade-service.ts": "30011b5924e3b5e9996c2b0c9b3f2e5a7683e27c62a1a963685c0ae9b646bae9",
+    "src/app/api/workspace/upgrade/route.ts": "844a112f4dc07deaae9fd417d68644bef94525838893ba3dc206416624ad8370",
+    "src/components/studio/UpgradeModal.tsx": "3ca731a975a5624ab6d7e511672fd387131ecb9e58aa9bfc2271523defc65831",
+    "src/components/workspace-hub/modals/UpgradeModal.tsx": "121906ddf11fa84e42fd6cd5099707a936ed716c261ea8fb690ec7a79ead0ac3"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "capturedAt": "2026-11-08T07:13:46.865Z",
+  "mode": "current route/helper; controlled OfficeParser promise, fake time and auth; no real file, DB, OCR, cloud, model, fee or network",
+  "observations": [
+    {
+      "name": "office-timeout-not-enforced",
+      "requestedDeadlineMs": 10,
+      "elapsedVirtualMs": 25,
+      "settledAtDeadline": false,
+      "activeAfterDeadline": 1,
+      "lateTextAccepted": true
+    },
+    {
+      "name": "route-timeout-releases-slot-before-parser-stops",
+      "declaredPerUserLimit": 3,
+      "firstResponseStatuses": [
+        400,
+        400,
+        400
+      ],
+      "activeAfterThoseResponses": 3,
+      "activeAfterFourthAdmission": 4,
+      "fourthStatus": 200
+    }
+  ]
+}

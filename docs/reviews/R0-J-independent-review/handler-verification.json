@@ -1,0 +1,209 @@
+{
+  "capturedAt": "2026-11-07T16:48:59.799Z",
+  "evidence": [
+    {
+      "case": "upload document DB failure",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "服务器内部错误"
+      },
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\7fcc323e-f1da-4aed-b242-e627d0822f87.txt"
+      ],
+      "documents": 0,
+      "raw": [],
+      "writes": []
+    },
+    {
+      "case": "attachment DB failure",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "服务器内部错误"
+      },
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\30fedeca-bf10-4673-9bdd-c6afdda10bd4.txt"
+      ],
+      "documents": 1
+    },
+    {
+      "case": "write persisted then threw",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic uncertain write after bytes persisted"
+      },
+      "used": "0",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\91ebe103-3d68-42ea-bc30-bf24c57dafa6.txt"
+      ],
+      "documents": 0
+    },
+    {
+      "case": "operation replay",
+      "used": "60",
+      "documents": 0,
+      "writes": []
+    },
+    {
+      "case": "parse order",
+      "normalCalls": 2,
+      "missingWorkspaceCalls": 1,
+      "missingStatus": 404
+    },
+    {
+      "case": "concurrent delete same object",
+      "results": [
+        {
+          "status": 200,
+          "body": {
+            "success": true,
+            "data": {
+              "id": "d1",
+              "status": "REMOVED",
+              "notifiedCount": 0
+            },
+            "message": "资料删除成功"
+          }
+        },
+        {
+          "status": 500,
+          "body": {
+            "success": false,
+            "error": "服务器内部错误"
+          }
+        }
+      ],
+      "used": "40",
+      "otherPhysicalBytes": 70,
+      "documents": [
+        "other"
+      ]
+    },
+    {
+      "case": "metadata delete failed",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "d1",
+          "status": "REMOVED",
+          "notifiedCount": 0
+        },
+        "message": "资料删除成功"
+      },
+      "used": "70",
+      "document": {
+        "id": "d1",
+        "workspaceId": "w1",
+        "title": "d1",
+        "status": "REMOVED",
+        "visibility": "PRIVATE",
+        "filePath": "w1/d1",
+        "fileSize": 30,
+        "uploaderId": "u1",
+        "type": "doc",
+        "updatedAt": "2026-11-07T16:48:59.764Z"
+      }
+    },
+    {
+      "case": "drift clamp",
+      "result": {
+        "released": true,
+        "drift": true
+      },
+      "used": "0",
+      "raw": []
+    },
+    {
+      "case": "unlimited downgrade",
+      "used": "60",
+      "limit": 0
+    },
+    {
+      "case": "clear failed object",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配",
+        "resetAt": "2026-11-07T16:48:59.788Z"
+      },
+      "used": "30",
+      "objects": 1,
+      "documents": 0
+    },
+    {
+      "case": "clear concurrent upload",
+      "status": 200,
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\2d603e7f-9d8a-408c-b2e7-616a4cd556a9.txt"
+      ],
+      "documents": 0
+    },
+    {
+      "case": "batch deletes other private file",
+      "actor": "u1 workspace owner",
+      "privateUploader": "u2",
+      "status": 200,
+      "body": {
+        "success": true,
+        "count": 1,
+        "failedCount": 0,
+        "failed": []
+      },
+      "used": "0"
+    },
+    {
+      "case": "read-only report gaps",
+      "duplicate": {
+        "quota": {
+          "present": true,
+          "used": "30",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 2,
+          "withPhysicalFile": 2,
+          "physicalBytesSum": "60",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": []
+        },
+        "usageDrift": {
+          "quotaUsed": "30",
+          "documentsSum": "60",
+          "diff": "-30"
+        },
+        "notes": [
+          "配额占用与文档记录求和不一致（diff=-30 字节），需人工核实"
+        ]
+      },
+      "unverified": {
+        "quota": {
+          "present": true,
+          "used": "30",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 1,
+          "withPhysicalFile": 1,
+          "physicalBytesSum": "30",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": []
+        },
+        "usageDrift": {
+          "quotaUsed": "30",
+          "documentsSum": "30",
+          "diff": "0"
+        },
+        "notes": []
+      }
+    }
+  ],
+  "limits": "Actual handlers/quota/file-store with existing in-memory IO harness plus faults. Tests intentionally assert current defects; no real DB/storage/provider/payment. New metadata inserted by actual upload during clear-data file deletion."
+}

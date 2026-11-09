@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDate } from "@/utils/format";
 import React, { useState, useRef, useEffect } from "react";
 import {
   Building2,
@@ -151,7 +152,7 @@ export default function EnterpriseWorkspaceCard({
               <span>共享算力池: {workspace.quota?.tokenBalance !== undefined && workspace.quota?.tokenBalance !== null ? Number(workspace.quota.tokenBalance).toLocaleString() : "0"} 算力点</span>
             </span>
             {workspace.createdAt && (
-              <span> · 创建于 {new Date(workspace.createdAt).toLocaleDateString("zh-CN")}</span>
+              <span> · 创建于 {formatDate(workspace.createdAt)}</span>
             )}
           </div>
 

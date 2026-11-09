@@ -1,0 +1,22 @@
+{
+  "capturedAtReal": "2026-11-07T02:53:43.105065+08:00",
+  "purpose": "R0-F1 batch start baseline (before audit-fact fixes)",
+  "note": "Distinct from R0-F batch snapshot at docs/reviews/R0-F-fix-snapshot/",
+  "files": {
+    "src/app/api/system/maintenance/route.ts": {
+      "sha256": "06746ea03abbd1b8e547354550a564d7667a53f2ef5a5efb65d086c34e5f2ac8",
+      "bytes": 21773,
+      "snapshotCopy": "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__app__api__system__maintenance__route.ts.snapshot.txt"
+    },
+    "src/lib/maintenance.ts": {
+      "sha256": "29ff06b7de04166f1ebdb348474f70ba84408e179ddd9f4ca238b3851b75d269",
+      "bytes": 3834,
+      "snapshotCopy": "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__lib__maintenance.ts.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0f-maintenance-readonly.test.ts": {
+      "sha256": "7e7e0bfe6e50cff494516614e47de24844c6d977e14412d34b1ced9c06c9eb2b",
+      "bytes": 18286,
+      "snapshotCopy": "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__app__api____tests____r0f-maintenance-readonly.test.ts.snapshot.txt"
+    }
+  }
+}

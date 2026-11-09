@@ -33,6 +33,7 @@ import {
   Timer, CalendarPlus, X, Code, Compass, Search, ClipboardList, Cpu, Lock,
   SlidersHorizontal, Briefcase, Crown, Loader2, ChevronRight
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import AvatarDropdown from "@/components/AvatarDropdown";
 import type { ComponentCategory, ComponentDefinition } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
@@ -1488,40 +1489,11 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
     }
   }, [showRechargeModal, rechargeTab, workspaceType]);
 
-  const [recyclePoints, setRecyclePoints] = useState("");
-  const [recycling, setRecycling] = useState(false);
-
-  const handleExecuteRecycle = async () => {
-    if (!workspaceId) return;
-    const amount = Math.floor(Number(recyclePoints));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("请输入大于 0 的回收算力点数");
-      return;
-    }
-    try {
-      setRecycling(true);
-      const token = getAuthToken();
-      const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
-      const res = await fetch("/api/workspace/quota/recycle", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...headers },
-        credentials: "include",
-        body: JSON.stringify({ workspaceId, points: amount }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message || `已回收 ${amount} 算力点至个人钱包`);
-        setRecyclePoints("");
-        setRechargeSignal((s) => s + 1);
-        if (typeof data.poolBalance === "number") setWorkspaceToken(data.poolBalance);
-      } else {
-        toast.error(data.error || "回收失败，请检查操作权限或余额");
-      }
-    } catch {
-      toast.error("回收请求失败，请稍后重试");
-    } finally {
-      setRecycling(false);
-    }
+  // [R0-C / 原方案 F06 止损] 企业共享池 → 个人钱包转移已暂停。
+  // 防御性 handler：即使旧入口或残留事件被触发，也只提示暂停，绝不发起转个人请求，
+  // 绝不显示成功到账。服务端 recycleEnterprisePool 与两个 POST 入口同样拒绝。
+  const handleExecuteRecycle = () => {
+    toast.info("企业额度转入个人钱包暂不可用，原余额保留在企业空间");
   };
 
   const handleExecuteRecharge = async () => {
@@ -3149,6 +3121,16 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         cache: "no-store",
       });
       const estJson = await estRes.json().catch(() => null);
+      // [R0-I / 原方案 F12] BYOK 暂停事实与执行准入一致：blocked/canExecute=false 时
+      // points/yuan 为 null（不构成可扣点报价），直接以暂停提示终止本次执行，不进入扣点流程。
+      if (estJson?.data?.blocked || estJson?.data?.canExecute === false) {
+        toast.error(
+          estJson?.data?.message ||
+            "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣点、未调用模型。",
+        );
+        setIsExecutingTask(false);
+        return;
+      }
       const estPoints = estJson?.data?.points;
       if (typeof estPoints === "number" && estPoints > 0) gateCost = estPoints;
     } catch {
@@ -3502,13 +3484,31 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         body: JSON.stringify({ action: "batch_remove_assets", workspaceId, assetIds, reasonCode, reasonDetail }),
       });
       const body = await res.json().catch(() => ({}));
-      if (!res.ok || !body.success) {
-        throw new Error(body.error || "批量移除资料失败，请稍后重试");
+      // [R0-J2 J-PARTIAL] 401/403/4xx/5xx 先按错误处理：不修改列表，不用「成功移除 0 项」替代权限或服务错误
+      if (res.status !== 200 && res.status !== 207) {
+        throw new Error(body?.error || body?.message || `批量移除资料失败（HTTP ${res.status}），列表未修改`);
       }
+      // 207 部分成功/业务 success=false 均按实际结果处理，不全部移除
       const d = body.data || {};
-      setAssets(prev => prev.filter(a => !assetIds.includes(a.id)));
-      if (d.skippedCount > 0) {
-        toast.warning(`已移除 ${d.removedCount} 项，跳过 ${d.skippedCount} 项无权限的资料`);
+      // [R0-J2 J-PARTIAL] 仅信任后端返回的实际成功集合；缺集合时按空处理（不得把所有请求 ID 当成功）
+      const succeededIds: string[] = Array.isArray(d.succeededIds) ? d.succeededIds : [];
+      const failedItems: Array<{ id: string; reason: string }> = Array.isArray(d.failed) ? d.failed : [];
+      // 仅从列表移除实际成功的 ID；失败/跳过项保留可重试
+      setAssets(prev => prev.filter(a => !succeededIds.includes(a.id))); // [R0-J2 §5] 仅移除实际成功项；失败/跳过/无关保留
+      const okCount = succeededIds.length;
+      const failCount = failedItems.length;
+      const skipCount = d.skippedCount ?? 0;
+      // [R0-J3 §一.6] 待清理/共享保留状态如实呈现：不把物理未清/共享保留计入完整成功
+      const cleanupPendingIds: string[] = Array.isArray(d.cleanupPendingIds) ? d.cleanupPendingIds : [];
+      const sharedRetainedIds: string[] = Array.isArray(d.sharedRetainedIds) ? d.sharedRetainedIds : [];
+      const pendingNote = cleanupPendingIds.length > 0 ? `${cleanupPendingIds.length} 项物理清理待完成（占用保持计量，可重试）` : "";
+      const sharedNote = sharedRetainedIds.length > 0 ? `${sharedRetainedIds.length} 项因共享引用保留物理文件与占用` : "";
+      if (failCount > 0 || skipCount > 0 || pendingNote || sharedNote) {
+        const failMsg = failCount > 0 ? `${failCount} 项删除失败（${failedItems.map(f => f.reason).join("、")}）` : "";
+        const skipMsg = skipCount > 0 ? `${skipCount} 项跳过（无权限）` : "";
+        toast.warning(`已移除 ${okCount} 项。${[failMsg, skipMsg, pendingNote, sharedNote].filter(Boolean).join("；")}`);
+      } else if (res.status === 207) {
+        toast.warning(`已移除 ${okCount} 项，部分操作未完成`);
       } else {
         toast.success(d.notifiedCount > 0 ? `已批量移除 ${d.removedCount} 项资料，已向 ${d.notifiedCount} 位成员发送通知` : `已成功移除 ${d.removedCount} 项资料`);
       }
@@ -3692,12 +3692,31 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
         credentials: "include",
         body: JSON.stringify({ action: "batch_delete_assets", workspaceId, assetIds }),
       });
-      const body = await res.json();
-      if (!res.ok || !body.success) {
-        throw new Error(body.error || "批量删除失败");
+      const body = await res.json().catch(() => ({}));
+      // [R0-J2 J-PARTIAL] 401/403/4xx/5xx 先按错误处理：不修改列表，不用「没有需要删除」替代权限或服务错误
+      if (res.status !== 200 && res.status !== 207) {
+        throw new Error(body?.error || body?.message || `批量删除资料失败（HTTP ${res.status}），列表未修改`);
       }
-      toast.success(`已删除 ${body.count} 项资料`);
-      setAssets(prev => prev.filter(a => !assetIds.includes(a.id)));
+      // 207 部分成功/业务 success=false 均按实际结果处理
+      // [R0-J2 J-PARTIAL] 仅信任后端返回的实际成功集合；缺集合时按空处理（不得把所有请求 ID 当成功）
+      const succeededIds: string[] = Array.isArray(body.succeededIds) ? body.succeededIds : [];
+      const failedItems: Array<{ id: string; reason: string }> = Array.isArray(body.failed) ? body.failed : [];
+      // 仅从列表移除实际成功的 ID；失败项保留可重试
+      setAssets(prev => prev.filter(a => !succeededIds.includes(a.id))); // [R0-J2 §5] 仅移除实际成功项；失败/跳过/无关保留
+      // [R0-J3 §一.6] 待清理/共享保留状态如实呈现：占用未释放、可重试，不假报全部彻底删除
+      const cleanupPendingIds: string[] = Array.isArray(body.cleanupPendingIds) ? body.cleanupPendingIds : [];
+      const sharedRetainedIds: string[] = Array.isArray(body.sharedRetainedIds) ? body.sharedRetainedIds : [];
+      const pendingNote = cleanupPendingIds.length > 0 ? `；${cleanupPendingIds.length} 项物理清理待完成（占用保持计量，可重试）` : "";
+      const sharedNote = sharedRetainedIds.length > 0 ? `；${sharedRetainedIds.length} 项因共享引用保留物理文件与占用` : "";
+      if (failedItems.length > 0) {
+        toast.warning(`已删除 ${body.count} 项，${failedItems.length} 项失败（${failedItems.map(f => f.reason).join("、")}）${pendingNote}${sharedNote}`);
+      } else if (cleanupPendingIds.length > 0 || sharedRetainedIds.length > 0) {
+        toast.warning(`已删除 ${body.count} 项资料${pendingNote}${sharedNote}`);
+      } else if (body.count > 0) {
+        toast.success(`已删除 ${body.count} 项资料`);
+      } else {
+        toast.info("没有需要删除的资料");
+      }
     } catch (err: any) {
       toast.error(err.message || "批量删除失败");
     }
@@ -4472,8 +4491,19 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                         );
                                       }
                                       return (
-                                        <div className="py-6 text-center text-xs text-slate-400 font-medium">
-                                          {availableComps.length === 0 ? "暂无已装配的可用组件" : "未搜索到匹配的组件"}
+                                        <div className="py-6 text-center space-y-2.5">
+                                          <p className="text-xs text-slate-400 font-medium">
+                                            {availableComps.length === 0 ? "暂无已装配的可用组件" : "未搜索到匹配的组件"}
+                                          </p>
+                                          {availableComps.length === 0 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => router.push(`/studio?workspaceId=${workspaceId}`)}
+                                              className="inline-flex items-center gap-1 px-3 py-1.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-[11px] font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer active:scale-95"
+                                            >
+                                              去组件大厅装配
+                                            </button>
+                                          )}
                                         </div>
                                       );
                                     }
@@ -4565,29 +4595,34 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                         </div>
 
                         <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider block">提供研发源材料内容</label>
-                            <div className={`flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 ${selCatalogCompLeft?.inputContractKind === "STRUCTURED_FORM" ? "hidden" : ""}`}>
+                          {/* 标题与材料类型切换分两行：标题独占一行，切换按钮组占下一行，避免窄栏挤压换行/遮挡 */}
+                          <div className="space-y-1.5">
+                            <label className="text-[11px] font-black text-slate-700 uppercase tracking-wider whitespace-nowrap block">提供研发源材料内容</label>
+                            <div className={`flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg border border-slate-200/60 overflow-x-auto no-scrollbar w-full ${selCatalogCompLeft?.inputContractKind === "STRUCTURED_FORM" ? "hidden" : ""}`}>
                               {(() => {
                                 // 输入方式门控：按组件 inputMode 禁用不支持的输入方式（与后端合同校验同口径）
+                                // 命名与项目内既有叫法对齐：知识库（侧边 Tab 同名）、资料（资料库）、上传文件、文本输入
                                 const quickInputMode = selCatalogCompLeft?.inputMode || "text";
-                                const allModes: Array<{ key: string; label: string; disabled: boolean; reason: string }> = [
+                                const allModes: Array<{ key: string; label: string; icon: LucideIcon; disabled: boolean; reason: string }> = [
                                   {
                                     key: "text",
-                                    label: "📝 文本",
+                                    label: "文本输入",
+                                    icon: PenLine,
                                     disabled: quickInputMode === "file",
                                     reason: "该组件仅支持上传文件 / 选择资料作为主材料，不支持纯文本输入",
                                   },
                                   {
                                     key: "file",
-                                    label: "📄 文件",
+                                    label: "上传文件",
+                                    icon: Upload,
                                     disabled: quickInputMode === "text",
                                     reason: "该组件仅支持文本 / 选择资料作为主材料，不支持上传文件",
                                   },
-                                  { key: "asset", label: "📦 资料", disabled: false, reason: "" },
+                                  { key: "asset", label: "选择资料", icon: Database, disabled: false, reason: "" },
                                   {
                                     key: "knowledge",
-                                    label: "📚 引用知识",
+                                    label: "引用知识",
+                                    icon: BookOpen,
                                     disabled: quickInputMode === "file",
                                     reason: "该组件仅支持上传文件作为主材料，不支持引用知识文本",
                                   },
@@ -4621,7 +4656,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                       setMaterialValidationError("");
                                       if (fileInputRef.current) fileInputRef.current.value = "";
                                     }}
-                                    className={`px-2 py-1 text-[11px] font-bold rounded-md transition-all ${
+                                    className={`inline-flex items-center gap-1 px-1.5 py-1 text-[11px] font-bold rounded-md transition-all whitespace-nowrap shrink-0 ${
                                       mode.disabled
                                         ? "opacity-40 cursor-not-allowed text-slate-400"
                                         : materialInputMode === mode.key
@@ -4629,7 +4664,8 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                                           : "text-slate-500 hover:text-slate-800 cursor-pointer"
                                     }`}
                                   >
-                                    {mode.label}
+                                    <mode.icon className="w-3.5 h-3.5 shrink-0" />
+                                    <span>{mode.label}</span>
                                   </button>
                                 ));
                               })()}
@@ -5816,12 +5852,7 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
             currentUserName={userState?.userInfo?.name || userState?.userInfo?.email || "系统管理员"}
             currentUserEmail={userState?.userInfo?.email || null}
             userRole={userRole}
-            isReviewer={
-              userRole === "Owner" || userRole === "Admin" || userRole === "OWNER" || userRole === "ADMIN" ||
-              (userState?.userInfo?.name || userState?.userInfo?.email || "").includes("test-01") ||
-              (userState?.userInfo?.name || userState?.userInfo?.email || "").includes("Admin") ||
-              (userState?.userInfo?.name || userState?.userInfo?.email || "").includes("管理员")
-            }
+            isReviewer={userRole === "Owner" || userRole === "Admin" || userRole === "OWNER" || userRole === "ADMIN"}
             onOpenImportModal={() => {
               setImportAssetMode("asset");
               setImportAssetForm({ title: "", content: "", type: "input" });
@@ -7579,7 +7610,13 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
                       (customPositions || []).forEach(p => posMap.set(p.code, p));
                       const matchedPos = posMap.get(posCode);
                       if (matchedPos) {
-                        return `${matchedPos.icon} ${matchedPos.name}`;
+                        // KN-UI：图标走 PostIcon 组件渲染，不再把图标英文名当文本输出（用户反馈：去掉 Crown）
+                        return (
+                          <span className="inline-flex items-center gap-1">
+                            <PostIcon iconKey={matchedPos.icon} className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            {matchedPos.name}
+                          </span>
+                        );
                       }
                     }
                     return userRole === "Owner" || userRole === "OWNER"
@@ -8473,9 +8510,6 @@ export default function WorkspaceInternalLayout({ children, activeTab: initialAc
           setPoolThresholdInput={setPoolThresholdInput}
           poolThresholdSaving={poolThresholdSaving}
           handleSavePoolThreshold={handleSavePoolThreshold}
-          recycling={recycling}
-          recyclePoints={recyclePoints}
-          setRecyclePoints={setRecyclePoints}
           handleExecuteRecycle={handleExecuteRecycle}
         />
       )}

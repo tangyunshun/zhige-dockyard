@@ -1,0 +1,244 @@
+/**
+ * [R0-K / 原 F14 K03] 解析专用跨实例共享原子准入与租约。
+ *
+ * 仅使用 MySQL/Prisma 的解析专用表 parselease / parseadmissioncounter；
+ * 不挪用退款、计费或模型注册表锁，不把任何数据库事务持有整个慢解析期间
+ * （事务只覆盖毫秒级准入认领/释放，慢解析在隔离 worker 中进行）。
+ * 平台与用户额度用单条条件 UPDATE 原子认领，两个独立实例不能各自获得整份额度。
+ * 缺 delegate / 缺表 / 缺列 / 后端不可用 → 稳定 503 未就绪，任何重解析前拒绝；
+ * 绝不静默回退为本机 Map 无限放行，业务请求中不建表/迁移。
+ */
+import { prisma } from "./prisma";
+import {
+  PARSE_CODES,
+  PARSE_LIMITS,
+  ParseResourceError,
+  newParseIdentity,
+} from "./parse-policy";
+
+export type ParseLease = {
+  leaseId: string;
+  claimToken: string;
+  instanceId: string;
+  userId: string;
+  workUnits: number;
+};
+
+export type AcquireInput = {
+  userId: string;
+  workUnits: number;
+  now: number;
+  /** 服务端裁决的覆写值只允许离线测试注入小预算；生产忽略客户端输入 */
+  limits?: { platformMaxConcurrent?: number; platformMaxWorkUnits?: number; userMaxConcurrent?: number; userMaxPerMinute?: number };
+};
+
+export type AcquireOutcome = "granted" | "busy" | "rate_limited";
+
+/** 有条件求值的隔离后端接口；生产为 Prisma/MySQL，测试为共享内存后端 */
+export interface ParseAdmissionBackend {
+  acquire(input: AcquireInput & { lease: ParseLease }): Promise<AcquireOutcome>;
+  release(lease: ParseLease): Promise<boolean>;
+  quarantine(lease: ParseLease, note: string): Promise<void>;
+  sweep(now: number): Promise<number>;
+}
+
+let backendOverride: ParseAdmissionBackend | null = null;
+/** 仅用于离线隔离测试：注入共享后端（两个实例指向同一后端） */
+export function __setParseAdmissionBackendForTest(backend: ParseAdmissionBackend | null): void {
+  backendOverride = backend;
+}
+
+function isSchemaError(e: any): boolean {
+  const code = String(e?.code || "");
+  const msg = String(e?.message || "");
+  return code === "P2021" || code === "P2022" || code === "P2010" ||
+    msg.includes("does not exist") || msg.includes("Unknown column") || msg.includes("doesn't exist");
+}
+
+function notReady(e: unknown): ParseResourceError {
+  void e;
+  return new ParseResourceError(PARSE_CODES.ADMISSION_NOT_READY);
+}
+
+/** 生产后端：短事务内两条原子条件 UPDATE + 唯一租约插入；检查与认领原子完成 */
+function createPrismaBackend(): ParseAdmissionBackend {
+  const models = (client: any) => {
+    const counter = client?.parseadmissioncounter;
+    const lease = client?.parselease;
+    if (!counter || !lease || typeof counter.updateMany !== "function" || typeof lease.create !== "function") {
+      throw notReady(null);
+    }
+    return { counter, lease };
+  };
+
+  return {
+    async acquire(input) {
+      const { lease: ident } = input;
+      const l = input.limits ?? {};
+      const platformMax = l.platformMaxConcurrent ?? PARSE_LIMITS.PLATFORM_MAX_CONCURRENT;
+      const workMax = l.platformMaxWorkUnits ?? PARSE_LIMITS.PLATFORM_MAX_WORK_UNITS;
+      const userMax = l.userMaxConcurrent ?? PARSE_LIMITS.USER_MAX_CONCURRENT;
+      const rateMax = l.userMaxPerMinute ?? PARSE_LIMITS.USER_MAX_PER_MINUTE;
+      const nowDate = new Date(input.now);
+      const windowStart = new Date(input.now - PARSE_LIMITS.RATE_WINDOW_MS);
+      const userKey = `user:${input.userId}`;
+      let client: any;
+      try {
+        client = prisma as any;
+        const { counter, lease } = models(client);
+        return await client.$transaction(async (tx: any) => {
+          const m = models(tx);
+          // 幂等建立计数行（不是建表；并发冲突忽略）
+          for (const id of ["platform", userKey]) {
+            try { await m.counter.create({ data: { id, active: 0, workUnits: 0, requests: 0, windowStart: nowDate, updatedAt: nowDate } }); }
+            catch (e: any) { if (String(e?.code) !== "P2002" && isSchemaError(e)) throw notReady(e); }
+          }
+          // 平台：单条条件 UPDATE 原子认领并发与工作预算
+          const platform = await m.counter.updateMany({
+            where: { id: "platform", active: { lt: platformMax }, workUnits: { lte: workMax - ident.workUnits } },
+            data: { active: { increment: 1 }, workUnits: { increment: ident.workUnits }, updatedAt: nowDate },
+          });
+          if (platform.count !== 1) throw new ParseResourceError(PARSE_CODES.BUSY);
+
+          // 用户：窗口过期先重置（条件 UPDATE），再原子认领并发 + 频次
+          await m.counter.updateMany({
+            where: { id: userKey, windowStart: { lt: windowStart } },
+            data: { requests: 0, windowStart: nowDate, updatedAt: nowDate },
+          });
+          const user = await m.counter.updateMany({
+            where: { id: userKey, active: { lt: userMax }, requests: { lt: rateMax } },
+            data: { active: { increment: 1 }, requests: { increment: 1 }, updatedAt: nowDate },
+          });
+          if (user.count !== 1) {
+            const current = await m.counter.findUnique({ where: { id: userKey } });
+            if (current && current.requests >= rateMax) throw new ParseResourceError(PARSE_CODES.RATE_LIMITED);
+            throw new ParseResourceError(PARSE_CODES.BUSY);
+          }
+          try {
+            await m.lease.create({
+              data: {
+                leaseId: ident.leaseId, claimToken: ident.claimToken, userId: input.userId,
+                instanceId: ident.instanceId, status: "ACTIVE", workUnits: ident.workUnits,
+                leaseUntil: new Date(input.now + PARSE_LIMITS.LEASE_TTL_MS),
+                createdAt: nowDate, updatedAt: nowDate,
+              },
+            });
+          } catch (e: any) {
+            if (isSchemaError(e)) throw notReady(e);
+            throw new ParseResourceError(PARSE_CODES.BUSY);
+          }
+          void counter; void lease;
+          return "granted" as AcquireOutcome;
+        });
+      } catch (e) {
+        if (e instanceof ParseResourceError) throw e;
+        if (isSchemaError(e)) throw notReady(e);
+        throw notReady(e);
+      }
+    },
+    async release(ident) {
+      try {
+        const client: any = prisma as any;
+        const { counter, lease } = models(client);
+        return await client.$transaction(async (tx: any) => {
+          const m = models(tx);
+          // 只有持有者按 claimToken 认领到 ACTIVE 行才允许归还；重复/迟到/旧执行者不会命中
+          const upd = await m.lease.updateMany({
+            where: { leaseId: ident.leaseId, claimToken: ident.claimToken, status: "ACTIVE" },
+            data: { status: "RELEASED", releasedAt: new Date(), updatedAt: new Date() },
+          });
+          if (upd.count !== 1) return false;
+          await m.counter.updateMany({
+            where: { id: "platform", active: { gt: 0 } },
+            data: { active: { decrement: 1 }, workUnits: { decrement: Math.min(ident.workUnits, 1) } },
+          });
+          await m.counter.updateMany({
+            where: { id: `user:${ident.userId}`, active: { gt: 0 } },
+            data: { active: { decrement: 1 } },
+          });
+          void counter; void lease;
+          return true;
+        });
+      } catch (e) {
+        if (isSchemaError(e)) throw notReady(e);
+        return false; // 释放提交失败：保守保留，由有界恢复处理
+      }
+    },
+    async quarantine(ident, note) {
+      try {
+        const { lease } = models(prisma as any);
+        await lease.updateMany({
+          where: { leaseId: ident.leaseId, claimToken: ident.claimToken, status: "ACTIVE" },
+          data: { status: "QUARANTINED", note: note.slice(0, 240) },
+        });
+      } catch { /* 隔离失败由有界恢复兜底，不盲目腾槽 */ }
+    },
+    async sweep(now) {
+      try {
+        const client: any = prisma as any;
+        const { counter, lease } = models(client);
+        const cutoff = new Date(now - PARSE_LIMITS.LEASE_SWEEP_GRACE_MS);
+        // 有界：仅处理超过宽限期的过期租约；租约过期不等于物理工作已停止，故必须超宽限
+        const expired: any[] = await lease.findMany({
+          where: { status: "ACTIVE", leaseUntil: { lt: cutoff } },
+          take: PARSE_LIMITS.LEASE_SWEEP_BATCH,
+          select: { leaseId: true, userId: true, workUnits: true },
+        });
+        for (const row of expired) {
+          await lease.updateMany({ where: { leaseId: row.leaseId, status: "ACTIVE" }, data: { status: "EXPIRED" } });
+          await counter.updateMany({ where: { id: "platform", active: { gt: 0 } }, data: { active: { decrement: 1 } } });
+          await counter.updateMany({ where: { id: `user:${row.userId}`, active: { gt: 0 } }, data: { active: { decrement: 1 } } });
+        }
+        // 状态记录有界：清理已终结的旧记录，避免永久累积造成新的无上限成本
+        const old = await lease.deleteMany({
+          where: { status: { in: ["RELEASED", "EXPIRED"] }, createdAt: { lt: new Date(now - PARSE_LIMITS.RATE_WINDOW_MS * 2) } },
+        });
+        return expired.length + (old?.count ?? 0);
+      } catch (e) {
+        if (isSchemaError(e)) throw notReady(e);
+        return 0;
+      }
+    },
+  };
+}
+
+let defaultBackend: ParseAdmissionBackend | null = null;
+function backend(): ParseAdmissionBackend {
+  if (backendOverride) return backendOverride;
+  if (!defaultBackend) defaultBackend = createPrismaBackend();
+  return defaultBackend;
+}
+
+/** 认领：认证之后、worker 启动之前调用。任何失败都不允许继续重解析 */
+export async function acquireParseLease(input: AcquireInput): Promise<ParseLease> {
+  const lease: ParseLease = { ...newParseIdentity(), userId: input.userId, workUnits: input.workUnits };
+  let outcome: AcquireOutcome;
+  try {
+    outcome = await backend().acquire({ ...input, lease });
+  } catch (e) {
+    if (e instanceof ParseResourceError) throw e;
+    // 缺 delegate / 缺表 / 缺列 / 后端不可用：稳定 503，绝不静默回退本机 Map
+    throw notReady(e);
+  }
+  if (outcome === "rate_limited") throw new ParseResourceError(PARSE_CODES.RATE_LIMITED);
+  if (outcome !== "granted") throw new ParseResourceError(PARSE_CODES.BUSY);
+  return lease;
+}
+
+/**
+ * 释放：只由持有者按 claimToken 归还一次。重复释放 / 迟到释放 / 旧执行者释放新租约
+ * 都会因条件不匹配返回 false，不重复归还、不影响新租约。
+ */
+export async function releaseParseLease(lease: ParseLease): Promise<boolean> {
+  return backend().release(lease);
+}
+
+/** 退出确认失败：保守隔离占用，可诊断，不盲目腾槽 */
+export async function quarantineParseLease(lease: ParseLease, note: string): Promise<void> {
+  await backend().quarantine(lease, note);
+}
+
+/** 有界恢复：进程崩溃/重启/租约中断后有限回收，不永久卡槽 */
+export async function sweepParseLeases(now = Date.now()): Promise<number> {
+  return backend().sweep(now);
+}

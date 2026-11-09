@@ -16,13 +16,36 @@
 export type PaymentMode = "MOCK" | "REAL";
 export type PaymentChannel = "WECHAT_PAY" | "ALIPAY";
 
+/**
+ * 生产环境显式配置模拟支付的稳定配置错误（R0-E / 原 F08 止损）。
+ * 一旦抛出，resolvePaymentMode 与 createCharge 都不会再返回可用 MOCK/payUrl；
+ * 调用方据此在读取订单、入账或下单之前返回明确拒绝，绝不静默切换 REAL 调用真实供应商。
+ */
+export class PaymentConfigError extends Error {
+  code: string;
+  constructor(message: string) {
+    super(message);
+    this.name = "PaymentConfigError";
+    this.code = "PRODUCTION_MOCK_PAYMENT_DISABLED";
+  }
+}
+
 /** 当前支付模式：显式声明优先。
  * fail-closed：生产环境未显式配置 PAYMENT_MODE 时按 REAL 处理（真实网关未接入则拒绝下单），
  * 绝不静默降级 MOCK——否则漏配环境变量 = 任何登录用户可零成本给自己无限充值算力点。
- * 仅非生产环境（开发/联调）在未配置时降级为模拟。 */
+ * 仅非生产环境（开发/联调）在未配置时降级为模拟。
+ *
+ * [R0-E] 生产环境显式 mock（经 trim/大小写归一）是危险配置：模拟确认会直接给真实算力/席位/企业空间入账，
+ * 因此必须显式抛出 PaymentConfigError 拒绝，既不返回可用 MOCK，也绝不静默切换 REAL 去调真实供应商。
+ * 非生产显式 mock 与缺配置联调行为保持不变。 */
 export function resolvePaymentMode(): PaymentMode {
   const raw = (process.env.PAYMENT_MODE || "").trim().toLowerCase();
   if (raw === "mock") {
+    if (process.env.NODE_ENV === "production") {
+      throw new PaymentConfigError(
+        "当前支付配置不允许在生产环境使用模拟支付（PAYMENT_MODE=mock）。该操作已拒绝；请改用真实支付渠道或修正部署配置。",
+      );
+    }
     return "MOCK";
   }
   if (raw === "real") {

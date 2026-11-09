@@ -39,20 +39,30 @@ export async function POST(request: NextRequest) {
       return new NextResponse("fail", { status: 401 });
     }
 
-    const { outTradeNo, tradeStatus, totalAmount } = verified;
+    const { outTradeNo, tradeStatus, totalAmount, tradeNo } = verified;
     if (tradeStatus !== "TRADE_SUCCESS" && tradeStatus !== "TRADE_FINISHED") {
       console.log(`[alipay-notify] 订单 ${outTradeNo} 状态 ${tradeStatus}，无需入账`);
       return new NextResponse("success");
     }
 
-    // 金额核对（元 → 分）：以订单本地金额为权威，fulfill 服务内部做一致性校验
-    const gatewayAmountCents = totalAmount ? Math.round(Number(totalAmount) * 100) : null;
+    // [R1] 收款事实必需字段：网关交易号 trade_no 必须存在并透传履约层用于幂等与对账；
+    // 金额（元 → 分）必须可解析，缺失/非法则拒绝，不向履约层传 null 绕过核验。
+    const gatewayTransactionId = tradeNo ?? null;
+    const gatewayAmountCents =
+      totalAmount != null && totalAmount !== "" ? Math.round(Number(totalAmount) * 100) : null;
+    if (!outTradeNo || !gatewayTransactionId || gatewayAmountCents == null || Number.isNaN(gatewayAmountCents)) {
+      console.warn(
+        `[alipay-notify] 收款事实不完整（outTradeNo=${outTradeNo}, tradeNo=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`,
+      );
+      return new NextResponse("fail", { status: 400 });
+    }
 
     const fulfillment = await fulfillPaidOrder({
-      orderNo: outTradeNo || "",
+      orderNo: outTradeNo,
       paymentMethod: "ALIPAY",
       paymentMode: "REAL",
       remark: "支付宝入账（电脑网站支付，通知验签通过）",
+      gatewayTransactionId,
       gatewayAmountCents,
     });
 

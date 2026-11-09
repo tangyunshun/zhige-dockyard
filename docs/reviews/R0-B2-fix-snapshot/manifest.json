@@ -1,0 +1,50 @@
+{
+  "capturedAt": "2026-11-06T22:34:03+08:00",
+  "purpose": "R0-B2 同批补修开始/结束态快照与差量基线（不进入 R0-C、不部署）",
+  "note": "会话延续：源码编辑在快照采集前已进行，故 frozen-source 保存的是本批【结束态】副本。本批【开始态】由 R0-B1-independent-review/verification.json 的 baseline[].expectedSha256 与 sha256 字段锚定（独立审核产出、本批未改），并由 verify-rollback-plan.cjs 校验未改动文件哈希完全一致。历史快照与旧报告均未改动。",
+  "gitHead": "761684be8d5661d6ed288f3b91d1fedfdc795a75",
+  "gitStatusCountAtCapture": 115,
+  "b1BaselineSource": "docs/reviews/R0-B1-independent-review/verification.json",
+  "files": {
+    "src/lib/payment/seat-addon-fulfill.ts": {
+      "b2StartSha256": "fe8650986e2bdd607f7445cf842cacb95ee841d37344e7cbb97e49179e89a4fa",
+      "b2EndSha256": "4fc0e9a42e95e3df9e457fdcfde7bfba125316a48d750f89546d9e3aefc26c6a",
+      "frozenCopy": "frozen-source/src__lib__payment__seat-addon-fulfill.ts"
+    },
+    "src/app/api/workspace/seat-addon/route.ts": {
+      "b2StartSha256": "4483ec5f18ed94fdd4454948b27b59f39e3e1f048a3721a10743b25722edd20f",
+      "b2EndSha256": "0ab6a55c346664fec69a48a0b66fb92680d72acf91dadc2b71b7910c710cb263",
+      "frozenCopy": "frozen-source/src__app__api__workspace__seat-addon__route.ts"
+    },
+    "src/lib/payment-cashier-display.ts": {
+      "b2StartSha256": "644fe0cdd9ed6cdc9e9ff6f72e6398895d1dae2dd3eb3806964a4be23e6e4407",
+      "b2EndSha256": "541726f85585fc590179a3c6766d9cb60b2785818caf0a0d3052d1c9dc86db11",
+      "frozenCopy": "frozen-source/src__lib__payment-cashier-display.ts"
+    },
+    "src/app/user/pay/mock/page.tsx": {
+      "b2StartSha256": "421add33211421022d493cde5c9331e805eab8265704d2525930159d3d3daeb4",
+      "b2EndSha256": "0f0b2d84306a964edb6979164283e1a79a435894cce62018f5603b22242b0734",
+      "frozenCopy": "frozen-source/src__app__user__pay__mock__page.tsx"
+    },
+    "src/app/api/__tests__/r0b-seat-addon.test.ts": {
+      "b2StartSha256": "102a5598b610eeb5441d9e01160ae0d5b1936b491ef029ae6fdd497b31f005eb",
+      "b2EndSha256": "ee29b40ac5e60e07b37d9ee67b77e4045d476465ae32b569a7b15345910958e8",
+      "frozenCopy": "frozen-source/src__app__api____tests____r0b-seat-addon.test.ts"
+    }
+  },
+  "untouchedVerified": {
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/app/api/payments/mock/confirm/route.ts": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0",
+    "src/app/user/pay/qr/page.tsx": "12663337c65beb3affed3e835e472d9603e1e4df34ede0e143501c255ed26aa0",
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5"
+  },
+  "newFiles": [
+    "docs/reviews/R0-B2-fix-report.md",
+    "docs/reviews/R0-B2-fix-snapshot/manifest.json",
+    "docs/reviews/R0-B2-fix-snapshot/verify-rollback-plan.cjs",
+    "docs/reviews/R0-B2-fix-snapshot/verify-b2-cashier.cjs",
+    "docs/reviews/R0-B2-fix-snapshot/frozen-source/*"
+  ],
+  "rollbackCorrection": "R0-B1-fix-report.md 第 145 行误称 seat-addon-fulfill.ts 与 payment-cashier-display.ts 为 B1 新增并可删除。实测：B 开始快照不含该服务；B1 开始快照已含（e949ced3…）；B1 复核哈希表已含展示模块（644fe0cd…）。二者均为本批开始前的既有文件，B2 回退一律不得删除。旧报告不覆盖。",
+  "isolation": "只读源码、内存 Prisma、vm 组件执行、临时目录模拟回退；零真实库写入、零支付、零部署、零依赖下载。"
+}

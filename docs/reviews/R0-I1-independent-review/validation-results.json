@@ -1,0 +1,80 @@
+{
+  "completedAt": "2026-11-07T14:08:23.5808898Z",
+  "verdict": "R0-I1_NOT_FULLY_ACCEPTED",
+  "scope": "Only R0-I1 J01-J06; one residual J03; do not enter F13",
+  "closed": [
+    "I-MONTH-ORDER",
+    "I-ADMIN-COPY"
+  ],
+  "open": [
+    {
+      "id": "I-GET-DDL-DEFAULT",
+      "priority": "P1",
+      "affected": [
+        "omitted deploymentId -> workspace BYOK",
+        "auto -> workspace BYOK",
+        "personal BYOK default"
+      ],
+      "syntheticRawWriteAttemptsPerCase": 1
+    }
+  ],
+  "finalHashCheck": {
+    "allMatched": true,
+    "totalEntries": 34,
+    "startSnapshots": 6,
+    "deliveryFiles": 6,
+    "protectedFiles": 22,
+    "reference": "manifest-verification.json"
+  },
+  "verification": [
+    {
+      "kind": "formal targeted regression",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color src/app/api/__tests__/r0h-cost-admission.test.ts src/app/api/__tests__/r0g-cron-subscription-expire.test.ts src/app/api/__tests__/r0f-maintenance-readonly.test.ts src/app/api/__tests__/r0e-production-mock.test.ts src/app/api/__tests__/r0d-refund-approval.test.ts src/app/api/__tests__/r0c-pool-recycle.test.ts src/app/api/__tests__/r0b-seat-addon.test.ts src/app/api/__tests__/r0a-business-boundary.test.ts src/app/api/__tests__/r0a2-real-combo.test.ts src/app/api/__tests__/r0a3-combo-regression.test.ts src/app/api/__tests__/r0a4-combo-regression.test.ts",
+      "files": 11,
+      "passed": 396,
+      "exitCode": 0
+    },
+    {
+      "kind": "independent fixtures",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-I1-independent-review/vitest.review.config.ts",
+      "files": 6,
+      "passed": 8,
+      "defectReproductionTests": 3,
+      "exitCode": 0,
+      "caveat": "Three default-path tests assert the current defect exists, not acceptance"
+    },
+    {
+      "kind": "typecheck",
+      "command": ".\\node_modules\\.bin\\tsc.cmd --noEmit --incremental false -p tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "kind": "independent actual admin JSX/callbacks",
+      "command": "node docs/reviews/R0-I1-independent-review/verify-admin.cjs",
+      "flows": 2,
+      "exitCode": 0
+    },
+    {
+      "kind": "IDE admin verification script",
+      "command": "node docs/reviews/R0-I1-fix-snapshot/verify-admin-copy.cjs",
+      "passed": 4,
+      "exitCode": 0
+    },
+    {
+      "kind": "Studio pause page script",
+      "command": "node docs/reviews/R0-I-fix-snapshot/verify-byok-pause-pages.cjs",
+      "passed": 3,
+      "exitCode": 0
+    }
+  ],
+  "changes": "Only independent evidence and reports in docs/reviews/R0-I1-independent-review; no formal source/test changes",
+  "realDatabaseAccess": false,
+  "realModelCalls": false,
+  "realPayments": false,
+  "browserDOMVerified": false,
+  "limitations": [
+    "Database/crypto/fetch IO replaced with offline fixtures",
+    "No real MySQL DDL success or locking observation",
+    "No production billing or business acceptance claim"
+  ]
+}

@@ -83,6 +83,7 @@ export function useWorkspaceHubData() {
   const [personalWorkspaceDeleted, setPersonalWorkspaceDeleted] = useState(false);
   const [upgradeMode, setUpgradeMode] = useState<"parallel" | "replace" | "migrate" | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [redirecting, setRedirecting] = useState(false);
 
   const loadUserInfo = async () => {
@@ -116,7 +117,7 @@ export function useWorkspaceHubData() {
           if (contentType && contentType.includes("application/json")) {
             errorData = await res.json().catch(() => ({}));
           }
-          console.log("[useWorkspaceHubData] 用户认证失效:", errorData);
+          console.warn("[useWorkspaceHubData] 用户认证失效");
 
           localStorage.removeItem("userId");
           localStorage.removeItem("userRole");
@@ -243,12 +244,13 @@ export function useWorkspaceHubData() {
                 setPersonalWorkspace(null);
               }
               setEnterpriseWorkspace(enterprise || null);
+      setLoadError(null);
             }
           }
         }
       }
     } catch (error) {
-      console.error("加载聚合数据失败:", error);
+      setLoadError("工作台数据加载失败，请检查网络后重试");
     } finally {
       setIsLoading(false);
       // 升级流程遗留的标记仅用于一次性判断；数据加载完成后清除，
@@ -285,7 +287,6 @@ export function useWorkspaceHubData() {
 
     // 监听全网组件装配/卸载更新事件，实时刷新中枢卡片与列表
     const handleComponentUpdate = () => {
-      console.log("[useWorkspaceHubData] 捕获全网组件装配变更事件，自动同步刷新中枢...");
       loadUserInfo();
     };
     window.addEventListener("zhige_workspace_components_updated", handleComponentUpdate);
@@ -312,6 +313,7 @@ export function useWorkspaceHubData() {
     personalWorkspaceDeleted,
     upgradeMode,
     isLoading,
+    loadError,
     needsPersonalWorkspace,
     redirecting,
     refresh: loadUserInfo,

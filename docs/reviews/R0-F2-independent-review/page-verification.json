@@ -1,0 +1,115 @@
+{
+  "capturedAt": "2026-11-07T05:59:50.650Z",
+  "results": [
+    {
+      "scenario": "denied",
+      "confirmationPrecedesWrite": true,
+      "maintenanceMode": false,
+      "fetches": [
+        {
+          "url": "/api/system/maintenance",
+          "method": "GET"
+        },
+        {
+          "url": "/api/system/maintenance",
+          "method": "POST",
+          "body": {
+            "enabled": true,
+            "message": "fixture message",
+            "estimatedMinutes": "30"
+          }
+        }
+      ],
+      "toasts": [
+        {
+          "level": "error",
+          "message": "FORBIDDEN"
+        }
+      ]
+    },
+    {
+      "scenario": "auditFailure",
+      "confirmationPrecedesWrite": true,
+      "maintenanceMode": false,
+      "fetches": [
+        {
+          "url": "/api/system/maintenance",
+          "method": "GET"
+        },
+        {
+          "url": "/api/system/maintenance",
+          "method": "POST",
+          "body": {
+            "enabled": true,
+            "message": "fixture message",
+            "estimatedMinutes": "30"
+          }
+        }
+      ],
+      "toasts": [
+        {
+          "level": "error",
+          "message": "操作处理失败，请稍后重试"
+        }
+      ]
+    },
+    {
+      "scenario": "network",
+      "confirmationPrecedesWrite": true,
+      "maintenanceMode": false,
+      "fetches": [
+        {
+          "url": "/api/system/maintenance",
+          "method": "GET"
+        },
+        {
+          "url": "/api/system/maintenance",
+          "method": "POST",
+          "body": {
+            "enabled": true,
+            "message": "fixture message",
+            "estimatedMinutes": "30"
+          }
+        }
+      ],
+      "toasts": [
+        {
+          "level": "error",
+          "message": "请求失败，请稍后重试"
+        }
+      ]
+    },
+    {
+      "scenario": "success",
+      "confirmationPrecedesWrite": true,
+      "maintenanceMode": true,
+      "fetches": [
+        {
+          "url": "/api/system/maintenance",
+          "method": "GET"
+        },
+        {
+          "url": "/api/system/maintenance",
+          "method": "POST",
+          "body": {
+            "enabled": true,
+            "message": "fixture message",
+            "estimatedMinutes": "30"
+          }
+        },
+        {
+          "url": "/api/system/maintenance",
+          "method": "GET"
+        }
+      ],
+      "toasts": [
+        {
+          "level": "success",
+          "message": "系统维护模式已开启，普通用户访问已被拦截"
+        }
+      ]
+    }
+  ],
+  "sourceSha256": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+  "limits": "Actual component handler and stored onConfirm executed with hook/JSX/fetch stubs. In-memory source instrumentation exposes lexical handlers; business file never edited. Not browser, DOM or real auth/network."
+}

@@ -1,0 +1,32 @@
+{
+  "capturedAt": "2026-11-08T11:30:37.247Z",
+  "mode": "Actual handler/storage/parser; fake IO, real normal worker or explicit controlled lifecycle double",
+  "observations": [
+    {
+      "name": "upload-admission-now-wired",
+      "status": 503,
+      "acquired": 1,
+      "workerStarts": 0,
+      "files": 0
+    },
+    {
+      "name": "studio-releases-unconfirmed-worker",
+      "status": 503,
+      "code": "PARSE_STOP_UNCONFIRMED",
+      "acquired": 1,
+      "released": 1,
+      "quarantined": 0,
+      "workerExitNotObserved": true,
+      "used": "0",
+      "documents": 0
+    },
+    {
+      "name": "normal-upload-storage-positive",
+      "status": 200,
+      "acquired": 1,
+      "released": 1,
+      "starts": 1,
+      "used": "33"
+    }
+  ]
+}

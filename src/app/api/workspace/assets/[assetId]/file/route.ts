@@ -37,7 +37,7 @@ export async function GET(
 
     if (doc.filePath) {
       try {
-        buffer = await readAssetFile(doc.filePath);
+        buffer = await readAssetFile(doc.filePath, doc.workspaceId); // [R0-J3 J-KEYS] 授权空间边界
       } catch {
         buffer = null;
       }

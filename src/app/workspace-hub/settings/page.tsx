@@ -385,10 +385,25 @@ export default function PersonalWorkspaceSettings() {
 
   const handleExportData = () => {
     setLoading(true);
-    setTimeout(() => {
+    try {
+      const exportData = {
+        workspace: workspaceData,
+        quota: (workspaceData as any)?.quota || null,
+        exportedAt: new Date().toISOString(),
+      };
+      const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `workspace-settings-${Date.now()}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
       toast.success("数据导出成功，正在下载...");
+    } catch (err: any) {
+      toast.error(err?.message || "导出失败，请重试");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   const handleClearData = () => {

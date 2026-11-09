@@ -1,0 +1,60 @@
+{
+  "batch": "R0-J6",
+  "capturedAt": "2026-11-08T06:23:26.9951805Z",
+  "baseline": "R0-J5 independent review manifest-verification.json sha256 (all 4 snapshotted existing files match exactly; no intermediate changes)",
+  "baselineSource": "docs/reviews/R0-J5-independent-review/manifest-verification.json",
+  "baselineCapturedAt": "2026-11-08T06:06:44.078Z",
+  "io": "no database / cloud / model / fee / disk access; snapshots are read-only copies of workspace source",
+  "files": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "snapshot": "frozen-source/src__lib__storage-quota.ts.snapshot.txt",
+      "sha256": "b98803dff5a8386f0984efa48f1deeeeb26a5aaf7776aa7e868e2fb60de3e803",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "plannedChange": "J3-02: finalizeObjectCleanup 竞态回滚后重读已提交终态",
+      "capturedAt": "2026-11-08T06:23:26.96Z"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "snapshot": "frozen-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt",
+      "sha256": "adc29f8718c4f0a2f271721e0c4f3fbaf4e7d12e97d42bcaac3ca24c6c62fc18",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "plannedChange": "J3-04: pendingCount 按最终只读持久事实唯一计数",
+      "capturedAt": "2026-11-08T06:23:26.97Z"
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "snapshot": "frozen-source/src__app__api__studio__handler.ts.snapshot.txt",
+      "sha256": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "plannedChange": "none expected; snapshotted to prove actual entry consumption unchanged",
+      "capturedAt": "2026-11-08T06:23:26.98Z"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "snapshot": "frozen-source/src__app__api____tests____r0j5-remaining-branches.test.ts.snapshot.txt",
+      "sha256": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "plannedChange": "none expected; snapshotted for regression comparison",
+      "capturedAt": "2026-11-08T06:23:26.99Z"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "snapshot": null,
+      "sha256": null,
+      "status": "new",
+      "note": "R0-J6 新增精确隔离测试；开工前不存在，无起点副本"
+    },
+    {
+      "path": "docs/reviews/R0-J6-fix-report.md",
+      "snapshot": null,
+      "sha256": null,
+      "status": "new",
+      "note": "R0-J6 交付报告；开工前不存在，无起点副本"
+    }
+  ]
+}

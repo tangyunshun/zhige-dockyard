@@ -1,5 +1,6 @@
 "use client";
 
+import { formatNumber } from "@/utils/format";
 import React from "react";
 import { Plus, Search, HelpCircle, Users, LayoutGrid, Ticket } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -115,7 +116,7 @@ export default function EnterpriseWorkspaceList({
               <div className="text-[11px] font-bold text-slate-500 bg-slate-100/80 px-2.5 py-1 rounded-full flex items-center gap-1.5 border-none shadow-none">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#63b3ed] shrink-0" />
                 <span>
-                  协同配额：{myJoinedCount} / 5
+                  协同空间：{myJoinedCount} / {quota?.maxEnterprise ?? "-"}
                 </span>
                 <div className="relative group/tooltip cursor-help flex items-center">
                   <HelpCircle className="w-3.5 h-3.5 text-slate-400 hover:text-slate-500 transition-colors" />
@@ -228,7 +229,7 @@ export default function EnterpriseWorkspaceList({
         <div className="mt-5 pt-3 border-t border-slate-200/50 flex flex-wrap items-center gap-6 text-xs text-slate-500 font-semibold">
           <div className="flex items-center gap-1">
             <Users className="w-3.5 h-3.5 text-slate-400" />
-            <span>协同空间总成员：<strong className="text-slate-700">{totalMembers}</strong> 人</span>
+            <span>协同空间总成员：<strong className="text-slate-700">{formatNumber(totalMembers)}</strong> 人</span>
           </div>
           <div className="flex items-center gap-1">
             <LayoutGrid className="w-3.5 h-3.5 text-slate-400" />

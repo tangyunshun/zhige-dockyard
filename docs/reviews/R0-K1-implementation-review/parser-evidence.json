@@ -1,0 +1,76 @@
+{
+  "capturedAt": "2026-11-08T11:32:57.598Z",
+  "mode": "Real local workers/parsers/preview GET; tiny fixtures; fake auth/DB/file IO/OCR where explicitly indicated",
+  "observations": [
+    {
+      "name": "png-pixels-positive",
+      "ocrStarts": 0
+    },
+    {
+      "name": "docx-text-inflation-positive",
+      "rejected": true
+    },
+    {
+      "name": "archive-count-positive",
+      "entries": 21,
+      "rejected": true
+    },
+    {
+      "name": "xlsx-expansion-charged-compressed",
+      "compressedBytes": 8614,
+      "actualFixtureExpandedBytes": 15820,
+      "budgetBytes": 8630,
+      "meteredBytes": 8614,
+      "accepted": true
+    },
+    {
+      "name": "html-preview-inflation-bypass",
+      "budgetBytes": 8,
+      "meteredBytes": 0,
+      "accepted": true
+    },
+    {
+      "name": "tiff-byte-pixel-substitution",
+      "declaredPixels": 10000,
+      "budgetPixels": 100,
+      "meteredPixels": 38,
+      "ocrStarts": 1,
+      "fixture": "TIFF header/IFD only; fake OCR, not full raster decode"
+    },
+    {
+      "name": "xlsx-text-loses-numeric-cell",
+      "oldContains42": true,
+      "newContains42": false,
+      "newAccepted": true,
+      "newTextPrefix": "ProductQuantityWidget AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "legacy-positive-doc",
+      "matchesOld": true,
+      "expectedText": "智慧园区项目立项报告"
+    },
+    {
+      "name": "legacy-positive-ppt",
+      "matchesOld": true,
+      "expectedText": "智慧交通汇报"
+    },
+    {
+      "name": "ocr-recognize-pending-after-terminate",
+      "rootDeadlineMs": 30,
+      "ocrTimeoutMs": 10,
+      "elapsedMs": 100,
+      "terminateAcknowledged": true,
+      "settled": false
+    },
+    {
+      "name": "cached-preview-positive-xlsx",
+      "status": 200,
+      "type": "table"
+    },
+    {
+      "name": "cached-preview-positive-docx",
+      "status": 200,
+      "type": "html"
+    }
+  ]
+}

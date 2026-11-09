@@ -105,10 +105,35 @@ export function validateByoInput(
   };
 }
 
-/** 确保数据库表中存在 shareWithMembers 列（热补全，防未执行迁移时查询/写入崩溃） */
+/**
+ * 确保数据库表中存在 shareWithMembers 列（热补全，防未执行迁移时查询/写入崩溃）。
+ *
+ * [R0-I1 I-GET-DDL] 只读调用（readOnly: true，供用户读请求如报价/暂停解析使用）：
+ *  绝不执行 DDL——改用 SELECT 探针验证列是否就绪；列缺失时抛出稳定错误（BYO_SHARE_COLUMN_NOT_READY）
+ *  由调用方诚实拒绝，不在用户读请求里自动迁移。写路径（配置/绑定保存）仍保留原热补全行为。
+ */
 let _byoShareColumnChecked = false;
-export async function ensureByoShareWithMembersColumn(): Promise<void> {
+export async function ensureByoShareWithMembersColumn(
+  opts?: { readOnly?: boolean },
+): Promise<void> {
   if (_byoShareColumnChecked) return;
+  if (opts?.readOnly) {
+    try {
+      // 只读探针：列存在时查询成功；列缺失时 MySQL 报 Unknown column → 诚实拒绝
+      await prisma.$queryRawUnsafe(
+        "SELECT `shareWithMembers` FROM `workspace_byo_model` LIMIT 1",
+      );
+      _byoShareColumnChecked = true;
+      return;
+    } catch {
+      const err = new Error(
+        "BYO 共享列结构未就绪（数据库缺少 shareWithMembers 列），只读解析已拒绝执行，请先完成数据库迁移",
+      );
+      (err as any).code = "BYO_SHARE_COLUMN_NOT_READY";
+      (err as any).status = 503;
+      throw err;
+    }
+  }
   try {
     await prisma.$executeRawUnsafe(
       "ALTER TABLE `workspace_byo_model` ADD COLUMN `shareWithMembers` BOOLEAN NOT NULL DEFAULT true",
@@ -202,9 +227,11 @@ export async function tryResolveWorkspaceByoDefault(
   workspaceId: string,
   requiredCapabilities: string[],
   userId?: string,
+  /** [R0-I2] 只读解析（用户读请求如报价）：热补列改为 SELECT 探针，绝不 DDL/DML */
+  opts?: { readOnly?: boolean },
 ): Promise<ResolvedModelPlan | null> {
   if (!workspaceId) return null;
-  await ensureByoShareWithMembersColumn();
+  await ensureByoShareWithMembersColumn({ readOnly: opts?.readOnly === true });
   const row = await prisma.workspace_byo_model.findUnique({ where: { workspaceId } });
   if (!row || !row.enabled) return null;
 

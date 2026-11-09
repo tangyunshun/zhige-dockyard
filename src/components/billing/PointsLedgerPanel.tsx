@@ -59,6 +59,8 @@ export default function PointsLedgerPanel() {
   const [exporting, setExporting] = useState(false);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
   // 锚点定位高亮：从「消耗明细」等入口带 #points-ledger 进入时短暂高亮面板
   const [ledgerHighlighted, setLedgerHighlighted] = useState(false);
 
@@ -146,23 +148,12 @@ export default function PointsLedgerPanel() {
 
   // 开始时间变化：若已选结束时间且开始晚于结束，自动清空结束时间
   const handleStartChange = (val: string) => {
-    if (val && endDate && val > endDate) {
-      toast.warning("开始时间不能晚于结束时间，已为您清空结束时间");
-      setEndDate("");
-      setStartDate(val);
-      void loadLedger(1, val, "");
-      return;
-    }
     setStartDate(val);
     void loadLedger(1, val, endDate);
   };
 
   // 结束时间变化：不能早于开始时间
   const handleEndChange = (val: string) => {
-    if (val && startDate && val < startDate) {
-      toast.warning("结束时间不能早于开始时间，请重新选择");
-      return;
-    }
     setEndDate(val);
     void loadLedger(1, startDate, val);
   };
@@ -264,7 +255,7 @@ export default function PointsLedgerPanel() {
         <input
           type="date"
           value={startDate}
-          max={endDate || undefined}
+          max={endDate || today}
           onChange={(e) => handleStartChange(e.target.value)}
           className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-[#3182ce] cursor-pointer"
         />
@@ -273,6 +264,7 @@ export default function PointsLedgerPanel() {
           type="date"
           value={endDate}
           min={startDate || undefined}
+          max={today}
           onChange={(e) => handleEndChange(e.target.value)}
           className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-[#3182ce] cursor-pointer"
         />

@@ -1,0 +1,74 @@
+
+import { afterAll, afterEach } from "vitest";
+import fs from "node:fs";
+import { decidePlatformModelCostAdmission as decide } from "@/lib/model-cost-admission";
+const evidence: any[] = [];
+const observe = (label: string, r: any) => ({label,status:r.status,code:r.body.code ?? null,consume:fx.consumeCalls.length,hold:fx.holdCalls.length,execute:fx.adapterExecuteCalls.length,refund:fx.refundCalls.length,tasks:[...h.tables.componenttask.values()].map(t=>t.status),writes:[...h.writes]});
+const noEffects = () => {
+  expect(fx.consumeCalls).toHaveLength(0); expect(fx.holdCalls).toHaveLength(0);
+  expect(fx.adapterExecuteCalls).toHaveLength(0); expect(fx.refundCalls).toHaveLength(0);
+  expect(h.tables.componenttask.size).toBe(0); expect(h.tables.pointledger.size).toBe(0);
+};
+beforeEach(()=>{vi.stubEnv('NODE_ENV','test');vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','false');vi.stubEnv('MODEL_MAX_OUTPUT_TOKENS','2000');});
+afterEach(()=>vi.unstubAllEnvs());
+describe('R0-H2 independent acceptance N01-N05',()=>{
+  it('N01: missing and invalid final server limits reject before all financial/execution effects, regardless of client fields',async()=>{
+    const rows=[];
+    for(const limit of [undefined,null,0,-1,NaN,Infinity,'abc',Number.MAX_SAFE_INTEGER+1]) {
+      seed(); fx.contextLimit=limit as any;
+      const r=await call({contextLimit:128000,inputTokens:1,maxOutputTokens:1,budgetPoints:9999999});
+      expect(r.status,String(limit)).toBe(422);expect(r.body.code).toBe('MODEL_COST_NOT_TRUSTWORTHY');noEffects();rows.push(observe(String(limit),r));
+    }
+    for(const limit of [0.5,1.5]) {
+      seed();fx.contextLimit=limit;const r=await call();expect([400,422]).toContain(r.status);noEffects();rows.push(observe(String(limit),r));
+    }
+    evidence.push({case:'N01',rows});
+  });
+  it('N02: trusted final plan is used across supported protocols; forged client limit does not select the bound',async()=>{
+    const rows=[];
+    for(const protocol of ['OPENAI_COMPATIBLE','ANTHROPIC','GEMINI']) {
+      seed();const deps=makeDeps();const resolver=deps.resolveDefaultDeployment as any;
+      resolver.mockResolvedValue({deploymentId:'dep-known',providerId:'prov-1',modelId:'model-1',contextLimit:8192,protocol,pricing:trustedPricing()});
+      const r=await call({contextLimit:1,inputTokens:9999999},deps);
+      expect(r.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(100);expect(fx.adapterExecuteCalls).toHaveLength(1);
+      const d=decide({pricing:trustedPricing(),contextLimit:8192,maxOutputTokens:300,budgetPoints:100,markupRateBps:0});
+      expect(d.allowed).toBe(true);if(d.allowed){expect(d.inputBoundSource).toBe('REGISTRY_CONTEXT_LIMIT_FULL');expect(d.inputTokenUpperBound).toBe(8192);expect(d.conservativeCostMicros).toBe(9n);}
+      rows.push({...observe(protocol,r),bound:8192,costMicros:'9'});
+    }
+    evidence.push({case:'N02',rows});
+  });
+  it('N03: independently computed exact 100 and 101/150/200/201 point cases; real handler uses the same output cap',async()=>{
+    const rows=[];
+    for(const expectedPoints of [100,101,150,200,201]) {
+      seed();fx.contextLimit=100000;fx.pricing=trustedPricing({costInputMicrosPerMillion:expectedPoints*100000,costOutputMicrosPerMillion:0});
+      const expectedMicro=BigInt(100000)*BigInt(expectedPoints*100000)/1000000n;
+      expect(expectedMicro/10000n).toBe(BigInt(expectedPoints));
+      const r=await call({contextLimit:1,maxOutputTokens:1});expect(r.status).toBe(expectedPoints===100?200:400);
+      if(expectedPoints===100){expect(fx.consumeCalls[0].points).toBe(100);expect(fx.adapterExecuteCalls[0].maxOutputTokens).toBe(300);}else{expect(r.body.code).toBe('MODEL_COST_EXCEEDS_BUDGET');noEffects();}
+      rows.push({...observe(String(expectedPoints),r),independentCostMicros:expectedMicro.toString()});
+    }
+    // Output cost and markup independently cover the exact inclusive threshold.
+    const d=decide({pricing:trustedPricing({costInputMicrosPerMillion:0,costOutputMicrosPerMillion:2000000000}),contextLimit:8192,maxOutputTokens:400,budgetPoints:100,markupRateBps:2500});
+    expect(d.allowed).toBe(true);if(d.allowed)expect(d.conservativeCostMicros).toBe(1000000n);
+    expect(decide({pricing:trustedPricing({costInputMicrosPerMillion:0,costOutputMicrosPerMillion:2000000000}),contextLimit:8192,maxOutputTokens:401,budgetPoints:100,markupRateBps:2500}).allowed).toBe(false);
+    evidence.push({case:'N03',rows});
+  });
+  it('N04: unknown rules/cache reject; explicit zero-cost success still obeys source and price prerequisites',async()=>{
+    const rows=[];
+    for(const over of [{rules:{extraFee:1}},{costCacheWriteMicrosPerMillion:1}]){seed();fx.pricing=trustedPricing(over);const r=await call();expect(r.status).toBe(422);noEffects();rows.push(observe(JSON.stringify(over),r));}
+    for(const priceStatus of ['FREE','VERIFIED']){seed();fx.pricing=trustedPricing({priceStatus,costInputMicrosPerMillion:0,costOutputMicrosPerMillion:0});const r=await call();expect(r.status).toBe(200);rows.push(observe(priceStatus,r));}
+    seed();fx.contextLimit=0;fx.pricing=trustedPricing({priceStatus:'FREE',costInputMicrosPerMillion:0,costOutputMicrosPerMillion:0});const r=await call();expect(r.status).toBe(422);noEffects();rows.push(observe('FREE missing limit',r));
+    evidence.push({case:'N04-rules',rows});
+  });
+  it('N04: already-approved billing branches remain separate; settlement enabled solely inside synthetic test',async()=>{
+    const rows=[];seed();fx.contextLimit=0;const byok=await call({deploymentId:'byo:w1'});expect(byok.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(7);rows.push(observe('BYOK quote passthrough IO fake',byok));
+    seed();vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','true');h.tables.systemconfig.set('billing.settlementMode',{key:'billing.settlementMode',value:'ALL'});fx.pricing=trustedPricing({costInputMicrosPerMillion:5000000000,costOutputMicrosPerMillion:0,priceSource:'VERIFIED'});
+    const settlement=await call();expect([200,202]).toContain(settlement.status);expect(fx.holdCalls).toHaveLength(1);expect(fx.consumeCalls).toHaveLength(0);expect(fx.adapterExecuteCalls).toHaveLength(1);rows.push(observe('synthetic ready settlement',settlement));
+    evidence.push({case:'N04-modes',rows});
+  });
+  it('N04: normal fixed charge success and upstream failure with one refund invocation',async()=>{
+    const rows=[];seed();const success=await call();expect(success.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(100);expect([...h.tables.componenttask.values()][0].status).toBe('SUCCESS');rows.push(observe('success',success));
+    seed();fx.adapterBehavior='throw';const failure=await call();expect(failure.status).toBe(502);expect(fx.refundCalls).toHaveLength(1);expect([...h.tables.componenttask.values()][0].status).toBe('FAILED');rows.push(observe('upstream failure',failure));evidence.push({case:'N04-task',rows});
+  });
+});
+afterAll(()=>{if(evidence.length!==6)throw Error('Incomplete independent evidence');const m=JSON.parse(fs.readFileSync('docs/reviews/R0-H2-independent-review/manifest-verification.json','utf8'));fs.writeFileSync('docs/reviews/R0-H2-independent-review/handler-verification.json',JSON.stringify({capturedAt:new Date().toISOString(),sha256:m.sha256,tests:6,evidence},null,2));});

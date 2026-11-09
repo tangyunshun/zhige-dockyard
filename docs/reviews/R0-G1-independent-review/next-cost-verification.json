@@ -1,0 +1,118 @@
+{
+  "capturedAt": "2026-11-07T06:51:11.750Z",
+  "originalIssue": "F11 platform fixed-point compatibility cost admission",
+  "scope": "POST /api/studio action=simulate, actual REAL_MODEL execution branch; BYOK and real settlement are separate scopes.",
+  "costGateLocation": {
+    "line": 3440
+  },
+  "cases": [
+    {
+      "name": "known_cost_150_vs_fixed_charge_100_not_blocked",
+      "pricing": {
+        "costInputMicrosPerMillion": 1500000000,
+        "costOutputMicrosPerMillion": 1000000,
+        "markupRateBps": 0
+      },
+      "input": 1000,
+      "output": 0,
+      "rawCost": 100,
+      "computedFloorPoints": 150,
+      "result": {
+        "httpStatus": 200,
+        "body": {
+          "allowedByThisGate": true
+        }
+      }
+    },
+    {
+      "name": "known_cost_201_vs_fixed_charge_100_blocked_control",
+      "pricing": {
+        "costInputMicrosPerMillion": 2000000000,
+        "costOutputMicrosPerMillion": 1000000,
+        "markupRateBps": 0
+      },
+      "input": 1001,
+      "output": 0,
+      "rawCost": 100,
+      "computedFloorPoints": 201,
+      "result": {
+        "httpStatus": 400,
+        "body": {
+          "success": false,
+          "code": "INPUT_COST_TOO_HIGH",
+          "error": "输入材料过大：按当前模型单价估算，本次执行成本约 201 算力点，已超过该组件定价（100 点）的 2 倍。请压缩或拆分材料后重试。"
+        }
+      }
+    },
+    {
+      "name": "missing_pricing_skips_gate",
+      "pricing": null,
+      "input": 1000,
+      "output": 0,
+      "rawCost": 100,
+      "computedFloorPoints": null,
+      "result": {
+        "httpStatus": 200,
+        "body": {
+          "allowedByThisGate": true
+        }
+      }
+    },
+    {
+      "name": "both_cost_prices_missing_skips_gate",
+      "pricing": {
+        "costInputMicrosPerMillion": null,
+        "costOutputMicrosPerMillion": null
+      },
+      "input": 1000,
+      "output": 0,
+      "rawCost": 100,
+      "computedFloorPoints": null,
+      "result": {
+        "httpStatus": 200,
+        "body": {
+          "allowedByThisGate": true
+        }
+      }
+    },
+    {
+      "name": "output_cost_missing_treated_as_zero",
+      "pricing": {
+        "costInputMicrosPerMillion": 1000000,
+        "costOutputMicrosPerMillion": null
+      },
+      "input": 1000,
+      "output": 5000,
+      "rawCost": 100,
+      "computedFloorPoints": 1,
+      "result": {
+        "httpStatus": 200,
+        "body": {
+          "allowedByThisGate": true
+        }
+      }
+    }
+  ],
+  "staticFacts": {
+    "costGateThreshold": "projectedPoints > rawCost * 2",
+    "warningOnlyFloorCheck": true,
+    "preflightOutput": "sum of contract executionPlan.steps[].maxOutputTokens (missing -> 0)",
+    "adapterOutput": "catalog estimatedOutputTokens * 3, otherwise env/default 2000",
+    "preflightSystemPrompt": "unexpanded first-step template",
+    "actualSystemPrompt": "COST_BASELINE placeholder may be expanded before execute",
+    "monetaryMeaning": "Point face-value budget is not verified cash income, realized margin, or approved subsidy; do not infer profitability."
+  },
+  "sha256": {
+    "src/app/api/studio/handler.ts": "338bf06d56d82a4155a441b5e9370664ee18af0a36fb7f60e34690edf597d1fb",
+    "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+    "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02",
+    "docs/PROJECT-DEVELOPMENT-CHARTER.md": "57dbf5dba894516e1d36889583cef0c73a334995d001daf3680c2193cdb73874"
+  },
+  "limits": "Actual cost helper and exact AST-selected cost-gate statement executed with in-memory local bindings. Not full handler, no actual adapter/provider call, no DB/secret/env or paid operation. Missing-field case shows local gate bypass, not proof that every other request guard permits execution."
+}

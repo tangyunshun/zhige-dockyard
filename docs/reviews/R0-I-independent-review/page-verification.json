@@ -1,0 +1,113 @@
+{
+  "capturedAt": "2026-11-07T09:58:07.982Z",
+  "observations": [
+    {
+      "case": "I-ADMIN-COPY",
+      "sourceSha256": "1583e06f95c5b195d0835b554c25d5c3b20e4646f758cd5eb2b4ca08af96744f",
+      "pauseFooter": [
+        "费率仅作为已存配置展示：自带模型任务调用当前暂停（收费口径待确认），不会用于当前任务收费"
+      ],
+      "badge": [
+        "实时生效 · 无需发版"
+      ],
+      "confirmMessage": "该费率为全局单一真源，对所有空间的自带模型统一生效。已登记价格的自带模型对外收费将按新费率实时重新折算。",
+      "warnings": [
+        "服务费率：15.00% → 20.00%",
+        "立即对全部自带模型的估价 / 结算口径生效，无法撤销"
+      ],
+      "requests": [
+        {
+          "url": "/api/admin/model-pricing/byok-service-rate",
+          "method": "POST"
+        },
+        {
+          "url": "/api/admin/model-pricing/byok-service-rate",
+          "method": "GET"
+        }
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "BYO 平台服务费率已设为 20.00%"
+        }
+      ],
+      "limits": "Actual component returned JSX and onConfirm callback with state/fetch stubs; not browser DOM. Shows contradictory wording, not real setting changes."
+    },
+    {
+      "case": "quote-pause",
+      "sourceSha256": "9af127d8f0ead2e6b51db32c4a48bd13427e7fa69aa78dc1fbe754b8d4cd3506",
+      "busy": [
+        false
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "自带模型任务调用暂停：收费口径待确认，本次未扣点、未调用模型。"
+        }
+      ],
+      "fetches": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1",
+          "method": "GET"
+        }
+      ],
+      "successWrites": 0,
+      "paymentModals": 0,
+      "limits": "Actual Studio callback with closed IO. Quote failure falls through to server pause, without a payment prompt or false success."
+    },
+    {
+      "case": "post-pause",
+      "sourceSha256": "9af127d8f0ead2e6b51db32c4a48bd13427e7fa69aa78dc1fbe754b8d4cd3506",
+      "busy": [
+        true,
+        false
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "自带模型任务调用暂停：收费口径待确认，本次未扣点、未调用模型。"
+        }
+      ],
+      "fetches": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1",
+          "method": "GET"
+        },
+        {
+          "url": "/api/studio",
+          "method": "POST"
+        }
+      ],
+      "successWrites": 0,
+      "paymentModals": 0,
+      "limits": "Actual Studio callback with closed IO. Quote failure falls through to server pause, without a payment prompt or false success."
+    },
+    {
+      "case": "quote-unavailable",
+      "sourceSha256": "9af127d8f0ead2e6b51db32c4a48bd13427e7fa69aa78dc1fbe754b8d4cd3506",
+      "busy": [
+        true,
+        false
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "自带模型任务调用暂停：收费口径待确认，本次未扣点、未调用模型。"
+        }
+      ],
+      "fetches": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1",
+          "method": "GET"
+        },
+        {
+          "url": "/api/studio",
+          "method": "POST"
+        }
+      ],
+      "successWrites": 0,
+      "paymentModals": 0,
+      "limits": "Actual Studio callback with closed IO. Quote failure falls through to server pause, without a payment prompt or false success."
+    }
+  ]
+}

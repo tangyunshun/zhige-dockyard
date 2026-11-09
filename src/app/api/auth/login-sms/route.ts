@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证验证码
-    const smsVerification = verifySmsCode(phone, smsCode);
+    const smsVerification = await verifySmsCode(phone, smsCode, "login");
     if (!smsVerification.valid) {
       return NextResponse.json(
         { error: smsVerification.error || "验证码错误" },
@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       });
 
       // 消耗验证码，防止重复使用
-      deleteSmsCode(phone);
+      await deleteSmsCode(phone, "login");
 
       const deletionEnd = user.deletionRequestedAt
         ? new Date(user.deletionRequestedAt).getTime()

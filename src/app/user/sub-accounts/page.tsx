@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskEmail, maskPhone } from "@/utils/format";
 import Link from "next/link";
 import {
   Users,
@@ -20,6 +22,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { getActionLabel, getActionColor } from "@/lib/activity";
 
 interface SubAccount {
@@ -49,12 +53,17 @@ function fmt(value?: string | null) {
 export default function UserSubAccountsPage() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // KN-UI：停用子账号二次确认（规范统一，弃用原生 confirm）
+  const [disableConfirm, setDisableConfirm] = useState<{ id: string; name: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [subAccounts, setSubAccounts] = useState<SubAccount[]>([]);
   const [canManage, setCanManage] = useState(false);
   const [actingId, setActingId] = useState<string | null>(null);
 
   const [showCreate, setShowCreate] = useState(false);
+
+  useEscapeKey(showCreate, () => setShowCreate(false));
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", phone: "", password: "" });
   const [error, setError] = useState<string | null>(null);
@@ -86,6 +95,7 @@ export default function UserSubAccountsPage() {
       });
       if (res.ok) {
         const json = await res.json();
+  setLoadError(null);
         setSubAccounts(json.subAccounts || []);
         setCanManage(!!json.canManage);
         if (manual) toast.success("子账号列表已刷新");
@@ -144,7 +154,10 @@ export default function UserSubAccountsPage() {
 
   const toggleStatus = async (acc: SubAccount) => {
     const disable = acc.status === "active";
-    if (disable && !window.confirm(`确认停用子账号「${acc.name}」？停用后其登录会话将立即失效。`)) return;
+    if (disable && !disableConfirm) {
+      setDisableConfirm({ id: acc.id, name: acc.name });
+      return;
+    }
     setActingId(acc.id);
     try {
       const res = await fetch("/api/user/sub-accounts", {
@@ -423,7 +436,7 @@ export default function UserSubAccountsPage() {
                             {acc.phone && (
                               <div className="flex items-center gap-1.5 mt-0.5 text-[11px]">
                                 <Phone className="w-3 h-3 text-slate-400" />
-                                {acc.phone}
+                                {maskPhone(acc.phone)}
                               </div>
                             )}
                           </td>
@@ -529,7 +542,7 @@ export default function UserSubAccountsPage() {
                   <span className="zg-required">登录邮箱</span>
                 </label>
                 <input
-                  value={form.email}
+                  value={maskEmail(form.email)}
                   onChange={(e) => setForm({ ...form, email: e.target.value })}
                   placeholder="用于子账号登录"
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm"
@@ -538,7 +551,7 @@ export default function UserSubAccountsPage() {
               <div>
                 <label className="text-xs font-bold text-slate-700 block mb-1.5">手机号（可选）</label>
                 <input
-                  value={form.phone}
+                  value={maskPhone(form.phone)}
                   onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   placeholder="11 位手机号"
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-sm"
@@ -784,6 +797,21 @@ export default function UserSubAccountsPage() {
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        isOpen={!!disableConfirm}
+        title="停用子账号"
+        message={`确认停用子账号「${disableConfirm?.name || ""}」吗？停用后其登录会话将立即失效，可随时重新启用。`}
+        type="warning"
+        confirmText="确认停用"
+        cancelText="取消"
+        onConfirm={async () => {
+          const target = subAccounts.find((x) => x.id === disableConfirm?.id);
+          setDisableConfirm(null);
+          if (target) await toggleStatus(target);
+        }}
+        onCancel={() => setDisableConfirm(null)}
+      />
     </div>
   );
 }

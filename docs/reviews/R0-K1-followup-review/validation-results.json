@@ -1,0 +1,180 @@
+{
+  "capturedAt": "2026-11-08T13:04:57.066Z",
+  "batch": "R0-K1 / original F14 / same remaining scope",
+  "verdict": "NOT ACCEPTED; verified improvements retained; original mandatory items omitted or incomplete",
+  "reviewerBusinessSourceEdits": 0,
+  "sourceStableThroughAudit": true,
+  "version": {
+    "changedFiles": [
+      "src/lib/text-extract.ts",
+      "src/app/api/studio/handler.ts",
+      "src/lib/parse-worker.cjs",
+      "src/app/api/__tests__/r0k1-fixes.test.ts"
+    ],
+    "unchangedTracked": 53,
+    "trackedFiles": 57,
+    "deliveryReportStable": true,
+    "deliverySnapshotsExist": false,
+    "unchangedFunctions": [
+      {
+        "name": "extractFromImage",
+        "unchanged": true
+      },
+      {
+        "name": "readImageDimensions",
+        "unchanged": true
+      }
+    ]
+  },
+  "author": {
+    "cases": 56,
+    "passed": 56,
+    "exitCode": 0,
+    "breakdown": {
+      "currentR0K1": 24,
+      "originalR0K": 32
+    },
+    "result": "author-results.json",
+    "provenance": "Independently executed exec session 14107; original32 copy only redirects staging; no Next build"
+  },
+  "formalFrozen": {
+    "files": [
+      "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "src/app/api/__tests__/r0j-storage.test.ts",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts",
+      "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+      "src/app/api/__tests__/r0e-production-mock.test.ts",
+      "src/app/api/__tests__/r0d-refund-approval.test.ts",
+      "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+      "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "src/app/api/__tests__/r0a-business-boundary.test.ts",
+      "src/app/api/__tests__/r0a2-real-combo.test.ts",
+      "src/app/api/__tests__/r0a3-combo-regression.test.ts",
+      "src/app/api/__tests__/r0a4-combo-regression.test.ts"
+    ],
+    "cases": 523,
+    "passed": 514,
+    "failed": 9,
+    "exitCode": 1,
+    "result": "frozen-results.json",
+    "provenance": "Independent exec session 89134"
+  },
+  "typescript": {
+    "command": "tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 1,
+    "diagnostics": 6,
+    "provenance": "Independent exec session 28470; complete output observed",
+    "file": "src/app/api/__tests__/r0k1-fixes.test.ts",
+    "errors": [
+      {
+        "line": 550,
+        "code": "TS2554",
+        "description": "sweep missing required argument"
+      },
+      {
+        "line": 551,
+        "code": "TS2554",
+        "description": "quarantine called with too few arguments"
+      },
+      {
+        "line": 552,
+        "code": "TS2353",
+        "description": "notReady is not a ParseAdmissionBackend property"
+      },
+      {
+        "line": 552,
+        "code": "TS2339",
+        "description": "notReady does not exist on backend"
+      },
+      {
+        "line": 566,
+        "code": "TS2554",
+        "description": "POST called with extra argument"
+      },
+      {
+        "line": 608,
+        "code": "TS2322",
+        "description": "ArrayBufferView<ArrayBufferLike> incompatible with BlobPart"
+      }
+    ]
+  },
+  "nodeTest": {
+    "command": "tsx --test --test-timeout=8000 src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts",
+    "cases": 18,
+    "passed": 16,
+    "failed": 1,
+    "cancelled": 1,
+    "exitCode": 1,
+    "durationMs": 14162.4495,
+    "provenance": "Independent exec session 21616; complete output observed",
+    "failures": [
+      {
+        "file": "text-extract-paths.test.ts",
+        "line": 138,
+        "reason": "OCR recognize pending after terminate, timed out after 8000ms"
+      },
+      {
+        "file": "text-extract.test.ts",
+        "line": 119,
+        "reason": "Expected TIMEOUT, actual STOP_UNCONFIRMED; keep late-creation cleanup assertions when correcting semantics"
+      }
+    ]
+  },
+  "independent": {
+    "cases": 25,
+    "positive": 16,
+    "defectCharacterizations": 9,
+    "exitCode": 0,
+    "summary": "independent-summary.json",
+    "initialRun": {
+      "cases": 25,
+      "passed": 24,
+      "failed": 1,
+      "reason": "Audit fake lacked new Prisma lte/arithmetic behavior; corrected and replaced handler results only"
+    }
+  },
+  "workerSyntax": {
+    "command": "node --check src/lib/parse-worker.cjs",
+    "exitCode": 0
+  },
+  "historicalDiagnostic": {
+    "source": "docs/reviews/R0-K1-implementation-review/frozen-diagnostic-results.json",
+    "passedCases": 69,
+    "rerunThisTurn": false,
+    "note": "Prior dependency-isolated diagnostic only; NOT counted as current formal pass"
+  },
+  "retainedImprovements": [
+    "Numeric42 extraction",
+    "DOCX HTML declared-size precheck",
+    "Studio avoids immediate release on STOP_UNCONFIRMED",
+    "Original admission/basic accounting, normal formats, ZIP and rich preview"
+  ],
+  "remainingOriginalScope": [
+    "KR1/KR4 unknown ACTIVE expiry and OCR/stop/recovery lifecycle",
+    "KR2 persistent lease facts and zero-row handling",
+    "KR3 arrayBuffer stale-start gate",
+    "KR5 actual preview expansion, sheets/cells, unknown image dimensions and bounded reads",
+    "Original strict typecheck, frozen and node:test verification"
+  ],
+  "scope": {
+    "F01ThroughF13BusinessFrozen": true,
+    "F14Closed": false,
+    "F15OrF16Started": false,
+    "unapprovedScopeOmissionsInDeliveryReport": [
+      "Original frozen523/node:test called separate work",
+      "OCR/arrayBuffer/persisted accounting treated as already covered by insufficient old tests"
+    ]
+  },
+  "limits": [
+    "No live DB/cloud/customer materials/model/payment/OCR download/migration/deployment",
+    "Lifecycle cases use explicit controlled doubles; no residual real CPU worker claimed",
+    "No true Next build, real MySQL lock/crash or production profitability proof",
+    "No OOM/zip bomb experiments; TIFF fixture header only with fake OCR"
+  ]
+}

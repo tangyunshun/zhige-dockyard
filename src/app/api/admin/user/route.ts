@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
+import { addNotification } from "@/lib/notifications-store";
 import { executeAdminUserDeletion } from "@/lib/admin-user-deletion";
 
 const getCleanRole = (role: string | null | undefined): string => {
@@ -309,6 +310,11 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "权限不足，不能对超级管理员执行编辑或限制操作" }, { status: 403 });
     }
 
+    // 平台管理员目标保护：管理员账号的编辑/限制操作仅超级管理员可执行
+    if (getCleanRole(targetUser.role) === "ADMIN" && getCleanRole(adminRole) !== "SUPER_ADMIN") {
+      return NextResponse.json({ error: "权限不足，管理员账号仅超级管理员可操作" }, { status: 403 });
+    }
+
     // 不能操作自己 (针对非角色变更的 status 调整安全放行)
     if (userId === adminId && role !== undefined && role !== targetUser.role) {
       return NextResponse.json({ error: "不能修改自己的账户角色" }, { status: 403 });
@@ -387,6 +393,46 @@ export async function PATCH(request: NextRequest) {
 
     // 记录高危操作审计日志并持久化
     await writeAuditLog(adminId, "user:update", { targetUserId: userId, updates: updateData }, null, null, request);
+
+    // 站内通知：按实际变更内容告知目标用户（失败不阻断主流程）
+    try {
+      const notifyItems: { title: string; content: string }[] = [];
+      if (updateData.status === "banned") {
+        notifyItems.push({
+          title: "🚫 账号已被封禁",
+          content: banReason
+            ? `您的账号已被平台管理员封禁并强制下线。原因：${banReason}。如有疑问请联系平台客服申诉。`
+            : "您的账号已被平台管理员封禁并强制下线。如有疑问请联系平台客服申诉。",
+        });
+      } else if (updateData.status === "inactive") {
+        notifyItems.push({
+          title: "⛔ 登录已被禁用",
+          content: "您的账号登录已被平台管理员暂时禁用，恢复后即可正常登录。",
+        });
+      } else if (updateData.status === "active" && targetUser.status === "banned") {
+        notifyItems.push({
+          title: "✅ 账号已解封",
+          content: "您的账号封禁已被解除，现在可以正常登录使用了。",
+        });
+      } else if (updateData.status === "active" && targetUser.status === "inactive") {
+        notifyItems.push({
+          title: "✅ 登录限制已解除",
+          content: "您的账号登录限制已被解除，现在可以正常登录使用了。",
+        });
+      }
+      if (role !== undefined && role !== targetUser.role) {
+        const roleLabel = role === "admin" ? "管理员" : role === "user" ? "普通用户" : role;
+        notifyItems.push({
+          title: "🛡️ 账号角色已调整",
+          content: `平台管理员已将您的账号角色调整为「${roleLabel}」。`,
+        });
+      }
+      for (const item of notifyItems) {
+        await addNotification(userId, item.title, item.content, "security");
+      }
+    } catch (notifyErr) {
+      console.error("发送用户状态/角色变更通知失败:", notifyErr);
+    }
 
     console.log(
       `[更新用户状态/角色] 管理员 ${adminId} 对用户 ${userId} 执行了更新。数据为:`,

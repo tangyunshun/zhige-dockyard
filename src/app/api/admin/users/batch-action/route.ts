@@ -64,12 +64,6 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
   return chunks;
 }
 
-/** 平台角色是否为特权角色（管理员 / 超级管理员），此类账号不可被批量操作 */
-function isPrivileged(role: string): boolean {
-  const r = normalizePlatformRole(role);
-  return r === "SUPER_ADMIN" || r === "PLATFORM_ADMIN";
-}
-
 /** 是否存在有效会话：sessionToken 未清空且会话未过期（与 10 分钟活跃度无关） */
 function hasValidSession(u: CandidateUser, now: number): boolean {
   if (u.status !== "active") return false;
@@ -242,7 +236,10 @@ export async function POST(request: NextRequest) {
         return authResult.errorResponse!;
       }
     }
-    const adminId = (await requirePlatformPermission(request, "user:read")).user!.id;
+    const authRead = await requirePlatformPermission(request, "user:read");
+    const adminId = authRead.user!.id;
+    // 操作者平台角色：用于红线判断——管理员目标仅超级管理员可批量操作
+    const operatorRole = normalizePlatformRole(authRead.user!.role);
 
     // 必须提供 userIds 或 filters 之一
     const useFilter = !userIds || userIds.length === 0;
@@ -266,10 +263,15 @@ export async function POST(request: NextRequest) {
       candidates = found as unknown as CandidateUser[];
     }
 
-    // 2. 权限红线：排除操作者本人与特权账号（管理员 / 超级管理员 / OWNER）
-    const safe = candidates.filter(
-      (u) => u.id !== adminId && !isPrivileged(u.role)
-    );
+    // 2. 权限红线：排除操作者本人；超级管理员目标始终不可批量操作；
+    //    管理员目标仅超级管理员可批量操作（与单用户操作口径一致），其余角色正常纳入
+    const safe = candidates.filter((u) => {
+      if (u.id === adminId) return false;
+      const r = normalizePlatformRole(u.role);
+      if (r === "SUPER_ADMIN") return false;
+      if (r === "PLATFORM_ADMIN" && operatorRole !== "SUPER_ADMIN") return false;
+      return true;
+    });
     // 用户 ID -> 展示名，供删除分支的拦截原因回显
     const nameById = new Map(
       safe.map((u) => [u.id, (u.name || u.email || u.id) as string])

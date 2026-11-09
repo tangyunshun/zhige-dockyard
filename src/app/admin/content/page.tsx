@@ -113,6 +113,8 @@ export default function AdminStagesPage() {
   const [timeRange, setTimeRange] = useState<"week" | "month" | "halfYear" | "year" | "custom">("halfYear");
   const [analyticsCustomStart, setAnalyticsCustomStart] = useState("");
   const [analyticsCustomEnd, setAnalyticsCustomEnd] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
   const [distributionData, setDistributionData] = useState<StageDistributionItem[]>([]);
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
   const [metrics, setMetrics] = useState<AnalyticsMetrics>({
@@ -745,7 +747,7 @@ export default function AdminStagesPage() {
                   <input
                     type="date"
                     value={filters.createDateStart}
-                    max={filters.createDateEnd || undefined}
+                    max={filters.createDateEnd || today}
                     onChange={(e) => {
                       const v = e.target.value;
                       setFilters((f) => ({
@@ -763,6 +765,7 @@ export default function AdminStagesPage() {
                     type="date"
                     value={filters.createDateEnd}
                     min={filters.createDateStart || undefined}
+                    max={today}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (v && filters.createDateStart && v < filters.createDateStart) return;
@@ -1081,7 +1084,7 @@ export default function AdminStagesPage() {
                     <input
                       type="date"
                       value={analyticsCustomStart}
-                      max={analyticsCustomEnd || undefined}
+                      max={analyticsCustomEnd || today}
                       onChange={(e) => {
                         const v = e.target.value;
                         setAnalyticsCustomStart(v);
@@ -1094,6 +1097,7 @@ export default function AdminStagesPage() {
                       type="date"
                       value={analyticsCustomEnd}
                       min={analyticsCustomStart || undefined}
+                      max={today}
                       onChange={(e) => {
                         const v = e.target.value;
                         if (v && analyticsCustomStart && v < analyticsCustomStart) return;

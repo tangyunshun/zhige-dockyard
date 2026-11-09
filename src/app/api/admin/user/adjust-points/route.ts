@@ -27,10 +27,28 @@ export async function POST(request: NextRequest) {
 
     const target = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, email: true, name: true },
+      select: { id: true, email: true, name: true, role: true },
     });
     if (!target) {
       return NextResponse.json({ error: "用户不存在" }, { status: 404 });
+    }
+
+    // 目标角色越权保护：超级管理员算力点不可人工调整；管理员账号仅超级管理员可操作
+    const isSuperRole = (r?: string | null) =>
+      ["SUPER_ADMIN", "SUPERADMIN", "SUPER_ADMIN_ROLE", "SUPER"].includes((r || "").toUpperCase().trim());
+    const isAdminRoleValue = (r?: string | null) =>
+      ["ADMIN", "ADMINISTRATOR", "PLATFORM_ADMIN"].includes((r || "").toUpperCase().trim());
+    if (isSuperRole(target.role)) {
+      return NextResponse.json(
+        { error: "权限不足，不能对平台超级管理员调整算力点" },
+        { status: 403 },
+      );
+    }
+    if (isAdminRoleValue(target.role) && !isSuperRole(authResult.user!.role)) {
+      return NextResponse.json(
+        { error: "权限不足，管理员账号仅超级管理员可操作" },
+        { status: 403 },
+      );
     }
 
     // 个人空间配额（算力点权威余额来源）

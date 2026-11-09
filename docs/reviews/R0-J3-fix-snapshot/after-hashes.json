@@ -1,0 +1,65 @@
+{
+  "capturedAtReal": "2026-11-08T11:40:00+08:00",
+  "purpose": "R0-J3 batch end hashes (after claim/finalize release protocol, path boundary + ambiguity, upload pre-bound keys, clear-data claim persistence + recovery sweep, UI pending notes)",
+  "files": {
+    "src/lib/storage-quota.ts": {
+      "sha256End": "23ca6363dde739d9c9ac962d927b1a942658b45cb33fbc7718fcc12243aaa85b",
+      "sha256Start": "bd674807ddec52534ea3593331ecc86c925d95e1ef8af9b778c170196a1f8c02",
+      "changed": true
+    },
+    "src/lib/file-store.ts": {
+      "sha256End": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+      "sha256Start": "f53ff936c4b29d48b93082c4e78129d24e394c852f3219da5244e138fa045ba2",
+      "changed": true,
+      "note": "J-KEYS 剩余边界（根/空间越界拒绝、多候选歧义拒绝）与 J-UPLOAD 对象键预分配在本批实现"
+    },
+    "src/app/api/studio/handler.ts": {
+      "sha256End": "6c948b62c4ab277ab4da01fd29ecf9bcecb8dd1c3ed8ae7fb89ea60672dbf0e2",
+      "sha256Start": "a5b69ab74dfa2b0fdb01fd418fa2fb691bafb2e98b11d692fa9b9b8f3729d09b",
+      "changed": true
+    },
+    "src/app/api/workspace/clear-data/route.ts": {
+      "sha256End": "1658c0e9bff33a10cd77e1ff29346b76234ec6f7b55ff67819ffeaeedc225c40",
+      "sha256Start": "86377e12c6627febb0f6ba726c3b2d579532f1c472d02628117953e1fbb8be81",
+      "changed": true
+    },
+    "src/components/WorkspaceInternalLayoutV3.tsx": {
+      "sha256End": "7c0dd62c88bf644b333feb094226debcef3fa74abdc2af426e34f442c570be5b",
+      "sha256Start": "8c1e17b358b8dfcd37d6a269c7989ce9245771ce9eaf8ff5ba2dd608bbe6f926",
+      "changed": true
+    },
+    "prisma/schema.prisma": {
+      "sha256End": "dd5955984bbe35f8db4e214d618a25722401db19930ab33044ab3bef0e692905",
+      "sha256Start": "7665df42d13faf1e5327f63a1e29796570dd8c559c276ef2a4d0e9382ce26cb9",
+      "changed": true,
+      "note": "仅 status 注释增补 CANCELLED（认领关闭：对象保留/并发让位，未释放）；模型结构零改动"
+    },
+    "src/app/api/__tests__/r0j-storage.test.ts": {
+      "sha256End": "44e4f40635c32227b575544a48b409fc4811e89b285c7065fccf814cedf8e0ee",
+      "sha256Start": "ad0046d8403ac9734e859739ba97bda50d3c5d8df36dd57e8c60c95fdda9c233",
+      "changed": true,
+      "note": "remove_asset 用例按 R0-J3 认领协议契约更新（物理失败 500+占用保留+认领待清理+重试释放一次）；夹具补 storageoperation.opId 唯一约束"
+    },
+    "src/app/api/__tests__/r0j2-storage-close.test.ts": {
+      "sha256End": "82b92abaae2f6dc7df4135796c2ec21e824fbc964a206d8967d8c52089f7afea",
+      "sha256Start": "ac854b55da38362d6a856ae22aeb19ede1064ed782887f52cbcb62d5098d7f18",
+      "changed": true,
+      "note": "D 组由已删除的 deleteDocumentsAndReleaseStorage 改为认领/终结协议；F2 断言措辞随对账在途口径更新"
+    },
+    "src/app/api/__tests__/r0j3-recovery-close.test.ts": {
+      "sha256End": "d7f9e9543fefe16d537907ef9be7bc57c60e5d35658ad43ce7d1e106be59f64e",
+      "isNew": true,
+      "note": "本批新增正向验收 12 用例（§五表格场景）"
+    },
+    "src/app/api/workspace/assets/[assetId]/file/route.ts": {
+      "sha256End": "d4ac28fcb0036d3fdb36fe0046c42648cbdb095093f6c4fd7b7eab4536b90204",
+      "changed": true,
+      "note": "J-KEYS：readAssetFile 传入授权空间边界（doc.workspaceId）"
+    },
+    "src/app/api/workspace/assets/[assetId]/preview/route.ts": {
+      "sha256End": "6d3bd0c5a4071a55110191fdf28dea3bddf20b4bc70e042e21f56a0335d5d3f8",
+      "changed": true,
+      "note": "同上"
+    }
+  }
+}

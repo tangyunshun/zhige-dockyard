@@ -1,0 +1,41 @@
+{
+  "verifiedAt": "2026-11-07T10:01:43.512Z",
+  "verdict": "R0-I NOT ACCEPTED",
+  "findings": [
+    {
+      "id": "I-MONTH-ORDER",
+      "priority": 1
+    },
+    {
+      "id": "I-GET-DDL",
+      "priority": 1
+    },
+    {
+      "id": "I-ADMIN-COPY",
+      "priority": 2
+    }
+  ],
+  "sourceHashesChecked": 35,
+  "sourceChangesDuringReview": [],
+  "formal": {
+    "files": 11,
+    "tests": 387,
+    "exitCode": 0
+  },
+  "independent": {
+    "groups": 6,
+    "exitCode": 0,
+    "meaning": "Controls and assertions reproducing current defects, not acceptance of the product."
+  },
+  "typeCheck": {
+    "exitCode": 0
+  },
+  "pageChecks": {
+    "independentAdminReproduction": 1,
+    "independentStudioControls": 3,
+    "ideStudioControls": 3,
+    "maintenanceChecks": 10,
+    "exitCode": 0
+  },
+  "scope": "Audit materials only; no business changes, real DB, actual SQL, real model, payment, secrets or deployment."
+}

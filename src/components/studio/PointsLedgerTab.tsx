@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { lookupBillingValueLabel, setBillingDicts } from "@/lib/billing-display-dict";
 import { isAdminRole } from "@/lib/role-utils";
 import {
   Zap,
@@ -164,6 +165,20 @@ export default function PointsLedgerTab({
       setLoading(false);
     }
   }, [workspaceId, typeFilter, page]);
+
+  // KN-CFG：类型中文名唯一真相源 = 数据库 billing_display_dict（自查清单红线：不硬编码）
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch("/api/user/billing-dict", { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: "include" });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.actionDict || data?.resourceDict || data?.values) setBillingDicts(data);
+        }
+      } catch { /* 字典加载失败时回退 TYPE_META 徽章配色与原值 */ }
+    })();
+  }, []);
 
   useEffect(() => {
     loadLedger();
@@ -413,9 +428,10 @@ export default function PointsLedgerTab({
                 <tbody className="divide-y divide-slate-100 text-xs">
                   {records.map((r) => {
                     const isIn = r.direction === "IN";
-                    const typeMeta = TYPE_META[r.type] || {
-                      label: r.type,
-                      style: "bg-slate-100 text-slate-600 border-slate-200",
+                    const dbLabel = lookupBillingValueLabel(r.type);
+                    const typeMeta = {
+                      label: dbLabel || (TYPE_META[r.type]?.label || r.type),
+                      style: TYPE_META[r.type]?.style || "bg-slate-100 text-slate-600 border-slate-200",
                     };
                     const payMeta = r.paymentMethod
                       ? PAYMENT_META[r.paymentMethod] || {

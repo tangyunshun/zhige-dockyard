@@ -1,0 +1,861 @@
+/**
+ * R0-J4 定向正向验收：仅闭合 R0-J3 独立审核发现的七项缺口 J3-01 ~ J3-07。
+ * 复用 R0-J3 隔离夹具（内存 Prisma + 内存 fs + 真实 handler/service，DB/fs/模型/计费全隔离）。
+ * 逐项提供对应当前代码的"已正确保护/终结"正向断言；不保留任何错误结果当目标。
+ *
+ * 覆盖：
+ *  J3-01 恢复流程也必须保护实际共享引用（clear-data 恢复循环先复核引用再删除）
+ *  J3-02 共用认领不能被并发后到者取消（count=0 不得关闭共用认领）
+ *  J3-03 持久认领是可信事实，字节未知/冲突先阻断（不删、不按大/小值释放、不谎报）
+ *  J3-04 恢复查询/处理失败必须如实计入结果（不编造 0、不谎报完全出厂）
+ *  J3-05 文档已删后，相同删除重试仍须识别恢复状态（按文档/空间/操作者身份核权）
+ *  J3-06 预留重放必须包含操作类型核验（RELEASE≠RESERVE → OP_CONFLICT，不得 deduped）
+ *  J3-07 缺列/缺表按部署未就绪返回稳定 503（OP_UNAVAILABLE / NOT_READY）
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+// ══════════════ 内存 Prisma（真实条件求值 + 唯一约束 + 行级事务回滚） ══════════════
+
+const h = vi.hoisted(() => {
+  const tables: Record<string, Map<string, any>> = {};
+  const writes: string[] = [];
+  const unlinkFail = new Set<string>();
+  const createFail = new Map<string, Error>();
+  const deleteFail = new Map<string, Error>();
+  const updateFail = new Map<string, Error>();
+  const findManyFail = new Set<string>();
+  let deleteManyZero = false;
+  let columnMissing = false;
+  let hideOpDelegate = false;
+  let rawGate: ((sql: string) => Promise<void>) | null = null;
+  let rawGateVal: ((sql: string) => Promise<void>) | null = null;
+  const setRawGate = (g: ((sql: string) => Promise<void>) | null) => { rawGateVal = g; };
+  let commitFailures = 0;
+  return {
+    tables, writes, unlinkFail, createFail, deleteFail, updateFail, findManyFail,
+    setDeleteManyZero: (v: boolean) => { deleteManyZero = v; },
+    isDeleteManyZero: () => deleteManyZero,
+    setColumnMissing: (v: boolean) => { columnMissing = v; },
+    isColumnMissing: () => columnMissing,
+    setHideOpDelegate: (v: boolean) => { hideOpDelegate = v; },
+    isOpDelegateHidden: () => hideOpDelegate,
+    setRawGate, getRawGate: () => rawGateVal,
+    setCommitFailures: (n: number) => { commitFailures = n; },
+    takeCommitFailure: () => (commitFailures > 0 ? (commitFailures--, true) : false),
+  };
+});
+
+function getTable(name: string): Map<string, any> {
+  if (!h.tables[name]) h.tables[name] = new Map();
+  return h.tables[name];
+}
+
+function matchRow(row: any, where: any): boolean {
+  for (const [k, v] of Object.entries(where || {})) {
+    if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v)) {
+      for (const [op, ov] of Object.entries(v)) {
+        const rv = row[k];
+        if (op === "not") { if (rv === ov) return false; }
+        else if (op === "notIn") { if (Array.isArray(ov) && ov.includes(rv)) return false; }
+        else if (op === "in") { if (!Array.isArray(ov) || !ov.includes(rv)) return false; }
+        else if (op === "gt") { if (!(rv > ov)) return false; }
+        else if (op === "lt") { if (!(rv < ov)) return false; }
+        else return false;
+      }
+    } else if (row[k] !== v) return false;
+  }
+  return true;
+}
+
+function evalRaw(sql: string, values: any[]): number {
+  const norm = sql.replace(/\s+/g, " ");
+  const wsId = values.find((v) => typeof v === "string");
+  const byteVal = (values.find((v) => typeof v === "bigint") ?? BigInt(0)) as bigint;
+  const row = [...getTable("workspacequota").values()].find((r) => r.workspaceId === wsId);
+  if (!row) return 0;
+  const used = row.storageUsed as bigint;
+  const limit = row.storageLimit as bigint;
+  if (norm.includes("storageUsed` = `storageUsed` +") && norm.includes("`storageLimit` = -1")) {
+    if (limit === BigInt(-1) && used >= BigInt(0)) { row.storageUsed = used + byteVal; return 1; }
+    return 0;
+  }
+  if (norm.includes("storageUsed` = `storageUsed` +") && norm.includes("<= `storageLimit`")) {
+    if (used >= BigInt(0) && used + byteVal <= limit) { row.storageUsed = used + byteVal; return 1; }
+    return 0;
+  }
+  if (norm.includes("storageUsed` = `storageUsed` -") && norm.includes("storageUsed` >= ")) {
+    if (used >= byteVal) { row.storageUsed = used - byteVal; return 1; }
+    return 0;
+  }
+  throw new Error("[r0j4-mock] 未识别的 raw 语句: " + norm.slice(0, 120));
+}
+
+function baseModel(name: string) {
+  const rows = () => [...getTable(name).values()];
+  const findRow = (where: any) => rows().find((r) => matchRow(r, where)) ?? null;
+  const applyData = (row: any, data: any) => {
+    const next = { ...row };
+    for (const [k, v] of Object.entries(data || {})) {
+      if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v) && "set" in v) {
+        next[k] = (v as any).set;
+      } else {
+        next[k] = v;
+      }
+    }
+    return next;
+  };
+  return {
+    findUnique: async ({ where, select }: any) => {
+      if (h.isColumnMissing() && name === "storageoperation") {
+        const e: any = new Error("The column storageoperation.filePath is missing");
+        e.code = "P2022";
+        throw e;
+      }
+      const row = findRow(where);
+      if (!row) return null;
+      if (!select) return { ...row };
+      const out: any = {};
+      for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+      return out;
+    },
+    findFirst: async ({ where, select }: any) => {
+      const row = rows().find((r) => matchRow(r, where)) ?? null;
+      if (!row) return null;
+      if (!select) return { ...row };
+      const out: any = {};
+      for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+      return out;
+    },
+    findMany: async ({ where, select }: any) => {
+      if (h.findManyFail.has(name)) throw new Error("injected findMany failure for " + name);
+      return rows().filter((r) => matchRow(r, where)).map((r) => (select ? selectFields(r, select) : { ...r }));
+    },
+    count: async ({ where }: any) => rows().filter((r) => matchRow(r, where)).length,
+    create: async ({ data }: any) => {
+      const injected = h.createFail.get(name);
+      if (injected) throw injected;
+      if (name === "storageoperation" && data?.opId) {
+        const dup = rows().find((r) => r.opId === data.opId);
+        if (dup) { const e: any = new Error("Unique constraint failed"); e.code = "P2002"; throw e; }
+      }
+      const row = { ...data };
+      if (!row.id) row.id = `auto_${Math.random().toString(36).slice(2)}`;
+      getTable(name).set(row.id, row);
+      return { ...row };
+    },
+    update: async ({ where, data }: any) => {
+      const injected = h.updateFail.get(name) ?? h.updateFail.get(name + ":" + String(data?.status ?? ""));
+      if (injected) throw injected;
+      const row = findRow(where);
+      if (!row) { const e: any = new Error(`P2025:${name}`); e.code = "P2025"; throw e; }
+      const next = applyData(row, data);
+      getTable(name).set(row.id ?? where.id, next);
+      return { ...next };
+    },
+    updateMany: async ({ where, data }: any) => {
+      const injected = h.updateFail.get(name);
+      if (injected) throw injected;
+      if (h.isDeleteManyZero() && name === "document") return { count: 0 };
+      let count = 0;
+      for (const row of rows()) {
+        if (matchRow(row, where)) { getTable(name).set(row.id, applyData(row, data)); count++; }
+      }
+      return { count };
+    },
+    delete: async ({ where }: any) => {
+      const row = findRow(where);
+      if (!row) { const e: any = new Error(`P2025:${name}`); e.code = "P2025"; throw e; }
+      getTable(name).delete(row.id ?? where.id);
+      return { ...row };
+    },
+    deleteMany: async ({ where }: any) => {
+      const injected = h.deleteFail.get(name);
+      if (injected) throw injected;
+      if (h.isDeleteManyZero() && name === "document") return { count: 0 };
+      let count = 0;
+      for (const row of rows()) {
+        if (matchRow(row, where)) { getTable(name).delete(row.id); count++; }
+      }
+      return { count };
+    },
+    upsert: async ({ where, create, update }: any) => {
+      const row = findRow(where);
+      if (row) {
+        const next = applyData(row, update);
+        getTable(name).set(row.id, next);
+        return { ...next };
+      }
+      const created = { ...create };
+      if (!created.id) created.id = `auto_${Math.random().toString(36).slice(2)}`;
+      getTable(name).set(created.id, created);
+      return { ...created };
+    },
+  };
+}
+
+const selectFields = (row: any, select: any) => {
+  if (!select) return { ...row };
+  const out: any = {};
+  for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+  return out;
+};
+
+/** [§五] 事务内写操作撤销日志：仅回滚本事务的写（并发对方已提交写不受影响，与真实 MySQL 一致） */
+function txModel(name: string, undo: Array<() => void>) {
+  const m: any = baseModel(name);
+  return {
+    ...m,
+    create: async (args: any) => {
+      const row = await m.create(args);
+      undo.push(() => getTable(name).delete(row.id));
+      return row;
+    },
+    update: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.update(args);
+      if (prev) undo.push(() => getTable(name).set(prev.id, { ...prev }));
+      return row;
+    },
+    updateMany: async (args: any) => {
+      const prevRows = [...getTable(name).values()].filter((r) => matchRow(r, args.where)).map((r) => ({ ...r }));
+      const res = await m.updateMany(args);
+      if (prevRows.length) undo.push(() => { for (const r of prevRows) getTable(name).set(r.id, { ...r }); });
+      return res;
+    },
+    delete: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.delete(args);
+      if (prev) undo.push(() => getTable(name).set(prev.id, { ...prev }));
+      return row;
+    },
+    deleteMany: async (args: any) => {
+      const prevRows = [...getTable(name).values()].filter((r) => matchRow(r, args.where)).map((r) => ({ ...r }));
+      const res = await m.deleteMany(args);
+      if (prevRows.length) undo.push(() => { for (const r of prevRows) getTable(name).set(r.id, { ...r }); });
+      return res;
+    },
+    upsert: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.upsert(args);
+      undo.push(() => {
+        if (prev) getTable(name).set(prev.id, { ...prev });
+        else getTable(name).delete(row.id);
+      });
+      return row;
+    },
+  };
+}
+
+function makePrisma() {
+  const clientProxy: any = new Proxy(
+    {},
+    {
+      get: (_t, prop: string) => {
+        if (prop === "storageoperation" && h.isOpDelegateHidden()) return undefined;
+        if (prop === "$executeRaw" || prop === "$executeRawUnsafe") {
+          return async (query: TemplateStringsArray | { sql?: string }, ...values: any[]) => {
+            const sql = typeof query === "string" ? query : (query as TemplateStringsArray).join("?");
+            const gate = h.getRawGate();
+            if (gate) await gate(sql);
+            return evalRaw(sql, values);
+          };
+        }
+        if (prop === "$queryRaw" || prop === "$queryRawUnsafe") return async () => [];
+        if (prop === "$transaction") {
+          return async (fn: (tx: any) => Promise<any>) => {
+            const undo: Array<() => void> = [];
+            const txProxy: any = new Proxy({}, {
+              get: (_t2, p2: string) => {
+                if (p2 === "storageoperation" && h.isOpDelegateHidden()) return undefined;
+                if (p2 === "$executeRaw" || p2 === "$executeRawUnsafe") {
+                  return async (query: TemplateStringsArray | { sql?: string }, ...values: any[]) => {
+                    const sql = typeof query === "string" ? query : (query as TemplateStringsArray).join("?");
+                    const gate = h.getRawGate();
+                    if (gate) await gate(sql);
+                    const wsId = values.find((v) => typeof v === "string");
+                    const target = [...getTable("workspacequota").values()].find((r) => r.workspaceId === wsId);
+                    const prevUsed = target ? target.storageUsed : undefined;
+                    const n = evalRaw(sql, values);
+                    if (target && target.storageUsed !== prevUsed) {
+                      const row = target;
+                      undo.push(() => { row.storageUsed = prevUsed; });
+                    }
+                    return n;
+                  };
+                }
+                if (p2 === "$queryRaw" || p2 === "$queryRawUnsafe") return async () => [];
+                return txModel(p2, undo);
+              },
+            });
+            let result: any;
+            try {
+              result = await fn(txProxy);
+            } catch (e) {
+              for (const u of undo.reverse()) u();
+              throw e;
+            }
+            if (h.takeCommitFailure()) {
+              for (const u of undo.reverse()) u();
+              throw new Error("COMMIT_FAILED_INJECTED");
+            }
+            return result;
+          };
+        }
+        return baseModel(prop);
+      },
+    },
+  );
+  return clientProxy;
+}
+
+vi.mock("@/lib/prisma", () => ({ prisma: makePrisma() }));
+
+// 文件 IO：内存文件表
+const memFiles = new Map<string, Buffer>();
+vi.mock("fs/promises", () => {
+  const impl = {
+    mkdir: async () => {},
+    writeFile: async (p: string, data: Buffer) => { memFiles.set(p, data); },
+    readFile: async (p: string) => {
+      const d = memFiles.get(p);
+      if (!d) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      return d;
+    },
+    unlink: async (p: string) => {
+      if (h.unlinkFail.has(p)) { const e: any = new Error("EACCES: permission denied"); e.code = "EACCES"; throw e; }
+      if (!memFiles.has(p)) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      memFiles.delete(p);
+    },
+    stat: async (p: string) => {
+      const d = memFiles.get(p);
+      if (!d) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      return { size: d.length, isFile: () => true };
+    },
+    rm: async () => {},
+  };
+  return { ...impl, default: impl };
+});
+
+const fileFlags = vi.hoisted(() => ({ failSaveAfterWrite: false, failDelete: false }));
+vi.mock("@/lib/file-store", async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    saveAssetFileToKey: async (...args: any[]) => {
+      const r = await actual.saveAssetFileToKey(...args);
+      if (fileFlags.failSaveAfterWrite) throw new Error("保存响应丢失（注入：写入已产生对象）");
+      return r;
+    },
+    deleteAssetFile: async (...args: any[]) => {
+      if (fileFlags.failDelete) return { ok: false, notExists: false, error: "注入删除失败" };
+      return actual.deleteAssetFile(...args);
+    },
+  };
+});
+
+vi.mock("@/lib/text-extract", () => ({
+  extractTextFromBufferWithTimeout: vi.fn(async () => "提取的文本内容"),
+}));
+vi.mock("@/lib/smart-summary", () => ({ generateSmartSummary: vi.fn(() => ({ overview: "智能摘要" })) }));
+vi.mock("@/lib/audit", () => ({ writeAuditLog: vi.fn(async () => {}) }));
+vi.mock("@/lib/notifications-store", () => ({ addNotification: vi.fn(async () => {}) }));
+vi.mock("@/lib/credit-service", () => ({
+  grantNewUserGift: vi.fn(async () => ({})),
+  consumePoints: vi.fn(async () => ({})),
+  refundConsumedPoints: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/lib/auth", () => ({
+  validateUser: vi.fn(async () => ({ valid: true, user: { id: "u1" } })),
+}));
+vi.mock("@/lib/workspace-readonly-guard", () => ({
+  assertWorkspaceWritable: vi.fn(async () => {}),
+}));
+vi.mock("@/lib/workspaceInit", () => ({ ensureDefaultComponents: vi.fn(async () => {}) }));
+vi.mock("@/lib/serverCache", () => ({ clearServerCache: vi.fn(() => {}) }));
+
+import type { StudioExecutionDeps } from "@/app/api/studio/handler";
+import { prisma as mockedPrisma } from "@/lib/prisma";
+
+function makeDeps(): StudioExecutionDeps {
+  return {
+    prisma: mockedPrisma as any,
+    getUserId: vi.fn(async () => "u1"),
+    createModelAdapter: vi.fn(async () => ({} as any)),
+    getActiveContractSnapshot: vi.fn(async () => ({} as any)),
+    requireWorkspaceMembership: vi.fn(async () => true),
+    requireWorkspacePermission: vi.fn(async () => true),
+    getRestrictedComponentIds: vi.fn(async () => [] as string[]),
+    getOrCreateQuota: vi.fn(async () => ({ id: "q1", workspaceId: "w1" })),
+    checkAndResetQuotaCycle: vi.fn(async () => {}),
+    resolveDefaultDeployment: vi.fn(async () => ({} as any)),
+    touchComponentUsage: vi.fn(async () => {}),
+    writeAuditLog: vi.fn(async () => {}),
+    creditService: {
+      consumePoints: vi.fn(async () => ({} as any)),
+      consumeAndCreateSettlementHold: vi.fn(async () => ({} as any)),
+      refundConsumedPoints: vi.fn(async () => ({ ok: true })),
+    },
+    refundService: { enqueueRefundRecovery: vi.fn(async () => ({ ok: true })) },
+    settlementService: {
+      releaseSettlementHold: vi.fn(async () => ({ ok: true })),
+      completeSettlement: vi.fn(async () => ({ ok: true })),
+      enqueueSettlementRecovery: vi.fn(async () => ({ ok: true })),
+    },
+  } as unknown as StudioExecutionDeps;
+}
+
+function multipartReq(body: Record<string, string>, file: { name: string; type: string; content: string } | null) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) fd.append(k, v);
+  if (file) fd.append("file", new Blob([file.content], { type: file.type }), file.name);
+  return new NextRequest("http://localhost/api/studio", {
+    method: "POST",
+    headers: { authorization: "Bearer test-token" },
+    body: fd,
+  });
+}
+
+function seedWorkspace() {
+  h.tables.workspace = new Map([
+    ["w1", { id: "w1", type: "PERSONAL", ownerId: "u1", name: "空间", plan: "STANDARD" }],
+    ["w2", { id: "w2", type: "PERSONAL", ownerId: "u2", name: "空间2", plan: "STANDARD" }],
+  ]);
+  h.tables.workspacemember = new Map([
+    ["wm1", { id: "wm1", userId: "u1", workspaceId: "w1", role: "OWNER", monthlyTokenLimit: null, monthlyTokenUsed: 0, tokenBalance: 10000 }],
+  ]);
+  h.tables.user = new Map([
+    ["u1", { id: "u1", name: "用户", membershipLevel: "FREE" }],
+    ["u2", { id: "u2", name: "用户2", membershipLevel: "FREE" }],
+  ]);
+  h.tables.postmember = new Map();
+  h.tables.operationlog = new Map();
+  h.tables.componenttask = new Map();
+  h.tables.componentusage = new Map();
+  h.tables.tenant = new Map();
+  h.tables.document = new Map();
+  h.tables.documentremoval = new Map();
+  h.tables.workspacequota = new Map();
+  h.tables.storageoperation = new Map();
+}
+
+function seedQuota(wsId: string, used: bigint, limit: bigint) {
+  h.tables.workspacequota.set(`q-${wsId}`, { id: `q-${wsId}`, workspaceId: wsId, storageUsed: used, storageLimit: limit });
+}
+
+/** 直接插入一条持久化清理认领（模拟历史在途/失败）；按 id 作为存储键，与 mock 的 create/updateMany 一致 */
+function seedClaim(opId: string, wsId: string, opts: { userId?: string; filePath?: string | null; bytes?: number; documentId?: string | null; status?: string }) {
+  const id = `op_${opId}`;
+  h.tables.storageoperation.set(id, {
+    id,
+    opId,
+    workspaceId: wsId,
+    userId: opts.userId ?? "u1",
+    opType: "RELEASE",
+    status: opts.status ?? "PENDING_CLEANUP",
+    filePath: opts.filePath ?? null,
+    bytes: opts.bytes ?? 0,
+    documentId: opts.documentId ?? null,
+    note: "seed",
+    updatedAt: new Date(),
+  });
+}
+
+function absFile(workspaceId: string, rel: string): string {
+  const pathMod = require("path");
+  const norm = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  const key = norm.startsWith("assets/") ? norm : `assets/${norm}`;
+  return pathMod.join(process.cwd(), "uploads", key);
+}
+
+beforeEach(() => {
+  h.tables = {};
+  h.writes.length = 0;
+  h.setRawGate(null);
+  h.unlinkFail.clear();
+  h.createFail.clear();
+  h.deleteFail.clear();
+  h.updateFail.clear();
+  h.findManyFail.clear();
+  h.setDeleteManyZero(false);
+  h.setColumnMissing(false);
+  h.setHideOpDelegate(false);
+  h.setCommitFailures(0);
+  fileFlags.failSaveAfterWrite = false;
+  fileFlags.failDelete = false;
+  memFiles.clear();
+  seedWorkspace();
+});
+
+// ══════════════ J3-01：恢复流程也必须保护实际共享引用 ══════════════
+
+describe("R0-J4 J3-01：清空恢复循环先复核共享引用再删除（保留文件/记录/计量，如实提示）", () => {
+  it("存在待清理认领 + 两文档别名共享同一对象 → 恢复与删除均保留，不删文件、不释放、不谎报出厂", async () => {
+    seedQuota("w1", BigInt(50), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "共享A", status: "APPROVED", visibility: "PRIVATE", filePath: "assets/w1/sh.bin", fileSize: 50, uploaderId: "u1", type: "doc" });
+    h.tables.document.set("d2", { id: "d2", workspaceId: "w1", title: "共享B", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/sh.bin", fileSize: 50, uploaderId: "u1", type: "doc" });
+    // 模拟上一次清空/删除遗留的待清理认领
+    seedClaim("del-w1-w1/sh.bin", "w1", { userId: "u1", filePath: "w1/sh.bin", bytes: 50, documentId: "d1" });
+    memFiles.set(absFile("w1", "w1/sh.bin"), Buffer.from("SHARED"));
+
+    const { POST: clearPOST } = await import("@/app/api/workspace/clear-data/route");
+    const res = await clearPOST(
+      new NextRequest("http://localhost/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ workspaceId: "w1", confirmText: "确认删除" }),
+      }),
+    );
+    const body = await (res as any).json();
+    // 共享对象被保留：记录与文件与计量都不动
+    expect(body.storage.sharedRefKept).toBeGreaterThanOrEqual(2);
+    expect(h.tables.document.size).toBe(2); // 两条记录均保留
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(50)); // 占用保留
+    expect(memFiles.size).toBe(1); // 物理文件仍保留
+    expect(body.message).toContain("共享引用保留");
+    expect(body.message).not.toContain("纯净出厂状态"); // 不谎报完全重置
+    // 认领不得被释放
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/sh.bin");
+    expect(claim!.status).toBe("PENDING_CLEANUP");
+  });
+});
+
+// ══════════════ J3-02：共用认领不能被并发后到者取消 ══════════════
+
+describe("R0-J4 J3-02：条件删行 count=0 不得关闭共用认领（保留 PENDING_CLEANUP 供完成方/恢复终结）", () => {
+  it("B 的 count=0 → 认领保持 PENDING_CLEANUP（不取消），随后删除行后可正常终结释放一次", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "资料", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/x.bin", fileSize: 30, uploaderId: "u1", type: "doc" });
+    // A 已认领（在途），且行已被 A 删除（模拟并发先到者已删行）——此处用 deleteManyZero 模拟 B 读到了旧行、删行返回 0
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    h.setDeleteManyZero(true); // 模拟 B 删行时文档已被 A 删除 → count=0
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "d1", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    // B：count=0 → 404（已并发删除），但不得取消共用认领
+    expect(res.status).toBe(404);
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/x.bin");
+    expect(claim!.status).toBe("PENDING_CLEANUP"); // 关键：未被 CANCELLED
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30)); // 占用保持计量
+
+    // 模拟 A 已真实删除行（移除残留记录），恢复段应正常终结该认领，仅释放一次
+    h.tables.document.delete("d1");
+    h.setDeleteManyZero(false);
+    const { POST: clearPOST } = await import("@/app/api/workspace/clear-data/route");
+    const clearRes = await clearPOST(
+      new NextRequest("http://localhost/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ workspaceId: "w1", confirmText: "确认删除" }),
+      }),
+    );
+    const clearBody = await (clearRes as any).json();
+    expect(clearBody.storage.pendingRecovered).toBe(1);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0)); // 只释放一次
+    expect([...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/x.bin")!.status).toBe("RELEASED");
+  });
+});
+
+// ══════════════ J3-03：持久认领是可信事实，字节未知/冲突先阻断 ══════════════
+
+describe("R0-J4 J3-03：字节未知/冲突先阻断（不删、不按大/小值释放、不谎报）", () => {
+  it("历史认领 bytes=30，调用方 fileSize=50 → 冲突阻断：不删文件、不释放、返回 STORAGE_SIZE_UNKNOWN", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "资料", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/x.bin", fileSize: 50, uploaderId: "u1", type: "doc" });
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    memFiles.set(absFile("w1", "w1/x.bin"), Buffer.from("REAL30"));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "d1", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    expect(res.status).toBe(500);
+    const body = await (res as any).json();
+    expect(body.code).toBe("STORAGE_SIZE_UNKNOWN");
+    // 阻断：文件/记录/占用均保留
+    expect(memFiles.size).toBe(1);
+    expect(h.tables.document.has("d1")).toBe(true);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30));
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/x.bin");
+    expect(claim!.status).toBe("PENDING_CLEANUP");
+  });
+
+  it("fileSize=null（未知大小）→ 阻断保留，不把 null 当真实零字节删除/释放", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "未知大小资料", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/unknown.bin", fileSize: null, uploaderId: "u1", type: "doc" });
+    memFiles.set(absFile("w1", "w1/unknown.bin"), Buffer.from("UNKNOWN"));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "d1", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    expect(res.status).toBe(500);
+    const body = await (res as any).json();
+    expect(body.code).toBe("STORAGE_SIZE_UNKNOWN");
+    expect(h.tables.document.has("d1")).toBe(true);
+    expect(memFiles.size).toBe(1);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30));
+  });
+
+  it("真实 0 字节文件仍可正常删除并终态释放（不阻断）", async () => {
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "空文件", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/zero.bin", fileSize: 0, uploaderId: "u1", type: "doc" });
+    memFiles.set(absFile("w1", "w1/zero.bin"), Buffer.from(""));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "d1", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    expect(res.status).toBe(200);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0));
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/zero.bin");
+    expect(claim!.status).toBe("RELEASED");
+  });
+
+  it("两条无冲突正常对象只释放各自真实字节（30 与 20）", async () => {
+    seedQuota("w1", BigInt(50), BigInt(-1));
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "A", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/a.bin", fileSize: 30, uploaderId: "u1", type: "doc" });
+    h.tables.document.set("d2", { id: "d2", workspaceId: "w1", title: "B", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/b.bin", fileSize: 20, uploaderId: "u1", type: "doc" });
+    memFiles.set(absFile("w1", "w1/a.bin"), Buffer.from("A"));
+    memFiles.set(absFile("w1", "w1/b.bin"), Buffer.from("B"));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    for (const id of ["d1", "d2"]) {
+      const res = await runStudioPost(
+        new NextRequest("http://localhost/api/studio", {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+          body: JSON.stringify({ action: "remove_asset", assetId: id, workspaceId: "w1", reasonCode: "VIOLATION" }),
+        }),
+        makeDeps(),
+      );
+      expect(res.status).toBe(200);
+    }
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0)); // 50 → 0，各自真实字节
+  });
+});
+
+// ══════════════ J3-04：恢复查询/处理失败必须如实计入结果 ══════════════
+
+describe("R0-J4 J3-04：恢复失败/提交故障如实计入（不编造 0、不谎报完全出厂）", () => {
+  it("待清理认领终结提交故障 → 如实 pendingStill，used 保持，不谎报完成", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    h.tables.document.delete("d1"); // 文档已被删除（模拟上轮删除已提交、终结未提交）
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    memFiles.set(absFile("w1", "w1/x.bin"), Buffer.from("REAL30"));
+    h.setCommitFailures(1); // 恢复段终结事务提交故障
+
+    const { POST: clearPOST } = await import("@/app/api/workspace/clear-data/route");
+    const res = await clearPOST(
+      new NextRequest("http://localhost/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ workspaceId: "w1", confirmText: "确认删除" }),
+      }),
+    );
+    const body = await (res as any).json();
+    expect(body.storage.pendingStill).toBeGreaterThanOrEqual(1);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30)); // 未释放
+    expect(body.message).toContain("历史待清理认领仍未完成");
+    expect(body.message).not.toContain("纯净出厂状态");
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/x.bin");
+    expect(claim!.status).toBe("PENDING_CLEANUP");
+  });
+
+  it("恢复查询失败（无法确认数量）→ 结构化未知状态，不编造具体条数、不报完全成功", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    h.findManyFail.add("storageoperation"); // 恢复查询抛错
+
+    const { POST: clearPOST } = await import("@/app/api/workspace/clear-data/route");
+    const res = await clearPOST(
+      new NextRequest("http://localhost/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ workspaceId: "w1", confirmText: "确认删除" }),
+      }),
+    );
+    const body = await (res as any).json();
+    // [R0-J5 J3-04] 查询失败是「检查失败」，不是「1 条认领」：未知不是 0 也不是 1
+    expect(body.storage.pendingStill).toBe(0);
+    expect(body.storage.recoveryCheckFailed).toBe(true);
+    expect(body.storage.recoveryCheckFailureCount).toBe(1);
+    expect(body.storage.pendingCountKnown).toBe(false);
+    expect(body.storage.pendingCount).toBeNull();
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30));
+    expect(body.message).toContain("恢复检查失败，待清理数量未知");
+    expect(body.message).not.toContain("1 条历史待清理认领仍未完成");
+    expect(body.message).not.toContain("纯净出厂状态");
+  });
+
+  it("无残留的纯净清空仍按原流程完成（不破坏既有非存储重置）", async () => {
+    seedQuota("w1", BigInt(10), BigInt(-1)); // 该资料真实占用 10
+    h.tables.document.set("d1", { id: "d1", workspaceId: "w1", title: "资料", status: "APPROVED", visibility: "PRIVATE", filePath: "w1/clean.bin", fileSize: 10, uploaderId: "u1", type: "doc" });
+    memFiles.set(absFile("w1", "w1/clean.bin"), Buffer.from("CLEAN"));
+
+    const { POST: clearPOST } = await import("@/app/api/workspace/clear-data/route");
+    const res = await clearPOST(
+      new NextRequest("http://localhost/api/workspace/clear-data", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ workspaceId: "w1", confirmText: "确认删除" }),
+      }),
+    );
+    const body = await (res as any).json();
+    expect(body.storage.clearedCount).toBe(1);
+    expect(body.storage.pendingStill).toBe(0);
+    expect(body.message).toContain("纯净出厂状态");
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0));
+  });
+});
+
+// ══════════════ J3-05：文档已删后，相同删除重试仍须识别恢复状态 ══════════════
+
+describe("R0-J4 J3-05：文档已删后重试同一删除仍识别恢复（按文档/空间/操作者核权）", () => {
+  it("文档已删 + 存在本空间待清理认领 → 重试恢复终结释放一次，终态 RELEASED", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    h.tables.document.delete("d1"); // 文档已删（模拟删除已提交、终结未提交）
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    memFiles.set(absFile("w1", "w1/x.bin"), Buffer.from("REAL30"));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "d1", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    expect(res.status).toBe(200);
+    const body = await (res as any).json();
+    expect(body.data.pendingCleared).toBe(true);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0)); // 只释放一次
+    const claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w1-w1/x.bin");
+    expect(claim!.status).toBe("RELEASED");
+    expect(memFiles.size).toBe(0); // 文件已确认清理
+  });
+
+  it("另一空间的待清理认领不可被本空间伪造 documentId 触发恢复/释放", async () => {
+    seedQuota("w1", BigInt(30), BigInt(-1));
+    seedQuota("w2", BigInt(0), BigInt(-1));
+    // 空间 w2 的待清理认领（documentId = forged），与 w1 无关
+    seedClaim("del-w2-w2/x.bin", "w2", { userId: "u2", filePath: "w2/x.bin", bytes: 30, documentId: "forged" });
+    memFiles.set(absFile("w2", "w2/x.bin"), Buffer.from("W2"));
+
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(
+      new NextRequest("http://localhost/api/studio", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+        body: JSON.stringify({ action: "remove_asset", assetId: "forged", workspaceId: "w1", reasonCode: "VIOLATION" }),
+      }),
+      makeDeps(),
+    );
+    // 文档在 w1 不存在且无可恢复认领 → 幂等成功（无释放）
+    expect(res.status).toBe(200);
+    // w1 占用不受影响；w2 认领保持 PENDING_CLEANUP（未被跨空间释放）
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(30));
+    const w2Claim = [...h.tables.storageoperation.values()].find((o) => o.opId === "del-w2-w2/x.bin");
+    expect(w2Claim!.status).toBe("PENDING_CLEANUP");
+  });
+});
+
+// ══════════════ J3-06：预留重放必须包含操作类型核验 ══════════════
+
+describe("R0-J4 J3-06：预留重放须校验 opType（RELEASE≠RESERVE → OP_CONFLICT，不得 deduped）", () => {
+  it("已存在 RELEASE 清理认领（同 opId/空间/用户/字节）→ 再次预留必须冲突 409，不得 deduped", async () => {
+    const { reserveStorageBytes } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    seedClaim("del-w1-w1/x.bin", "w1", { userId: "u1", filePath: "w1/x.bin", bytes: 30, documentId: "d1" });
+    await expect(reserveStorageBytes("w1", 30, "del-w1-w1/x.bin", "u1")).rejects.toMatchObject({
+      code: "STORAGE_OP_CONFLICT", status: 409,
+    });
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0)); // 零增量（未误预留）
+  });
+
+  it("同类型合法 RESERVE 重放 → deduped（不重复预留、不冲突）", async () => {
+    const { reserveStorageBytes } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    await reserveStorageBytes("w1", 100, "op-legal", "u1");
+    const r = await reserveStorageBytes("w1", 100, "op-legal", "u1"); // 同 opType RESERVE 重放
+    expect(r.deduped).toBe(true);
+    expect(r.opConflict).toBe(false);
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(100)); // 只计入一次
+  });
+
+  it("P2002 并发：同 opType 但不同主体 → OP_CONFLICT（共用核验口径）", async () => {
+    const { reserveStorageBytes } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    await reserveStorageBytes("w1", 100, "op-shared", "u1");
+    await expect(reserveStorageBytes("w1", 100, "op-shared", "u2")).rejects.toMatchObject({
+      code: "STORAGE_OP_CONFLICT", status: 409,
+    });
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(100));
+  });
+});
+
+// ══════════════ J3-07：缺列/缺表按部署未就绪返回稳定 503 ══════════════
+
+describe("R0-J4 J3-07：缺列/缺表按部署未就绪返回稳定 503（OP_UNAVAILABLE / NOT_READY）", () => {
+  it("缺列（P2022）预留 → 稳定 503 STORAGE_OP_UNAVAILABLE，零副作用", async () => {
+    h.setColumnMissing(true); // storageoperation 查询缺列
+    const { reserveStorageBytes } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    await expect(reserveStorageBytes("w1", 10, "op-cm", "u1")).rejects.toMatchObject({
+      code: "STORAGE_OP_UNAVAILABLE", status: 503,
+    });
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0));
+    h.setColumnMissing(false);
+  });
+
+  it("缺列（P2022）认领 → 稳定 503 STORAGE_OP_UNAVAILABLE，零副作用", async () => {
+    const p2022: any = new Error("The column storageoperation.filePath is missing");
+    p2022.code = "P2022";
+    h.createFail.set("storageoperation", p2022);
+    const { claimObjectCleanup } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    await expect(claimObjectCleanup("w1", "w1/x.bin", 10, { userId: "u1" })).rejects.toMatchObject({
+      code: "STORAGE_OP_UNAVAILABLE", status: 503,
+    });
+    expect([...h.tables.storageoperation.values()].length).toBe(0);
+    h.createFail.delete("storageoperation");
+  });
+
+  it("delegate 未就绪（缺表）→ 503 STORAGE_QUOTA_NOT_READY，预留/认领零副作用", async () => {
+    h.setHideOpDelegate(true);
+    const { reserveStorageBytes, claimObjectCleanup } = await import("@/lib/storage-quota");
+    seedQuota("w1", BigInt(0), BigInt(-1));
+    await expect(reserveStorageBytes("w1", 10, "op-nr", "u1")).rejects.toMatchObject({
+      code: "STORAGE_QUOTA_NOT_READY", status: 503,
+    });
+    expect(h.tables.workspacequota.get("q-w1").storageUsed).toBe(BigInt(0));
+    await expect(claimObjectCleanup("w1", "w1/x.bin", 10, { userId: "u1" })).rejects.toMatchObject({
+      code: "STORAGE_QUOTA_NOT_READY", status: 503,
+    });
+    expect([...h.tables.storageoperation.values()].length).toBe(0);
+    h.setHideOpDelegate(false);
+  });
+});

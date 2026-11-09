@@ -1,0 +1,131 @@
+{
+  "capturedAt": "2026-11-05T14:24:58.331Z",
+  "kind": "real current route, strict reader and provisioning functions; stub-only persistence/auth/payment; no live database, model or payment calls",
+  "results": [
+    {
+      "scenario": "omitted_target_checks_STANDARD_but_provisions_paid_PRO",
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "finalType": "ENTERPRISE",
+      "finalPlan": "PRO",
+      "businessWrites": 3,
+      "bills": [
+        {
+          "status": "SUCCESS",
+          "amount": 19900,
+          "target": "PRO"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "inactive_STANDARD_still_provisioned",
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "finalType": "ENTERPRISE",
+      "finalPlan": "STANDARD",
+      "businessWrites": 3,
+      "bills": [
+        {
+          "status": "SUCCESS",
+          "amount": 0,
+          "target": "STANDARD"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "null_prices_coerced_to_zero_before_validation",
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "finalType": "ENTERPRISE",
+      "finalPlan": "STANDARD",
+      "businessWrites": 3,
+      "bills": [
+        {
+          "status": "SUCCESS",
+          "amount": 0,
+          "target": "STANDARD"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "base_plan_free_month_paid_year_still_free",
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "message": "个人空间已升级为企业空间，原有数据全部保留",
+        "workspaceId": "ws1",
+        "giftMigrated": 0,
+        "free": true
+      },
+      "finalType": "ENTERPRISE",
+      "finalPlan": "STANDARD",
+      "businessWrites": 3,
+      "bills": [
+        {
+          "status": "SUCCESS",
+          "amount": 0,
+          "target": "STANDARD"
+        }
+      ],
+      "calls": []
+    },
+    {
+      "scenario": "unapproved_zero_PRO_creates_zero_amount_checkout",
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "orderNo": "UP_1793888698330_7fa08476",
+        "amountCents": 0,
+        "paymentMode": "MOCK",
+        "payUrl": "stub-only",
+        "planName": "PRO",
+        "notice": "当前为【模拟支付】，不会产生真实扣款；支付确认后企业空间才会开通。"
+      },
+      "finalType": "PERSONAL",
+      "finalPlan": "STANDARD",
+      "businessWrites": 0,
+      "bills": [
+        {
+          "status": "PENDING",
+          "amount": 0,
+          "target": "PRO"
+        }
+      ],
+      "calls": [
+        {
+          "type": "charge",
+          "amount": 0
+        }
+      ]
+    }
+  ],
+  "limits": "In-memory stubs do not prove production incidence or MySQL constraints; null DB Int fields require malformed/partial input evidence, while disabled, mixed-price and omitted-target scenarios use ordinary schema-compatible values.",
+  "sha256": {
+    "src/constants/workspace-plans.ts": "caaf9d799be130fbcf5f505eb6722652f63926e389444a3c03164492eef2e78a",
+    "src/lib/limit-utils.ts": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a",
+    "src/lib/workspace-plan-service.ts": "4e69be7284a7113435feaf3401a09735b663c340f45bce8e4d8e85a5afd30a02",
+    "src/lib/workspace-upgrade-service.ts": "094e4ff07bf9a2f2783aa9fbaf3cc4cfa51a79d32c2a3a2efdee3a4dd9b52e62",
+    "src/app/api/workspace/upgrade/route.ts": "d64356b8217debfd341a50063a5f9a1668a24a7a27976df5cee05f56203929a9"
+  }
+}

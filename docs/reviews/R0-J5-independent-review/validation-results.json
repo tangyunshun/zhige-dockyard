@@ -1,0 +1,81 @@
+{
+  "capturedAt": "2026-11-08T06:10:44.647Z",
+  "batch": "R0-J5",
+  "verdict": "NOT_ACCEPTED; two original status correctness gaps remain; no F14",
+  "businessSourceEditsByReviewer": 0,
+  "sourceStableThroughReview": true,
+  "formal": {
+    "files": [
+      "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "src/app/api/__tests__/r0j-storage.test.ts",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts",
+      "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+      "src/app/api/__tests__/r0e-production-mock.test.ts",
+      "src/app/api/__tests__/r0d-refund-approval.test.ts",
+      "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+      "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "src/app/api/__tests__/r0a-business-boundary.test.ts",
+      "src/app/api/__tests__/r0a2-real-combo.test.ts",
+      "src/app/api/__tests__/r0a3-combo-regression.test.ts",
+      "src/app/api/__tests__/r0a4-combo-regression.test.ts"
+    ],
+    "passedFiles": 17,
+    "passedTests": 513,
+    "exitCode": 0,
+    "provenance": "independently executed; exec session 72571; duration 32.69s"
+  },
+  "typescript": {
+    "command": "tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 0,
+    "provenance": "independently executed; exec session 60456"
+  },
+  "independent": {
+    "cases": 22,
+    "positive": 19,
+    "remainingDefectCharacterizations": 3,
+    "exitCode": 0,
+    "warning": "Characterization tests confirm existing defects, not repair acceptance",
+    "priorDefectScenariosNowPositive": 10
+  },
+  "ui": {
+    "cases": 12,
+    "exitCode": 0,
+    "mode": "actual AST callbacks with synthetic fetch/state; not browser E2E"
+  },
+  "versions": {
+    "startCopiesVerified": 5,
+    "endCopiesVerified": 6,
+    "changedPreviouslyTrackedSources": 5,
+    "unchangedPreviouslyTrackedSources": 35,
+    "newFormalFile": 1
+  },
+  "scope": {
+    "acceptedThisBatch": [
+      "J3-01",
+      "J3-03",
+      "J3-05",
+      "J3-07"
+    ],
+    "priorAcceptedRetained": [
+      "J3-06",
+      "J-KEYS",
+      "F01-F12"
+    ],
+    "remaining": [
+      "J3-02: concurrent stale-read finalization misreports completed claim as drift",
+      "J3-04: known pendingCount excludes retained pending claims"
+    ],
+    "next": "R0-J6 original F13 only"
+  },
+  "limits": [
+    "No live DB/cloud/model/payment/migration/deployment",
+    "Memory fixture does not prove actual MySQL lock behavior",
+    "No browser E2E or production/profitability claim",
+    "Fixture initially needed compound member key evaluation and correct actor injection; corrected before final run"
+  ]
+}

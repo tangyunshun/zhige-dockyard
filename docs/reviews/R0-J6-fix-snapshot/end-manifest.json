@@ -1,0 +1,63 @@
+{
+  "batch": "R0-J6",
+  "capturedAt": "2026-11-08T07:02:00Z",
+  "verification": {
+    "vitest": "18 files, 523 passed, exit 0 (513 baseline + 10 new)",
+    "tsc": "tsc.cmd --noEmit --incremental false -p tsconfig.json, exit 0",
+    "lints": "0 diagnostics across 3 touched/new files"
+  },
+  "files": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "startSha256": "b98803dff5a8386f0984efa48f1deeeeb26a5aaf7776aa7e868e2fb60de3e803",
+      "endSha256": "0bef7f02d6206544c45045e89239945a60309f4a512a9f0227186cf2498f0666",
+      "diff": "27 insertions(+), 2 deletions(-)",
+      "endSnapshot": "end-source/src__lib__storage-quota.ts.snapshot.txt",
+      "status": "modified",
+      "scope": "J3-02: readCommittedFinalState + RELEASE_DRIFT/RACE 回滚后重读已提交终态"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "startSha256": "adc29f8718c4f0a2f271721e0c4f3fbaf4e7d12e97d42bcaac3ca24c6c62fc18",
+      "endSha256": "7e4aea48aecbbac40a5e65dfd354aaed430202b840d72d378e79856521a88c26",
+      "diff": "31 insertions(+), 3 deletions(-)",
+      "endSnapshot": "end-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt",
+      "status": "modified",
+      "scope": "J3-04: pendingCount 最终只读唯一计数、核实失败未知、pendingStillScope 说明"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "startSha256": null,
+      "endSha256": "ca36bb2fa67479b67c0cab47ddea6f3cc369e36e2f8046a57cbcf91e5b7436cc",
+      "diff": "new file, 10 tests",
+      "endSnapshot": "end-source/src__app__api____tests____r0j6-status-fixes.test.ts.snapshot.txt",
+      "status": "new"
+    },
+    {
+      "path": "docs/reviews/R0-J6-fix-report.md",
+      "startSha256": null,
+      "endSha256": null,
+      "status": "new",
+      "note": "本交付报告"
+    }
+  ],
+  "unchangedVerified": [
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "sha256": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4",
+      "note": "起点/期末一致；实际恢复入口无需改动即可消费修正后的 service 结果"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "sha256": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "note": "起点/期末一致；未弱化或删除任何旧测试"
+    }
+  ],
+  "frozenUnchanged": {
+    "J3-01/03/05/07": "四项已通过并冻结，本轮未改动其实现",
+    "J3-06": "classifyExistingOp 与上传就绪逻辑未改动",
+    "J-KEYS": "src/lib/file-store.ts 未改动",
+    "schema": "prisma/schema.prisma 未改动",
+    "ui": "src/components/WorkspaceInternalLayoutV3.tsx 未改动"
+  }
+}

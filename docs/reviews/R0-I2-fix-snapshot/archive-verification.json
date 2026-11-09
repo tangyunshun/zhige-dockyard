@@ -1,0 +1,62 @@
+{
+  "capturedAtReal": "2026-11-07T14:51:13.058Z",
+  "copyChecks": [
+    {
+      "file": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt",
+      "match": true,
+      "actual": "cf0d741a2a5a8cec",
+      "expected": "cf0d741a2a5a8cec"
+    },
+    {
+      "file": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__model-registry.ts.snapshot.txt",
+      "match": true,
+      "actual": "b87c91275242a3a8",
+      "expected": "b87c91275242a3a8"
+    },
+    {
+      "file": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__workspace-byo-model.ts.snapshot.txt",
+      "match": true,
+      "actual": "eb4648b2fc14bdcb",
+      "expected": "eb4648b2fc14bdcb"
+    },
+    {
+      "file": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt",
+      "match": true,
+      "actual": "812f67f872cc0343",
+      "expected": "812f67f872cc0343"
+    }
+  ],
+  "deliveryChecks": [
+    {
+      "file": "src/app/api/billing/estimate/route.ts",
+      "match": true
+    },
+    {
+      "file": "src/lib/model-registry.ts",
+      "match": true
+    },
+    {
+      "file": "src/lib/workspace-byo-model.ts",
+      "match": true
+    },
+    {
+      "file": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "match": true
+    },
+    {
+      "file": "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "match": true
+    }
+  ],
+  "rawSelfCheck": {
+    "fixture": "EXEC ALTER TABLE `t` ADD COLUMN `c`",
+    "classifiedWrite": true,
+    "note": "EXEC 通道即写通道；QUERY SELECT 不误判；注入该写记录会使 isRawWriteAttempt 断言失败"
+  },
+  "evidenceReuse": {
+    "regression": "12 files / 407 tests passed, exit 0（源码未变，引用 R0-I2 批次证据）",
+    "independentColdStart": "10 项独立冷启动验证（R0-I2 独立审核目录 cold-*-verification.json），exit 0",
+    "tsc": "exit 0，无诊断"
+  },
+  "allOk": true
+}

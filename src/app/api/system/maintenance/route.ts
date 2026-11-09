@@ -1,8 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { isAdminRole, validateUser } from "@/lib/auth";
 import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
-import { setMaintenanceMode, isMaintenanceMode, getMaintenanceMessage } from "@/lib/maintenance";
+import { requirePlatformPermission } from "@/lib/security";
+import {
+  isMaintenanceMode,
+  getMaintenanceMessage,
+  withMaintenanceAudit,
+  readJsonArrayConfigTx,
+  setMaintenanceModeTx,
+  setMaintenanceCache,
+  type MaintenanceAuditFact,
+} from "@/lib/maintenance";
 
 /**
  * 系统维护模式API（PRD G-02：持久化到 DB，重启后仍生效）
@@ -39,6 +47,78 @@ const DEFAULT_UPDATE_SETTINGS: SystemUpdateSettings = {
   popupTitle: "知阁·舟坊新版本发布公告",
 };
 
+/** [R0-F1] before/after 是否存在实际差异（用于 changed 事实，不虚构修改） */
+function hasActualChange(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const k of keys) {
+    if (!auditValuesEqual(before[k], after[k])) return true;
+  }
+  return false;
+}
+
+/**
+ * [R0-F2] 审计值等价比较：数组/对象按实际 JSON 内容（含顺序）比较，
+ * 不用引用相等判断——同内容的新数组视为未变，正文变化才记录前后值。
+ */
+function auditValuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((x, i) => auditValuesEqual(x, b[i]));
+  }
+  if (a && b && typeof a === "object" && typeof b === "object") {
+    const ka = Object.keys(a as Record<string, unknown>);
+    const kb = Object.keys(b as Record<string, unknown>);
+    return (
+      ka.length === kb.length &&
+      ka.every((k) => auditValuesEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+    );
+  }
+  return false;
+}
+
+/** undefined 统一为 null，避免序列化丢键导致前后事实形态不一致 */
+function normFact(v: unknown): unknown {
+  return v === undefined ? null : v;
+}
+
+/**
+ * [R0-F2] 计划记录的全部既有业务字段（ID 仅作目标，不进入事实比较）：
+ * title、type、status、isDowntime、startTime、endTime、manager、scope、description、actualResult
+ */
+function scheduleFacts(s: any): Record<string, unknown> {
+  return {
+    title: normFact(s?.title),
+    type: normFact(s?.type),
+    status: normFact(s?.status),
+    isDowntime: normFact(s?.isDowntime),
+    startTime: normFact(s?.startTime),
+    endTime: normFact(s?.endTime),
+    manager: normFact(s?.manager),
+    scope: normFact(s?.scope),
+    description: normFact(s?.description),
+    actualResult: normFact(s?.actualResult),
+  };
+}
+
+/**
+ * [R0-F2] 公告记录的全部既有业务字段（ID 仅作目标）：
+ * version、title、type、publishDate、isPublished、author、items（数组按内容比较）
+ */
+function releaseFacts(r: any): Record<string, unknown> {
+  return {
+    version: normFact(r?.version),
+    title: normFact(r?.title),
+    type: normFact(r?.type),
+    publishDate: normFact(r?.publishDate),
+    isPublished: normFact(r?.isPublished),
+    author: normFact(r?.author),
+    items: r?.items === undefined ? null : r.items,
+  };
+}
+
 async function getUpdateSettingsFromDB(): Promise<SystemUpdateSettings> {
   try {
     const row = await prisma.systemconfig.findUnique({ where: { key: UPDATE_SETTINGS_KEY } });
@@ -62,15 +142,8 @@ async function getReleasesFromDB() {
     if (row && row.value) {
       const parsed = JSON.parse(row.value);
       if (Array.isArray(parsed)) {
-        // 清洗存量捏造假数据，只保留真实录入记录
-        const cleaned = parsed.filter((r: any) => !FAKE_RELEASE_IDS.has(r.id));
-        if (cleaned.length !== parsed.length) {
-          await prisma.systemconfig.update({
-            where: { key: RELEASE_NOTES_KEY },
-            data: { value: JSON.stringify(cleaned) },
-          });
-        }
-        return cleaned;
+        // 仅内存过滤历史遗留的捏造假数据，绝不回写数据库（GET/读取路径零写）
+        return parsed.filter((r: any) => !FAKE_RELEASE_IDS.has(r.id));
       }
     }
     return [];
@@ -86,15 +159,8 @@ async function getSchedulesFromDB() {
     if (row && row.value) {
       const parsed = JSON.parse(row.value);
       if (Array.isArray(parsed)) {
-        // 清洗存量捏造假数据，只保留真实录入任务
-        const cleaned = parsed.filter((s: any) => !FAKE_SCHEDULE_IDS.has(s.id));
-        if (cleaned.length !== parsed.length) {
-          await prisma.systemconfig.update({
-            where: { key: MAINTENANCE_SCHEDULES_KEY },
-            data: { value: JSON.stringify(cleaned) },
-          });
-        }
-        return cleaned;
+        // 仅内存过滤历史遗留的捏造假数据，绝不回写数据库（GET/读取路径零写）
+        return parsed.filter((s: any) => !FAKE_SCHEDULE_IDS.has(s.id));
       }
     }
     return [];
@@ -109,8 +175,14 @@ async function getSchedulesFromDB() {
  */
 export async function GET(request: NextRequest) {
   try {
-    if (request.nextUrl.searchParams.get("action") === "emergency_disable") {
-      await setMaintenanceMode(false);
+    // 公开 GET 全程只读：历史危险参数 emergency_disable 曾可无认证解除维护。
+    // 公开查询不得产生任何持久化写，明确拒绝该写操作（不关闭维护、不写库、不清会话）。
+    const action = request.nextUrl.searchParams.get("action");
+    if (action === "emergency_disable") {
+      return NextResponse.json(
+        { error: "维护变更须通过授权写操作", code: "MAINTENANCE_DISABLE_REQUIRES_AUTH" },
+        { status: 400 },
+      );
     }
     const inMaintenance = await isMaintenanceMode();
     const message = await getMaintenanceMessage();
@@ -156,21 +228,48 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "未授权，请先登录" }, { status: 401 });
-    }
-    const adminId = auth.user.id;
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
-
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "权限不足，需要管理员权限" }, { status: 403 });
-    }
-
     const body = await request.json();
     const { action } = body;
+
+    // 未知 action 直接拒绝，避免落入默认维护切换造成副作用
+    const PUBLISH_ACTIONS = [
+      "create_schedule",
+      "update_schedule",
+      "delete_schedule",
+      "create_release",
+      "update_release",
+      "delete_release",
+      "toggle_release_publish",
+      "save_update_settings",
+    ];
+    if (action && !PUBLISH_ACTIONS.includes(action)) {
+      return NextResponse.json(
+        { error: "未知的操作类型", code: "UNKNOWN_ACTION" },
+        { status: 400 },
+      );
+    }
+
+    // 权限前置：在任何数据/会话/审计写之前完成校验。
+    // 维护计划/公告/展示配置需要 maintenance:publish；基础维护开关（无 action 的 enabled/message/estimatedMinutes）需要 system:maintenance_toggle。
+    // requirePlatformPermission 多键为 OR 语义；本批如需同时满足，分别校验（见下方 syncMaintenanceMode 分支），不可当 AND 使用。
+    const perm = action
+      ? await requirePlatformPermission(request, "maintenance:publish")
+      : await requirePlatformPermission(request, "system:maintenance_toggle");
+    if (!perm.authorized) return perm.errorResponse;
+    const user = perm.user!;
+    const adminId = user.id;
+
+    // 维护计划同步模式会改写维护状态时，须同时满足 maintenance:publish 与 system:maintenance_toggle
+    const willSyncMaintenance =
+      (action === "create_schedule" || action === "update_schedule") &&
+      body.syncMaintenanceMode &&
+      (body.schedule?.status === "IN_PROGRESS" ||
+        body.schedule?.status === "COMPLETED" ||
+        body.schedule?.status === "CANCELLED");
+    if (willSyncMaintenance) {
+      const togglePerm = await requirePlatformPermission(request, "system:maintenance_toggle");
+      if (!togglePerm.authorized) return togglePerm.errorResponse;
+    }
 
     // 业务闭环 1：维护计划的增删改
     if (action === "create_schedule" || action === "update_schedule") {
@@ -178,66 +277,146 @@ export async function POST(request: NextRequest) {
       if (!scheduleData || !scheduleData.title || !scheduleData.startTime) {
         return NextResponse.json({ error: "缺少维护任务标题或开始时间" }, { status: 400 });
       }
-
-      const schedules = await getSchedulesFromDB();
-      let updatedSchedules: any[];
-
-      if (action === "create_schedule") {
-        const isDowntime =
-          scheduleData.isDowntime !== undefined
-            ? Boolean(scheduleData.isDowntime)
-            : scheduleData.type === "UPGRADE" || scheduleData.type === "DATABASE";
-
-        const newSchedule = {
-          id: `maint-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          title: scheduleData.title.trim(),
-          type: scheduleData.type || "UPGRADE",
-          status: scheduleData.status || "SCHEDULED",
-          isDowntime,
-          startTime: scheduleData.startTime,
-          endTime: scheduleData.endTime || "待定",
-          manager: scheduleData.manager || admin.name || "平台运维组",
-          scope: scheduleData.scope || "全站系统服务",
-          description: scheduleData.description || "",
-          actualResult: "",
-        };
-        updatedSchedules = [newSchedule, ...schedules];
-      } else {
-        updatedSchedules = schedules.map((s: any) =>
-          s.id === scheduleData.id
-            ? {
-                ...s,
-                ...scheduleData,
-                isDowntime:
-                  scheduleData.isDowntime !== undefined
-                    ? Boolean(scheduleData.isDowntime)
-                    : s.isDowntime !== undefined
-                    ? s.isDowntime
-                    : s.type === "UPGRADE" || s.type === "DATABASE",
-              }
-            : s
+      // 区间顺序校验：结束时间已设置且非"待定"时，不能早于开始时间
+      if (
+        scheduleData.endTime &&
+        scheduleData.endTime !== "待定" &&
+        scheduleData.startTime > scheduleData.endTime
+      ) {
+        return NextResponse.json(
+          { error: "维护结束时间不能早于开始时间" },
+          { status: 400 },
         );
       }
 
-      await prisma.systemconfig.upsert({
-        where: { key: MAINTENANCE_SCHEDULES_KEY },
-        create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
-        update: { value: JSON.stringify(updatedSchedules) },
-      });
+      const maintMsg =
+        `系统正在进行【${scheduleData.title}】\n影响范围：${scheduleData.scope || "全站系统服务"}\n` +
+        (scheduleData.description ? `详细说明：${scheduleData.description}` : "");
 
-      // 智能双向联动：若请求声明了同步维护模式电闸（syncMaintenanceMode）
-      if (body.syncMaintenanceMode) {
-        if (scheduleData.status === "IN_PROGRESS") {
-          await setMaintenanceMode(true);
-          const maintMsg = `系统正在进行【${scheduleData.title}】\n影响范围：${scheduleData.scope || "全站系统服务"}\n${scheduleData.description ? `详细说明：${scheduleData.description}` : ""}`;
-          await prisma.systemconfig.upsert({
-            where: { key: "maintenance_message" },
-            create: { key: "maintenance_message", value: maintMsg },
-            update: { value: maintMsg },
+      // [R0-F1] 列表读取与计算移入事务：审计 before 来自同一事务的真实读取结果
+      let updatedSchedules: any[] = [];
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:schedule_save",
+        { action, scheduleId: scheduleData.id, syncMaintenanceMode: body.syncMaintenanceMode ?? false },
+        async (tx) => {
+          const oldSchedules = await readJsonArrayConfigTx(tx, MAINTENANCE_SCHEDULES_KEY, FAKE_SCHEDULE_IDS);
+          let fact: MaintenanceAuditFact;
+
+          if (action === "create_schedule") {
+            const isDowntime =
+              scheduleData.isDowntime !== undefined
+                ? Boolean(scheduleData.isDowntime)
+                : scheduleData.type === "UPGRADE" || scheduleData.type === "DATABASE";
+
+            const newSchedule = {
+              id: `maint-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+              title: scheduleData.title.trim(),
+              type: scheduleData.type || "UPGRADE",
+              status: scheduleData.status || "SCHEDULED",
+              isDowntime,
+              startTime: scheduleData.startTime,
+              endTime: scheduleData.endTime || "待定",
+              manager: scheduleData.manager || user.name || "平台运维组",
+              scope: scheduleData.scope || "全站系统服务",
+              description: scheduleData.description || "",
+              actualResult: "",
+            };
+            updatedSchedules = [newSchedule, ...oldSchedules];
+            // [R0-F1 G02] 创建：记录实际生成的 ID 与必要创建事实
+            fact = {
+              target: newSchedule.id,
+              before: null,
+              after: scheduleFacts(newSchedule),
+              changed: true,
+            };
+          } else {
+            const oldTarget = oldSchedules.find((s: any) => s.id === scheduleData.id) ?? null;
+            updatedSchedules = oldSchedules.map((s: any) =>
+              s.id === scheduleData.id
+                ? {
+                    ...s,
+                    ...scheduleData,
+                    isDowntime:
+                      scheduleData.isDowntime !== undefined
+                        ? Boolean(scheduleData.isDowntime)
+                        : s.isDowntime !== undefined
+                        ? s.isDowntime
+                        : s.type === "UPGRADE" || s.type === "DATABASE",
+                  }
+                : s
+            );
+            const newTarget = updatedSchedules.find((s: any) => s.id === scheduleData.id) ?? null;
+            // [R0-F2] 修改：覆盖计划全部既有业务字段，仅记录确实变化的字段（内容级比较）
+            const before: Record<string, unknown> = {};
+            const after: Record<string, unknown> = {};
+            if (oldTarget && newTarget) {
+              const oldFacts = scheduleFacts(oldTarget);
+              const newFacts = scheduleFacts(newTarget);
+              for (const k of Object.keys(newFacts)) {
+                if (!auditValuesEqual(oldFacts[k], newFacts[k])) {
+                  before[k] = oldFacts[k];
+                  after[k] = newFacts[k];
+                }
+              }
+            }
+            fact = {
+              target: scheduleData.id,
+              before: oldTarget ? before : null,
+              after: oldTarget ? after : null,
+              changed: hasActualChange(before, after),
+              ...(oldTarget ? {} : { extra: { matched: false } }),
+            };
+          }
+
+          await tx.systemconfig.upsert({
+            where: { key: MAINTENANCE_SCHEDULES_KEY },
+            create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
+            update: { value: JSON.stringify(updatedSchedules) },
           });
-        } else if (scheduleData.status === "COMPLETED" || scheduleData.status === "CANCELLED") {
-          await setMaintenanceMode(false);
-        }
+          if (willSyncMaintenance) {
+            // [R0-F1 G03] 事务内读取真实旧维护状态与旧说明（不走缓存；旧说明在写入前读取）
+            const modeRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_mode" } });
+            const oldMode = modeRow?.value === "true";
+            const targetMode = scheduleData.status === "IN_PROGRESS";
+            const msgRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_message" } });
+            const oldMsg = msgRow?.value ?? null;
+            if (targetMode) {
+              await setMaintenanceModeTx(tx, true);
+              await tx.systemconfig.upsert({
+                where: { key: "maintenance_message" },
+                create: { key: "maintenance_message", value: maintMsg },
+                update: { value: maintMsg },
+              });
+            } else {
+              await setMaintenanceModeTx(tx, false);
+            }
+            // [R0-F2] 同步 changed 由「计划 diff + 模式变化 + 实际写入说明变化」综合计算，
+            // 不再固定赋值 true；全相同时为 false，仅模式或仅说明变化也准确记录。
+            const modeChanged = oldMode !== targetMode;
+            const messageChanged = targetMode && !auditValuesEqual(normFact(oldMsg), normFact(maintMsg));
+            const planChanged = fact.changed ?? false; // create=true（新记录）；update=计划 diff 是否非空
+            fact.target = [fact.target as string, "maintenance_mode"];
+            fact.extra = {
+              ...(fact.extra ?? {}),
+              syncMaintenanceMode: true,
+              maintenanceModeBefore: oldMode,
+              maintenanceModeAfter: targetMode,
+              ...(targetMode
+                ? {
+                    maintenanceMessageBefore: normFact(oldMsg),
+                    maintenanceMessageAfter: maintMsg,
+                    maintenanceMessageWritten: maintMsg,
+                  }
+                : {}),
+            };
+            fact.changed = planChanged || modeChanged || messageChanged;
+          }
+          return fact;
+        },
+      );
+      if (willSyncMaintenance) {
+        setMaintenanceCache(scheduleData.status === "IN_PROGRESS");
       }
 
       return NextResponse.json({
@@ -253,13 +432,30 @@ export async function POST(request: NextRequest) {
       if (!scheduleId) {
         return NextResponse.json({ error: "缺少维护计划 ID" }, { status: 400 });
       }
-      const schedules = await getSchedulesFromDB();
-      const updatedSchedules = schedules.filter((s: any) => s.id !== scheduleId);
-      await prisma.systemconfig.upsert({
-        where: { key: MAINTENANCE_SCHEDULES_KEY },
-        create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
-        update: { value: JSON.stringify(updatedSchedules) },
-      });
+      let updatedSchedules: any[] = [];
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:schedule_delete",
+        { scheduleId },
+        async (tx) => {
+          // [R0-F1 G02] 删除：事务内读取真实旧列表，记录被删目标必要事实与删除后事实
+          const oldSchedules = await readJsonArrayConfigTx(tx, MAINTENANCE_SCHEDULES_KEY, FAKE_SCHEDULE_IDS);
+          const removed = oldSchedules.find((s: any) => s.id === scheduleId) ?? null;
+          updatedSchedules = oldSchedules.filter((s: any) => s.id !== scheduleId);
+          await tx.systemconfig.upsert({
+            where: { key: MAINTENANCE_SCHEDULES_KEY },
+            create: { key: MAINTENANCE_SCHEDULES_KEY, value: JSON.stringify(updatedSchedules) },
+            update: { value: JSON.stringify(updatedSchedules) },
+          });
+          return {
+            target: scheduleId,
+            before: removed ? scheduleFacts(removed) : null,
+            after: { deleted: true, remainingCount: updatedSchedules.length },
+            changed: !!removed,
+            ...(removed ? {} : { extra: { matched: false } }),
+          };
+        },
+      );
       return NextResponse.json({
         success: true,
         message: "已成功从数据库删除该维护计划记录",
@@ -268,78 +464,149 @@ export async function POST(request: NextRequest) {
     }
 
     // 业务闭环 2：发版更新日志的增删改与公示控制
-    if (action === "create_release" || action === "update_release") {
-      const releaseData = body.release;
-      if (!releaseData || !releaseData.version || !releaseData.title) {
-        return NextResponse.json({ error: "缺少版本号或版本说明标题" }, { status: 400 });
-      }
+    if (
+      action === "create_release" ||
+      action === "update_release" ||
+      action === "delete_release" ||
+      action === "toggle_release_publish"
+    ) {
+      if (action === "create_release" || action === "update_release") {
+        const releaseData = body.release;
+        if (!releaseData || !releaseData.version || !releaseData.title) {
+          return NextResponse.json({ error: "缺少版本号或版本说明标题" }, { status: 400 });
+        }
 
-      const releases = await getReleasesFromDB();
-      let updatedReleases: any[];
-
-      if (action === "create_release") {
-        const newRelease = {
-          id: `rel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-          version: releaseData.version.trim(),
-          title: releaseData.title.trim(),
-          type: releaseData.type || "FEATURE",
-          publishDate: releaseData.publishDate || new Date().toISOString().split("T")[0],
-          isPublished: releaseData.isPublished ?? true,
-          author: releaseData.author || admin.name || "平台研发组",
-          items: Array.isArray(releaseData.items)
-            ? releaseData.items.filter((it: string) => it.trim().length > 0)
-            : [releaseData.title.trim()],
-        };
-        updatedReleases = [newRelease, ...releases];
-      } else {
-        updatedReleases = releases.map((r: any) =>
-          r.id === releaseData.id ? { ...r, ...releaseData } : r
+        let updatedReleases: any[] = [];
+        await withMaintenanceAudit(
+          user.id,
+          "maintenance:release_save",
+          { action, releaseId: releaseData.id },
+          async (tx) => {
+            // [R0-F1 G02] 事务内读取真实旧列表（严格读取，失败整体回滚）
+            const oldReleases = await readJsonArrayConfigTx(tx, RELEASE_NOTES_KEY, FAKE_RELEASE_IDS);
+            let fact: MaintenanceAuditFact;
+            if (action === "create_release") {
+              const newRelease = {
+                id: `rel-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                version: releaseData.version.trim(),
+                title: releaseData.title.trim(),
+                type: releaseData.type || "FEATURE",
+                publishDate: releaseData.publishDate || new Date().toISOString().split("T")[0],
+                isPublished: releaseData.isPublished ?? true,
+                author: releaseData.author || user.name || "平台研发组",
+                items: Array.isArray(releaseData.items)
+                  ? releaseData.items.filter((it: string) => it.trim().length > 0)
+                  : [releaseData.title.trim()],
+              };
+              updatedReleases = [newRelease, ...oldReleases];
+              // 创建：记录实际生成的 ID 与必要创建事实
+              fact = { target: newRelease.id, before: null, after: releaseFacts(newRelease), changed: true };
+            } else {
+              const oldTarget = oldReleases.find((r: any) => r.id === releaseData.id) ?? null;
+              updatedReleases = oldReleases.map((r: any) =>
+                r.id === releaseData.id ? { ...r, ...releaseData } : r
+              );
+              const newTarget = updatedReleases.find((r: any) => r.id === releaseData.id) ?? null;
+              // [R0-F2] 修改：覆盖公告全部既有业务字段（items 按内容/顺序比较，非引用比较）
+              const before: Record<string, unknown> = {};
+              const after: Record<string, unknown> = {};
+              if (oldTarget && newTarget) {
+                const oldFacts = releaseFacts(oldTarget);
+                const newFacts = releaseFacts(newTarget);
+                for (const k of Object.keys(newFacts)) {
+                  if (!auditValuesEqual(oldFacts[k], newFacts[k])) {
+                    before[k] = oldFacts[k];
+                    after[k] = newFacts[k];
+                  }
+                }
+              }
+              fact = {
+                target: releaseData.id,
+                before: oldTarget ? before : null,
+                after: oldTarget ? after : null,
+                changed: hasActualChange(before, after),
+                ...(oldTarget ? {} : { extra: { matched: false } }),
+              };
+            }
+            await tx.systemconfig.upsert({
+              where: { key: RELEASE_NOTES_KEY },
+              create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+              update: { value: JSON.stringify(updatedReleases) },
+            });
+            return fact;
+          },
         );
+        return NextResponse.json({
+          success: true,
+          message: action === "create_release" ? "新版本发版记录已成功录入数据库！" : "发版记录已更新！",
+          releases: updatedReleases,
+        });
       }
 
-      await prisma.systemconfig.upsert({
-        where: { key: RELEASE_NOTES_KEY },
-        create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
-        update: { value: JSON.stringify(updatedReleases) },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: action === "create_release" ? "新版本发版记录已成功录入数据库！" : "发版记录已更新！",
-        releases: updatedReleases,
-      });
-    }
-
-    if (action === "delete_release") {
-      const { releaseId } = body;
-      if (!releaseId) {
-        return NextResponse.json({ error: "缺少发版记录 ID" }, { status: 400 });
+      if (action === "delete_release") {
+        const { releaseId } = body;
+        if (!releaseId) {
+          return NextResponse.json({ error: "缺少发版记录 ID" }, { status: 400 });
+        }
+        let updatedReleases: any[] = [];
+        await withMaintenanceAudit(
+          user.id,
+          "maintenance:release_delete",
+          { releaseId },
+          async (tx) => {
+            // [R0-F1 G02] 删除：记录被删目标必要事实与删除后事实
+            const oldReleases = await readJsonArrayConfigTx(tx, RELEASE_NOTES_KEY, FAKE_RELEASE_IDS);
+            const removed = oldReleases.find((r: any) => r.id === releaseId) ?? null;
+            updatedReleases = oldReleases.filter((r: any) => r.id !== releaseId);
+            await tx.systemconfig.upsert({
+              where: { key: RELEASE_NOTES_KEY },
+              create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+              update: { value: JSON.stringify(updatedReleases) },
+            });
+            return {
+              target: releaseId,
+              before: removed ? releaseFacts(removed) : null,
+              after: { deleted: true, remainingCount: updatedReleases.length },
+              changed: !!removed,
+              ...(removed ? {} : { extra: { matched: false } }),
+            };
+          },
+        );
+        return NextResponse.json({
+          success: true,
+          message: "已成功删除该发版记录",
+          releases: updatedReleases,
+        });
       }
-      const releases = await getReleasesFromDB();
-      const updatedReleases = releases.filter((r: any) => r.id !== releaseId);
-      await prisma.systemconfig.upsert({
-        where: { key: RELEASE_NOTES_KEY },
-        create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
-        update: { value: JSON.stringify(updatedReleases) },
-      });
-      return NextResponse.json({
-        success: true,
-        message: "已成功删除该发版记录",
-        releases: updatedReleases,
-      });
-    }
 
-    if (action === "toggle_release_publish") {
+      // toggle_release_publish
       const { releaseId, isPublished } = body;
-      const releases = await getReleasesFromDB();
-      const updatedReleases = releases.map((r: any) =>
-        r.id === releaseId ? { ...r, isPublished: Boolean(isPublished) } : r
+      let updatedReleases: any[] = [];
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:release_publish_toggle",
+        { releaseId, isPublished: Boolean(isPublished) },
+        async (tx) => {
+          // [R0-F1 G02] 公示切换：记录实际前后公示状态（旧值来自事务内读取）
+          const oldReleases = await readJsonArrayConfigTx(tx, RELEASE_NOTES_KEY, FAKE_RELEASE_IDS);
+          const oldTarget = oldReleases.find((r: any) => r.id === releaseId) ?? null;
+          updatedReleases = oldReleases.map((r: any) =>
+            r.id === releaseId ? { ...r, isPublished: Boolean(isPublished) } : r
+          );
+          await tx.systemconfig.upsert({
+            where: { key: RELEASE_NOTES_KEY },
+            create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
+            update: { value: JSON.stringify(updatedReleases) },
+          });
+          return {
+            target: releaseId,
+            before: oldTarget ? { isPublished: oldTarget.isPublished ?? null } : null,
+            after: { isPublished: Boolean(isPublished) },
+            changed: oldTarget ? oldTarget.isPublished !== Boolean(isPublished) : false,
+            ...(oldTarget ? {} : { extra: { matched: false } }),
+          };
+        },
       );
-      await prisma.systemconfig.upsert({
-        where: { key: RELEASE_NOTES_KEY },
-        create: { key: RELEASE_NOTES_KEY, value: JSON.stringify(updatedReleases) },
-        update: { value: JSON.stringify(updatedReleases) },
-      });
       return NextResponse.json({
         success: true,
         message: isPublished ? "该版本更新已设为全网公示" : "已隐藏该版本的前台公示",
@@ -352,31 +619,69 @@ export async function POST(request: NextRequest) {
       if (!settings) {
         return NextResponse.json({ error: "缺少更新设置参数" }, { status: 400 });
       }
-      const current = await getUpdateSettingsFromDB();
-      const updated: SystemUpdateSettings = {
-        ...current,
-        ...(settings.autoCheckUpdate !== undefined ? { autoCheckUpdate: Boolean(settings.autoCheckUpdate) } : {}),
-        ...(settings.notifyModalEnabled !== undefined ? { notifyModalEnabled: Boolean(settings.notifyModalEnabled) } : {}),
-        ...(settings.forceUpdate !== undefined ? { forceUpdate: Boolean(settings.forceUpdate) } : {}),
-        ...(settings.minSupportedVersion ? { minSupportedVersion: String(settings.minSupportedVersion).trim() } : {}),
-        ...(settings.releaseChannel ? { releaseChannel: settings.releaseChannel } : {}),
-        ...(settings.customDownloadUrl !== undefined ? { customDownloadUrl: String(settings.customDownloadUrl).trim() } : {}),
-        ...(settings.popupTitle ? { popupTitle: String(settings.popupTitle).trim() } : {}),
-      };
+      let updated: SystemUpdateSettings | null = null;
+      await withMaintenanceAudit(
+        user.id,
+        "maintenance:update_settings",
+        { systemVersion: settings.systemVersion },
+        async (tx) => {
+          // [R0-F1 G01] 事务内读取真实旧值（解析失败抛错整体回滚，不编造空旧值/不使用默认兜底冒充旧值）
+          const rawRow = await tx.systemconfig.findUnique({ where: { key: UPDATE_SETTINGS_KEY } });
+          const current: SystemUpdateSettings = rawRow?.value
+            ? { ...DEFAULT_UPDATE_SETTINGS, ...JSON.parse(rawRow.value) }
+            : DEFAULT_UPDATE_SETTINGS;
+          updated = {
+            ...current,
+            ...(settings.autoCheckUpdate !== undefined ? { autoCheckUpdate: Boolean(settings.autoCheckUpdate) } : {}),
+            ...(settings.notifyModalEnabled !== undefined ? { notifyModalEnabled: Boolean(settings.notifyModalEnabled) } : {}),
+            ...(settings.forceUpdate !== undefined ? { forceUpdate: Boolean(settings.forceUpdate) } : {}),
+            ...(settings.minSupportedVersion ? { minSupportedVersion: String(settings.minSupportedVersion).trim() } : {}),
+            ...(settings.releaseChannel ? { releaseChannel: settings.releaseChannel } : {}),
+            ...(settings.customDownloadUrl !== undefined ? { customDownloadUrl: String(settings.customDownloadUrl).trim() } : {}),
+            ...(settings.popupTitle ? { popupTitle: String(settings.popupTitle).trim() } : {}),
+          };
 
-      await prisma.systemconfig.upsert({
-        where: { key: UPDATE_SETTINGS_KEY },
-        create: { key: UPDATE_SETTINGS_KEY, value: JSON.stringify(updated) },
-        update: { value: JSON.stringify(updated) },
-      });
+          // 只记录实际涉及的设置变化（未传字段不进入 diff；未传 systemVersion 不影响其他变更详情）
+          const before: Record<string, unknown> = {};
+          const after: Record<string, unknown> = {};
+          for (const k of Object.keys(updated as SystemUpdateSettings)) {
+            if ((updated as any)[k] !== (current as any)[k]) {
+              before[k] = (current as any)[k];
+              after[k] = (updated as any)[k];
+            }
+          }
+          const targets: string[] = [UPDATE_SETTINGS_KEY];
+          if (settings.systemVersion) {
+            const verRow = await tx.systemconfig.findUnique({ where: { key: "system_version" } });
+            const oldVer = verRow?.value ?? null;
+            const newVer = String(settings.systemVersion).trim();
+            if (oldVer !== newVer) {
+              before.systemVersion = oldVer;
+              after.systemVersion = newVer;
+            }
+            targets.push("system_version");
+          }
 
-      if (settings.systemVersion) {
-        await prisma.systemconfig.upsert({
-          where: { key: "system_version" },
-          create: { key: "system_version", value: String(settings.systemVersion).trim() },
-          update: { value: String(settings.systemVersion).trim() },
-        });
-      }
+          await tx.systemconfig.upsert({
+            where: { key: UPDATE_SETTINGS_KEY },
+            create: { key: UPDATE_SETTINGS_KEY, value: JSON.stringify(updated) },
+            update: { value: JSON.stringify(updated) },
+          });
+          if (settings.systemVersion) {
+            await tx.systemconfig.upsert({
+              where: { key: "system_version" },
+              create: { key: "system_version", value: String(settings.systemVersion).trim() },
+              update: { value: String(settings.systemVersion).trim() },
+            });
+          }
+          return {
+            target: targets.length === 1 ? targets[0] : targets,
+            before,
+            after,
+            changed: hasActualChange(before, after),
+          };
+        },
+      );
 
       return NextResponse.json({
         success: true,
@@ -385,47 +690,74 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 业务闭环 3：系统维护模式开关与维护说明修改（持久化到 DB）
+    // 业务闭环 3：系统维护模式开关与维护说明修改（需 system:maintenance_toggle，配置变更与审计同事务）
     const { enabled, message, estimatedMinutes } = body;
     const target = enabled !== undefined ? Boolean(enabled) : await isMaintenanceMode();
 
-    await setMaintenanceMode(target);
-    if (message !== undefined) {
-      await prisma.systemconfig.upsert({
-        where: { key: "maintenance_message" },
-        create: { key: "maintenance_message", value: message.trim() },
-        update: { value: message.trim() },
-      });
-    }
-    if (estimatedMinutes !== undefined) {
-      await prisma.systemconfig.upsert({
-        where: { key: "maintenance_estimated" },
-        create: { key: "maintenance_estimated", value: String(estimatedMinutes) },
-        update: { value: String(estimatedMinutes) },
-      });
-    }
+    await withMaintenanceAudit(
+      user.id,
+      "system:maintenance_toggle",
+      { enabled: target, hasMessage: message !== undefined, estimatedMinutes },
+      async (tx) => {
+        // [R0-F1 G03] 事务内读取真实旧状态（不走缓存），记录实际维护状态前后与本次确实写入的内容
+        const modeRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_mode" } });
+        const oldMode = modeRow?.value === "true";
+        const before: Record<string, unknown> = { maintenanceMode: oldMode };
+        const after: Record<string, unknown> = { maintenanceMode: target };
+        const targets: string[] = ["maintenance_mode"];
 
+        await setMaintenanceModeTx(tx, target);
+        if (message !== undefined) {
+          const msgRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_message" } });
+          before.maintenanceMessage = msgRow?.value ?? null;
+          after.maintenanceMessage = message.trim();
+          targets.push("maintenance_message");
+          await tx.systemconfig.upsert({
+            where: { key: "maintenance_message" },
+            create: { key: "maintenance_message", value: message.trim() },
+            update: { value: message.trim() },
+          });
+        }
+        if (estimatedMinutes !== undefined) {
+          const estRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_estimated" } });
+          before.estimatedMinutes = estRow?.value ?? null;
+          after.estimatedMinutes = String(estimatedMinutes);
+          targets.push("maintenance_estimated");
+          await tx.systemconfig.upsert({
+            where: { key: "maintenance_estimated" },
+            create: { key: "maintenance_estimated", value: String(estimatedMinutes) },
+            update: { value: String(estimatedMinutes) },
+          });
+        }
+        // 开启维护时，清除普通用户的登录会话（强制退出）；与配置变更同事务，回滚时不残留
+        let clearedSessions = 0;
+        if (target) {
+          const cleared = await tx.user.updateMany({
+            where: {
+              role: { notIn: [...ADMIN_ROLE_VALUES] },
+              sessionToken: { not: null },
+            },
+            data: {
+              sessionToken: null,
+              sessionExpiresAt: null,
+              refreshToken: null,
+              refreshTokenExpiresAt: null,
+              lastForcedLogoutAt: new Date(),
+            },
+          });
+          clearedSessions = cleared.count;
+        }
+        return {
+          target: targets.length === 1 ? targets[0] : targets,
+          before,
+          after,
+          changed: hasActualChange(before, after),
+          extra: { sessionsCleared: clearedSessions },
+        };
+      },
+    );
+    setMaintenanceCache(target);
     console.log(`[系统维护] 管理员 ${adminId} 设置维护模式: ${target}`);
-
-    // 开启维护时，清除普通用户的登录会话（强制退出）
-    if (target) {
-      const result = await prisma.user.updateMany({
-        where: {
-          role: {
-            notIn: [...ADMIN_ROLE_VALUES],
-          },
-          sessionToken: { not: null },
-        },
-        data: {
-          sessionToken: null,
-          sessionExpiresAt: null,
-          refreshToken: null,
-          refreshTokenExpiresAt: null,
-          lastForcedLogoutAt: new Date(),
-        },
-      });
-      console.log(`[系统维护] 维护已开启，已清除 ${result.count} 个在线普通用户的登录会话`);
-    }
 
     return NextResponse.json({
       success: true,
@@ -441,25 +773,34 @@ export async function POST(request: NextRequest) {
 }
 
 /**
- * 关闭维护模式（仅管理员）
+ * 关闭维护模式（需 system:maintenance_toggle，配置变更与审计同事务）
  */
 export async function DELETE(request: NextRequest) {
   try {
-    const auth = await validateUser(request.headers.get("Authorization"), request);
-    if (!auth.valid || !auth.user) {
-      return NextResponse.json({ error: "未授权" }, { status: 401 });
-    }
-    const adminId = auth.user.id;
-    const admin = await prisma.user.findUnique({
-      where: { id: adminId },
-    });
+    const perm = await requirePlatformPermission(request, "system:maintenance_toggle");
+    if (!perm.authorized) return perm.errorResponse;
+    const user = perm.user!;
 
-    if (!admin || !isAdminRole(admin.role)) {
-      return NextResponse.json({ error: "需要管理员权限" }, { status: 403 });
-    }
-
-    await setMaintenanceMode(false);
-    console.log(`[系统维护] 管理员 ${adminId} 关闭维护模式`);
+    await withMaintenanceAudit(
+      user.id,
+      "system:maintenance_toggle",
+      { action: "disable" },
+      async (tx) => {
+        // [R0-F1 G03] DELETE 解除维护：记录实际维护状态前后（旧值来自事务内读取，不走缓存）
+        const modeRow = await tx.systemconfig.findUnique({ where: { key: "maintenance_mode" } });
+        const oldMode = modeRow?.value === "true";
+        await setMaintenanceModeTx(tx, false);
+        return {
+          target: "maintenance_mode",
+          before: { maintenanceMode: oldMode },
+          after: { maintenanceMode: false },
+          changed: oldMode !== false,
+          extra: { via: "DELETE" },
+        };
+      },
+    );
+    setMaintenanceCache(false);
+    console.log(`[系统维护] 管理员 ${user.id} 关闭维护模式`);
 
     return NextResponse.json({ success: true, message: "系统维护模式已关闭，已恢复正常运行" });
   } catch (error) {

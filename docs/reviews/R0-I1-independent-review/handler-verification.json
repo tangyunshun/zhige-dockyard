@@ -1,0 +1,238 @@
+{
+  "capturedAt": "2026-11-07T14:00:52.078Z",
+  "evidence": [
+    {
+      "case": "J01-expired",
+      "rows": [
+        {
+          "label": "R0-I snapshot",
+          "status": 400,
+          "code": null,
+          "cycleCalls": 0,
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "tasks": [],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "1000",
+            "quotaResetAt": "2000-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "current fixed",
+          "status": 200,
+          "code": null,
+          "cycleCalls": 1,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "0",
+            "quotaResetAt": "2026-11-30T16:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT workspacemember.update",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "J01-J02-limits",
+      "rows": [
+        {
+          "label": "missing",
+          "status": 200,
+          "code": null,
+          "cycleCalls": 1,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "0",
+            "quotaResetAt": "2026-11-30T16:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT workspacemember.update",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        },
+        {
+          "label": "same month exhausted",
+          "status": 400,
+          "code": null,
+          "cycleCalls": 1,
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "tasks": [],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "1000",
+            "quotaResetAt": "2099-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "same month remaining",
+          "status": 200,
+          "code": null,
+          "cycleCalls": 1,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "500",
+            "quotaResetAt": "2099-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "J02-BYOK",
+      "rows": [
+        {
+          "label": "explicit",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "cycleCalls": 0,
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "tasks": [],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "1000",
+            "quotaResetAt": "2000-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "default",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "cycleCalls": 0,
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "tasks": [],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "1000",
+            "quotaResetAt": "2000-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "switched",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "cycleCalls": 0,
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "tasks": [],
+          "member": {
+            "id": "m1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "role": "OWNER",
+            "monthlyTokenLimit": "1000",
+            "monthlyTokenUsed": "1000",
+            "quotaResetAt": "2000-01-01T00:00:00.000Z",
+            "tokenBalance": "10000"
+          },
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        }
+      ]
+    }
+  ]
+}

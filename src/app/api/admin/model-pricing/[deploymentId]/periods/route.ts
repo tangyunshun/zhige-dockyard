@@ -60,6 +60,9 @@ function parsePeriodInput(body: Record<string, unknown>) {
   }
   if (out.startTime && !out.endTime) errors.push("设置了开始时间必须同时设置结束时间");
   if (!out.startTime && out.endTime) errors.push("设置了结束时间必须同时设置开始时间");
+  if (out.startTime && out.endTime && out.startTime >= out.endTime) {
+    errors.push("开始时间不能晚于结束时间");
+  }
 
   // 日期区间
   for (const f of ["startDate", "endDate"] as const) {
@@ -70,6 +73,21 @@ function parsePeriodInput(body: Record<string, unknown>) {
       else out[f] = dt;
     } else {
       out[f] = null;
+    }
+  }
+  // 区间顺序校验：开始日期不能晚于结束日期；同一天内开始时间不能晚于结束时间
+  const sDate = out.startDate as Date | null;
+  const eDate = out.endDate as Date | null;
+  if (sDate && eDate) {
+    if (sDate.getTime() > eDate.getTime()) {
+      errors.push("开始日期不能晚于结束日期");
+    } else if (
+      sDate.getTime() === eDate.getTime() &&
+      out.startTime &&
+      out.endTime &&
+      (out.startTime as string) >= (out.endTime as string)
+    ) {
+      errors.push("同一天内开始时间不能晚于结束时间");
     }
   }
 

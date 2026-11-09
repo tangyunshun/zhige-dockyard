@@ -3,8 +3,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { isPlatformAdminRole, requirePlatformPermission, writeAuditLog  } from "@/lib/security";
-import { grantPoints } from "@/lib/credit-service";
+import { isPlatformAdminRole, requirePlatformPermission, writeAuditLog } from "@/lib/security";
 
 /**
  * 后台「线下充值工单」管理（对公转账 / 合同结算闭环）
@@ -14,9 +13,22 @@ import { grantPoints } from "@/lib/credit-service";
  *   action:
  *     APPROVE      待审批 → 审批通过（待收款）
  *     REJECT       待审批/待收款 → 驳回（需填写 reviewNote）
- *     CONFIRM_PAID 待收款 → 已收款并自动入账（写入算力分桶 + 流水 + 财务账单）
+ *     CONFIRM_PAID 待收款 → 已收款并自动入账（见 M02：当前暂停，零资金副作用）
+ *
+ * [R0 / 原方案 F16 · M02 止损]
+ * - APPROVE/REJECT/CONFIRM_PAID 各自检查最小专用动作权限：recharge_order:approve /
+ *   recharge_order:reject / recharge_order:confirm_paid；并保留 order:manage / order:audit 作为
+ *   审批/驳回的兼容粗粒度键（requirePlatformPermission 的 OR 语义）。**删除**原先把
+ *   order:refund_approve / order:refund_apply（退款申请权限）当作充值审批放行的错误；
+ *   退款申请权限不得用于确认充值。
+ * - 工单状态按条件裁决（updateMany + count 检查），避免「先读后无条件 update」覆盖并发动作。
+ * - CONFIRM_PAID：当前不存在可核验收款来源或批准规则，明确暂停并零资金/权益/成功账单副作用，
+ *   保留待处理工单；请求中的备注/上传图片/流水号/paid=true 均非「已核验收款事实」。
+ *   本动作不参与 grantPoints / 账单写入 / 工单状态变更。
  */
 
+// APPROVE/REJECT 兼容的既有审批权限（粗粒度），与专用 recharge_order:* 键 OR 放行
+const REVIEW_COMPAT_PERMS = ["order:manage", "order:audit"] as const;
 
 export async function GET(request: NextRequest) {
   try {
@@ -142,17 +154,6 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   try {
-    // 细粒度权限（按订单动作细分）：order:manage ∨ order:audit ∨ order:refund_approve ∨ order:refund_apply
-    const permCheck = await requirePlatformPermission(
-      request,
-      "order:manage",
-      "order:audit",
-      "order:refund_approve",
-      "order:refund_apply"
-    );
-    if (!permCheck.authorized) {
-      return permCheck.errorResponse || NextResponse.json({ error: "无权限处理充值订单" }, { status: 403 });
-    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) {
       return NextResponse.json({ error: "未授权" }, { status: 401 });
@@ -180,11 +181,24 @@ export async function PATCH(request: NextRequest) {
     const reviewerName = reviewer?.name || auth.user.id;
 
     if (action === "APPROVE") {
-      if (order.status !== "PENDING") {
-        return NextResponse.json({ error: "仅待审批的工单可通过审批" }, { status: 400 });
+      // 专用动作权限 + 兼容粗粒度审批权限；退款申请权限不在放行列表
+      const pa = await requirePlatformPermission(
+        request,
+        "recharge_order:approve",
+        ...REVIEW_COMPAT_PERMS,
+      );
+      if (!pa.authorized) {
+        return pa.errorResponse || NextResponse.json({ error: "无权限审批充值工单" }, { status: 403 });
       }
-      await prisma.tokenrechargeorder.update({
-        where: { id },
+      if (order.status !== "PENDING") {
+        return NextResponse.json(
+          { error: `该工单已被处理或状态变化（当前状态：${order.status}），不可审批` },
+          { status: 409 },
+        );
+      }
+      // 条件裁决：WHERE 携带当前状态，避免并发覆盖
+      const updated = await prisma.tokenrechargeorder.updateMany({
+        where: { id, status: "PENDING" },
         data: {
           status: "APPROVED",
           reviewerId: auth.user.id,
@@ -194,18 +208,41 @@ export async function PATCH(request: NextRequest) {
           updatedAt: new Date(),
         },
       });
+      if (updated.count !== 1) {
+        const latest = await prisma.tokenrechargeorder.findUnique({ where: { id } });
+        return NextResponse.json(
+          { error: `该工单已被处理或状态变化（当前状态：${latest?.status ?? "不存在"}），不可审批` },
+          { status: 409 },
+        );
+      }
+      await writeAuditLog(
+        auth.user.id,
+        "billing:recharge_order_approve",
+        { orderId: order.id, orderNo: order.orderNo, action: "APPROVE" },
+        order.workspaceId,
+        null,
+        request,
+      );
       return NextResponse.json({ success: true, message: "工单已审批通过，等待确认收款" });
     }
 
     if (action === "REJECT") {
+      const pa = await requirePlatformPermission(
+        request,
+        "recharge_order:reject",
+        ...REVIEW_COMPAT_PERMS,
+      );
+      if (!pa.authorized) {
+        return pa.errorResponse || NextResponse.json({ error: "无权限驳回充值工单" }, { status: 403 });
+      }
       if (order.status !== "PENDING" && order.status !== "APPROVED") {
         return NextResponse.json({ error: "该工单当前状态不可驳回" }, { status: 400 });
       }
       if (!reviewNote || !String(reviewNote).trim()) {
         return NextResponse.json({ error: "驳回必须填写审批意见" }, { status: 400 });
       }
-      await prisma.tokenrechargeorder.update({
-        where: { id },
+      const updated = await prisma.tokenrechargeorder.updateMany({
+        where: { id, status: { in: ["PENDING", "APPROVED"] } },
         data: {
           status: "REJECTED",
           reviewerId: auth.user.id,
@@ -215,114 +252,49 @@ export async function PATCH(request: NextRequest) {
           updatedAt: new Date(),
         },
       });
+      if (updated.count !== 1) {
+        const latest = await prisma.tokenrechargeorder.findUnique({ where: { id } });
+        return NextResponse.json(
+          { error: `该工单已被处理或状态变化（当前状态：${latest?.status ?? "不存在"}），不可驳回` },
+          { status: 409 },
+        );
+      }
+      await writeAuditLog(
+        auth.user.id,
+        "billing:recharge_order_reject",
+        { orderId: order.id, orderNo: order.orderNo, action: "REJECT", reviewNote: String(reviewNote).trim() },
+        order.workspaceId,
+        null,
+        request,
+      );
       return NextResponse.json({ success: true, message: "工单已驳回" });
     }
 
     if (action === "CONFIRM_PAID") {
-      if (order.status !== "APPROVED") {
-        return NextResponse.json({ error: "仅审批通过（待收款）的工单可确认到账" }, { status: 400 });
+      // 专用动作权限（当前无人持有 → 默认拒绝；即便持有，下列暂停守卫仍生效）
+      const pa = await requirePlatformPermission(request, "recharge_order:confirm_paid");
+      if (!pa.authorized) {
+        return pa.errorResponse || NextResponse.json({ error: "无权限确认充值收款" }, { status: 403 });
       }
-
-      const ws = await prisma.workspace.findUnique({
-        where: { id: order.workspaceId },
-        select: { id: true, name: true, type: true },
-      });
-      const applicant = await prisma.user.findUnique({
-        where: { id: order.applicantId },
-        select: { id: true, email: true },
-      });
-
-      const points = Number(order.points);
-
-      // 入账：企业共享池 或 用户钱包（与工单 scope 一致）
-      const grant = await grantPoints({
-        scope: order.scope === "WORKSPACE" ? "WORKSPACE" : "WALLET",
-        userId: order.applicantId,
-        workspaceId: order.scope === "WORKSPACE" ? order.workspaceId : null,
-        points,
-        sourceType: "OFFLINE_ORDER",
-        type: "OFFLINE_RECHARGE",
-        title: `线下充值入账 ${points.toLocaleString()} 算力点（工单 ${order.orderNo}）`,
-        amountCents: Number(order.amountCents || 0),
-        paymentMethod: order.paymentMethod || "OFFLINE_BANK",
-        orderNo: order.orderNo,
-        sourceId: order.id,
-        workspaceType: ws?.type || null,
-        workspaceName: ws?.name || order.workspaceName || null,
-        userEmail: applicant?.email || null,
-        operatorId: auth.user.id,
-        remark: reviewNote || order.remark || `对公充值工单 ${order.orderNo} 已确认收款`,
-        idempotencyKey: `OFFLINE_ORDER:${order.orderNo}`,
-      });
-
-      // 操作日志：管理员确认线下充值收款并入账必须留痕（金额 / 点数 / 工单 / 操作人 / 流水号）
+      // [M02] 当前不存在可核验收款来源或批准规则：明确暂停人工收款确认，
+      // 在任何 grantPoints / 账单写 / 工单状态变更之前返回，零资金/权益/成功账单副作用，保留待处理工单。
       await writeAuditLog(
         auth.user.id,
-        "billing:recharge_order_confirm",
-        {
-          orderNo: order.orderNo,
-          orderId: order.id,
-          points,
-          amountCents: Number(order.amountCents || 0),
-          scope: order.scope,
-          workspaceId: order.workspaceId,
-          applicantId: order.applicantId,
-          ledgerId: grant.ledgerId,
-          reviewNote: reviewNote || null,
-        },
-        null,
+        "billing:recharge_order_confirm_paused",
+        { orderId: order.id, orderNo: order.orderNo, action: "CONFIRM_PAID", result: "PAUSED" },
+        order.workspaceId,
         null,
         request,
       );
-
-      // 财务账单留痕
-      const billingModel = (prisma as any).billing_record || (prisma as any).billingrecord;
-      if (billingModel && typeof billingModel.create === "function") {
-        await billingModel.create({
-          data: {
-            id: crypto.randomUUID(),
-            userId: order.applicantId,
-            workspaceId: order.workspaceId,
-            type: "TOKEN_RECHARGE",
-            title: `线下对公充值 ${points.toLocaleString()} 算力点（工单 ${order.orderNo}）`,
-            amount: Number(order.amountCents || 0),
-            currency: "CNY",
-            status: "SUCCESS",
-            channel: order.paymentMethod || "OFFLINE_BANK",
-            referenceId: order.orderNo,
-            metadata: {
-              points,
-              orderNo: order.orderNo,
-              scope: order.scope,
-              invoiceTitle: order.invoiceTitle,
-              taxNo: order.taxNo,
-              confirmedBy: reviewerName,
-              ledgerId: grant.ledgerId,
-              paidAt: new Date().toISOString(),
-            },
-            updatedAt: new Date(),
-          },
-        }).catch((e: any) => console.warn("写入线下充值账单记录警告:", e));
-      }
-
-      await prisma.tokenrechargeorder.update({
-        where: { id },
-        data: {
-          status: "PAID",
-          reviewerId: order.reviewerId || auth.user.id,
-          reviewerName: order.reviewerName || reviewerName,
-          paidAt: new Date(),
-          ledgerId: grant.ledgerId,
-          updatedAt: new Date(),
+      return NextResponse.json(
+        {
+          success: false,
+          code: "RECHARGE_CONFIRM_PAID_PAUSED",
+          error:
+            "人工收款确认暂未开放（缺少可核验收款来源）；工单保留待处理，不会因此重复加点或生成虚假到账。",
         },
-      });
-
-      return NextResponse.json({
-        success: true,
-        message: `已确认收款并自动入账 ${points.toLocaleString()} 算力点`,
-        ledgerId: grant.ledgerId,
-        balanceAfter: grant.balanceAfter,
-      });
+        { status: 409 },
+      );
     }
 
     return NextResponse.json({ error: "未知的审批动作" }, { status: 400 });

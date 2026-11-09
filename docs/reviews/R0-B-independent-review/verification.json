@@ -1,0 +1,445 @@
+{
+  "capturedAt": "2026-11-05T17:13:14.979Z",
+  "controls": [
+    {
+      "scenario": "same_order_concurrency_fixed",
+      "result": [
+        {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        {
+          "ok": true,
+          "status": "ALREADY_PROCESSED",
+          "seats": 2,
+          "workspaceId": "w1"
+        }
+      ],
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "failWorkspace_rolls_back",
+      "result": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单保持待支付状态，可安全重试",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "failCommit_rolls_back",
+      "result": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单保持待支付状态，可安全重试",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    }
+  ],
+  "observations": [
+    {
+      "scenario": "stale_expiry_overwrites_SUCCESS_shared",
+      "result": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单已超时未支付，拒绝入账"
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "update"
+        }
+      ],
+      "events": [
+        "fixture: another valid in-flight fulfillment commits SUCCESS and 2 seats after stale read"
+      ]
+    },
+    {
+      "scenario": "stale_expiry_overwrites_SUCCESS_real_wrapper",
+      "result": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单已超时未支付，拒绝入账"
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "update"
+        }
+      ],
+      "events": [
+        "fixture: another valid in-flight fulfillment commits SUCCESS and 2 seats after stale read"
+      ]
+    },
+    {
+      "scenario": "stale_expiry_overwrites_SUCCESS_mock_route",
+      "result": {
+        "status": 409,
+        "body": {
+          "error": "订单已超时未支付（超过支付截止时间），请重新下单"
+        }
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "update"
+        }
+      ],
+      "events": [
+        "fixture: another valid in-flight fulfillment commits SUCCESS and 2 seats after stale read"
+      ]
+    },
+    {
+      "scenario": "read_only_space_accepted_ARCHIVED",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ARCHIVED",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "read_only_space_accepted_DISABLED",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "DISABLED",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "workspace_changed_after_precheck_type",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "PERSONAL",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": [
+        "fixture: space changed after pre-read and before transaction"
+      ]
+    },
+    {
+      "scenario": "workspace_changed_after_precheck_planExpiresAt",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": [
+        "fixture: space changed after pre-read and before transaction"
+      ]
+    },
+    {
+      "scenario": "missing_quote_expiry_accepted",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "quote_plan_or_cycle_changed_plan",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "ENTERPRISE",
+      "workspaceBillingCycle": "MONTH",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "quote_plan_or_cycle_changed_planBillingCycle",
+      "result": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "workspaceStatus": "ACTIVE",
+      "workspaceType": "ENTERPRISE",
+      "workspacePlan": "PRO",
+      "workspaceBillingCycle": "YEAR",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany"
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "update"
+        }
+      ],
+      "events": []
+    }
+  ],
+  "gatewayCarrier": {
+    "scenario": "seat_order_drops_gateway_QR_carrier",
+    "chargeResultCodeUrl": "weixin://fixture-only-no-payment",
+    "createResponse": {
+      "success": true,
+      "orderNo": "SA_1793898794872_c871c870",
+      "amountCents": 1040,
+      "seats": 2,
+      "paymentMode": "REAL",
+      "payUrl": "/user/pay/qr?orderNo=SA_1793898794872_c871c870",
+      "notice": "已使用真实支付渠道下单，请完成支付。"
+    },
+    "storedCodeUrl": null,
+    "queriedCodeUrl": null
+  },
+  "mockCashierActualEffect": [
+    {
+      "requestedStatus": "PENDING",
+      "result": null,
+      "error": null
+    },
+    {
+      "requestedStatus": "SUCCESS",
+      "result": "该订单已完成支付并入账",
+      "error": null
+    },
+    {
+      "requestedStatus": "EXPIRED",
+      "result": "该订单已完成支付并入账",
+      "error": null
+    },
+    {
+      "requestedStatus": "FAILED",
+      "result": "该订单已完成支付并入账",
+      "error": null
+    },
+    {
+      "requestedStatus": "REFUNDED",
+      "result": "该订单已完成支付并入账",
+      "error": null
+    }
+  ],
+  "realQrActualComponentText": [
+    "微信扫码支付",
+    "请使用微信「扫一扫」识别下方二维码完成支付",
+    "席位订单",
+    "¥",
+    "26.00",
+    "支付成功，算力已到账",
+    "查看点数流水",
+    "本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才进行算力入账。"
+  ],
+  "isolation": "Actual shared seat service, real wrapper, mock route, actual order-expiry helper, actual extracted UI effect and QR component with hook/jsx stubs. All DB/auth/payment/network/React rendering IO are local stubs. No real money, seats or models.",
+  "limits": "Stale expiry fixture simulates another already-admitted transaction completing between read and expiry update; does not prove actual MySQL schedule or production occurrence. Transaction model tests logic and rollback only. UI effects/component invocation is not browser DOM validation.",
+  "sha256": {
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/payment/seat-addon-fulfill.ts": "e949ced3379cfa9c050ac0545df2094e52a4923f51a4a372bccb8ecb647d563a",
+    "src/lib/payment/fulfill.ts": "58954e4f150f23e4d947337a3eac1e3ab113c541d91dc936fdd631aca7ed5eac",
+    "src/app/api/payments/mock/confirm/route.ts": "cf65c1ad5368571a8a760744e9c8760914e134f411705b55328a8857b515db9b",
+    "src/app/api/workspace/seat-addon/route.ts": "71edf94bdedc196b60a7b137caff90cf1dd8885636488b13e0ca4dcfee2d8b49",
+    "src/app/api/payments/order/route.ts": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+    "src/app/user/pay/mock/page.tsx": "5ce7f505fecd19fdca7bcd8c5a270dc9387a30f0be9e7f7985ace41f33ad0fba",
+    "src/app/user/pay/qr/page.tsx": "83902de5ba3e6d691551cb0b19571f13fcaca7d517e73969f41a2095d961c807",
+    "src/app/api/__tests__/r0b-seat-addon.test.ts": "0dce1878a794c127ad242d0631e76f5460f56eef888a23658c1260bab1e319ac",
+    "docs/reviews/R0-B-fix-report.md": "0ec7e3e9b21f6b3dfe6fcc1ddc583793c1dab58cb5e9041df64e1188e9c28028",
+    "src/lib/workspace-readonly-guard.ts": "0e48b9f58526f70468ae6dcfba66f076741b7d3931b6ddc9e5fa812f04a34190",
+    "src/lib/payment-gateway.ts": "56972d800e62068843c2c7086f48577a14157046f85da4b10fbf0586d5de79b2"
+  }
+}

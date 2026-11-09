@@ -50,8 +50,11 @@ export default function ResourceOverview({
 
   // 根据会员级别设置圆环颜色 (唯一真理系统 V6.0 配色体系)
   const getGradientId = () => {
+    if (level === "CROWN") return "gradient-crown";
     if (level === "DIAMOND") return "gradient-diamond";
+    if (level === "PLATINUM") return "gradient-platinum";
     if (level === "GOLD") return "gradient-gold";
+    if (level === "SILVER") return "gradient-silver";
     return "gradient-free";
   };
 
@@ -82,7 +85,7 @@ export default function ResourceOverview({
       : tokenUnlimited
         ? "当前会员享有无限算力"
         : level === "FREE"
-          ? "注册福利：前 3 个月每月 100 点（当月有效），用尽请充值"
+          ? "注册福利：新用户注册赠送算力点（按当期策略发放，当月有效）"
           : "余额即充即用，用尽请充值或申请提升额度";
 
   const radius = 36;
@@ -164,6 +167,18 @@ export default function ResourceOverview({
                 <linearGradient id="gradient-diamond" x1="0%" y1="0%" x2="100%" y2="100%">
                   <stop offset="0%" stopColor="#10b981" />
                   <stop offset="100%" stopColor="#059669" />
+                </linearGradient>
+                <linearGradient id="gradient-crown" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#a855f7" />
+                  <stop offset="100%" stopColor="#7c3aed" />
+                </linearGradient>
+                <linearGradient id="gradient-platinum" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#94a3b8" />
+                  <stop offset="100%" stopColor="#64748b" />
+                </linearGradient>
+                <linearGradient id="gradient-silver" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#cbd5e1" />
+                  <stop offset="100%" stopColor="#94a3b8" />
                 </linearGradient>
               </defs>
               {/* 消耗环 */}

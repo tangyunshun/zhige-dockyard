@@ -1,0 +1,469 @@
+{
+  "capturedAt": "2026-11-07T17:52:07.939Z",
+  "evidence": [
+    {
+      "case": "empty op ID crosses workspace",
+      "first": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "id": "15c8e7e2-cc4b-42da-b142-9791bcc10c16",
+            "workspaceId": "w1",
+            "title": "synthetic",
+            "content": "synthetic parsed text",
+            "type": "doc",
+            "status": "APPROVED",
+            "uploaderId": "u1",
+            "visibility": "PRIVATE",
+            "fileSize": 3,
+            "fileExt": "txt",
+            "summary": null,
+            "filePath": "assets/w1/2861dff2-d047-456e-a22a-dabca8af11b0.txt",
+            "mimeType": "text/plain",
+            "originalName": "test.txt",
+            "updatedAt": "2026-11-07T17:52:07.849Z",
+            "uploaderName": "用户",
+            "fileUrl": "/api/workspace/assets/15c8e7e2-cc4b-42da-b142-9791bcc10c16/file"
+          }
+        }
+      },
+      "second": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "id": "f58f8103-c21c-418d-8415-3ae8c75102ae",
+            "workspaceId": "w2",
+            "title": "synthetic",
+            "content": "synthetic parsed text",
+            "type": "doc",
+            "status": "APPROVED",
+            "uploaderId": "u1",
+            "visibility": "PRIVATE",
+            "fileSize": 3,
+            "fileExt": "txt",
+            "summary": null,
+            "filePath": "assets/w2/9ceaea4c-64d2-4548-8974-605a80c7621e.txt",
+            "mimeType": "text/plain",
+            "originalName": "test.txt",
+            "updatedAt": "2026-11-07T17:52:07.855Z",
+            "uploaderName": "用户",
+            "fileUrl": "/api/workspace/assets/f58f8103-c21c-418d-8415-3ae8c75102ae/file"
+          }
+        }
+      },
+      "w1Used": "3",
+      "w2Quota": {
+        "id": "q2",
+        "workspaceId": "w2",
+        "storageUsed": "0",
+        "storageLimit": "0"
+      },
+      "ops": [
+        {
+          "opId": "",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T17:52:07.848Z",
+          "id": "auto_6thfglihr6x"
+        }
+      ],
+      "documents": [
+        {
+          "id": "15c8e7e2-cc4b-42da-b142-9791bcc10c16",
+          "workspaceId": "w1",
+          "title": "synthetic",
+          "content": "synthetic parsed text",
+          "type": "doc",
+          "status": "APPROVED",
+          "uploaderId": "u1",
+          "visibility": "PRIVATE",
+          "fileSize": 3,
+          "fileExt": "txt",
+          "summary": null,
+          "filePath": "assets/w1/2861dff2-d047-456e-a22a-dabca8af11b0.txt",
+          "mimeType": "text/plain",
+          "originalName": "test.txt",
+          "updatedAt": "2026-11-07T17:52:07.849Z"
+        },
+        {
+          "id": "f58f8103-c21c-418d-8415-3ae8c75102ae",
+          "workspaceId": "w2",
+          "title": "synthetic",
+          "content": "synthetic parsed text",
+          "type": "doc",
+          "status": "APPROVED",
+          "uploaderId": "u1",
+          "visibility": "PRIVATE",
+          "fileSize": 3,
+          "fileExt": "txt",
+          "summary": null,
+          "filePath": "assets/w2/9ceaea4c-64d2-4548-8974-605a80c7621e.txt",
+          "mimeType": "text/plain",
+          "originalName": "test.txt",
+          "updatedAt": "2026-11-07T17:52:07.855Z"
+        }
+      ]
+    },
+    {
+      "case": "required schema id missing",
+      "used": "30",
+      "operations": [],
+      "writes": [],
+      "limit": "Fixture enforces actual schema required id, not an actual Prisma/DB connection"
+    },
+    {
+      "case": "operation insert fails after increment",
+      "used": "30",
+      "operations": [],
+      "writes": []
+    },
+    {
+      "case": "concurrent same operation",
+      "results": [
+        {
+          "unlimited": false,
+          "deduped": false
+        },
+        {
+          "unlimited": false,
+          "deduped": false
+        }
+      ],
+      "used": "60",
+      "operations": [
+        {
+          "opId": "same",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 30,
+          "updatedAt": "2026-11-07T17:52:07.859Z",
+          "id": "auto_sjfgf1pw8j9"
+        }
+      ]
+    },
+    {
+      "case": "ordinary failure stale operation",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic document create failure"
+      },
+      "used": "0",
+      "operations": [
+        {
+          "opId": "",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T17:52:07.862Z",
+          "id": "auto_v16dyz454k"
+        }
+      ]
+    },
+    {
+      "case": "attachment DB failure",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "服务器内部错误"
+      },
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\89ca111b-10ac-4aee-8dcb-e41664ac12f6.txt"
+      ],
+      "operations": [
+        {
+          "opId": "9be2e4f9-c74d-4835-904a-2012d6f774d7",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T17:52:07.865Z",
+          "id": "auto_k4hl4i8nh"
+        }
+      ]
+    },
+    {
+      "case": "unknown save result",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "synthetic uncertain write after persistence"
+      },
+      "used": "0",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\066b2f2f-4cb4-4535-b320-dbb4ed9e6377.txt"
+      ],
+      "operations": [
+        {
+          "opId": "",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T17:52:07.882Z",
+          "id": "auto_kao5lfui1e"
+        }
+      ]
+    },
+    {
+      "case": "confirmation swallowed",
+      "operations": [
+        {
+          "opId": "confirm",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 3,
+          "updatedAt": "2026-11-07T17:52:07.883Z",
+          "id": "auto_w4lwn6cg0e"
+        }
+      ]
+    },
+    {
+      "case": "missing operation model",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "Cannot read properties of undefined (reading 'findUnique')"
+      },
+      "used": "0",
+      "objects": 0
+    },
+    {
+      "case": "real deletion duplicate release",
+      "results": [
+        {
+          "status": 200,
+          "body": {
+            "success": true,
+            "data": {
+              "id": "d1",
+              "status": "REMOVED",
+              "notifiedCount": 0
+            },
+            "message": "资料删除成功"
+          }
+        },
+        {
+          "status": 500,
+          "body": {
+            "success": false,
+            "error": "服务器内部错误"
+          }
+        }
+      ],
+      "used": "40",
+      "remainingOtherBytes": 70
+    },
+    {
+      "case": "transaction helper stale input",
+      "result": {
+        "releasedBytes": 70,
+        "drift": false,
+        "alreadyGone": false,
+        "dedupedKeys": 2
+      },
+      "used": "30",
+      "expected": 60,
+      "remainingDocs": [
+        "other"
+      ]
+    },
+    {
+      "case": "remaining reference loses object",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "one",
+          "status": "REMOVED",
+          "notifiedCount": 0
+        },
+        "message": "资料删除成功"
+      },
+      "used": "0",
+      "remainingDoc": {
+        "id": "two",
+        "workspaceId": "w1",
+        "title": "two",
+        "status": "APPROVED",
+        "visibility": "PRIVATE",
+        "filePath": "w1/shared",
+        "fileSize": 30,
+        "uploaderId": "u1",
+        "type": "doc"
+      },
+      "objects": 0
+    },
+    {
+      "case": "clear failed object",
+      "status": 200,
+      "used": "30",
+      "objects": 1,
+      "documents": 0
+    },
+    {
+      "case": "clear concurrent upload",
+      "status": 200,
+      "used": "3",
+      "objects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\053e4f37-fd21-42b4-9c93-795ad2a80283.txt"
+      ],
+      "documents": 0
+    },
+    {
+      "case": "PRIVATE ownership fixed",
+      "accepted": true,
+      "status": 207,
+      "body": {
+        "success": false,
+        "count": 0,
+        "succeededIds": [],
+        "failedCount": 1,
+        "failed": [
+          {
+            "id": "private",
+            "reason": "个人私密资料仅上传人本人可彻底删除"
+          }
+        ],
+        "error": "部分资料删除失败（已保留可重试依据），其余已删除"
+      },
+      "used": "30",
+      "objects": 1
+    },
+    {
+      "case": "negative usage after read",
+      "used": "-5",
+      "operations": [
+        {
+          "opId": "negative",
+          "workspaceId": "w1",
+          "userId": "",
+          "opType": "RESERVE",
+          "status": "RESERVED",
+          "bytes": 5,
+          "updatedAt": "2026-11-07T17:52:07.932Z",
+          "id": "auto_b8umk8at0gp"
+        }
+      ]
+    },
+    {
+      "case": "limit tightening fixed",
+      "accepted": true,
+      "used": "0",
+      "limit": 0
+    },
+    {
+      "case": "parse order fixed",
+      "accepted": true,
+      "normalCalls": 1,
+      "missingWorkspaceCalls": 0
+    },
+    {
+      "case": "case-sensitive identity merged",
+      "report": {
+        "quota": {
+          "present": true,
+          "used": "60",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 2,
+          "uniqueObjects": 1,
+          "duplicateRefs": [
+            {
+              "key": "w1/a.txt",
+              "refs": 2
+            }
+          ],
+          "physicalBytesSum": "30",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": [],
+          "conflictingSizes": []
+        },
+        "operations": {
+          "reserved": 0,
+          "pendingCleanup": 0,
+          "confirmed": 0,
+          "items": []
+        },
+        "physical": {
+          "checked": false,
+          "missingFiles": [],
+          "orphanObjects": [],
+          "sizeMismatches": []
+        },
+        "usageDrift": {
+          "quotaUsed": "60",
+          "uniqueObjectBytesSum": "30",
+          "diff": "30"
+        },
+        "notes": [
+          "物理存在性未核实（未提供 fileExists/listObjects），占用与记录一致性仅限数据库层面",
+          "配额占用与唯一对象记录求和不一致（diff=30 字节），需人工核实",
+          "存在 1 个重复引用对象"
+        ],
+        "coverage": {
+          "physicalVerified": false,
+          "objectListProvided": false
+        }
+      }
+    },
+    {
+      "case": "zero docs / inventory coverage",
+      "report": {
+        "quota": {
+          "present": true,
+          "used": "30",
+          "limit": "100",
+          "kind": "finite"
+        },
+        "docs": {
+          "totalRows": 0,
+          "uniqueObjects": 0,
+          "duplicateRefs": [],
+          "physicalBytesSum": "0",
+          "softDeletedWithFile": 0,
+          "sizeUnknownOrInvalid": [],
+          "conflictingSizes": []
+        },
+        "operations": {
+          "reserved": 0,
+          "pendingCleanup": 0,
+          "confirmed": 0,
+          "items": []
+        },
+        "physical": {
+          "checked": false,
+          "missingFiles": [],
+          "orphanObjects": [],
+          "sizeMismatches": []
+        },
+        "usageDrift": null,
+        "notes": [
+          "物理存在性未核实（未提供 fileExists/listObjects），占用与记录一致性仅限数据库层面"
+        ],
+        "coverage": {
+          "physicalVerified": false,
+          "objectListProvided": true
+        }
+      },
+      "inventoryCalls": 0
+    }
+  ],
+  "limits": "Actual handlers/services; offline Prisma/fs/parse mocks. Operation unique constraint enforced; required id enforced only in dedicated schema-contract case, auto-id permissive fixtures used for other independent defects. No real DB/Prisma connection or external storage. One positive ownership acceptance."
+}

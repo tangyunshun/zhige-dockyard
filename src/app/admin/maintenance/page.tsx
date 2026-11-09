@@ -473,6 +473,15 @@ export default function MaintenancePage() {
       toast.error("请设置维护开始时间");
       return;
     }
+    // 区间顺序校验：结束时间已填写时不能早于开始时间（datetime-local 字符串可直接比较）
+    if (
+      scheduleForm.endTime.trim() &&
+      scheduleForm.endTime.trim() !== "待定" &&
+      scheduleForm.startTime.replace("T", " ") > scheduleForm.endTime.replace("T", " ")
+    ) {
+      toast.error("维护结束时间不能早于开始时间");
+      return;
+    }
     try {
       setSaving(true);
       const authToken = getAuthToken();
@@ -1887,6 +1896,7 @@ export default function MaintenancePage() {
                       type="datetime-local"
                       required
                       value={scheduleForm.startTime}
+                      max={scheduleForm.endTime || undefined}
                       onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-700 outline-hidden bg-white cursor-pointer"
                     />
@@ -1900,6 +1910,7 @@ export default function MaintenancePage() {
                     <input
                       type="datetime-local"
                       value={scheduleForm.endTime}
+                      min={scheduleForm.startTime || undefined}
                       onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-mono text-slate-700 outline-hidden bg-white cursor-pointer"
                     />

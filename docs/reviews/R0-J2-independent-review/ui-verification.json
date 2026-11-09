@@ -1,0 +1,343 @@
+{
+  "capturedAt": "2026-11-07T18:51:03.168Z",
+  "observations": [
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "success",
+      "status": 200,
+      "accepted": true,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已删除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": []
+        }
+      }
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "partial",
+      "status": 207,
+      "accepted": true,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已删除 1 项，1 项失败（synthetic failure）"
+        }
+      ],
+      "response": {
+        "success": false,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [
+          {
+            "id": "failed",
+            "reason": "synthetic failure"
+          }
+        ],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": [
+            {
+              "id": "failed",
+              "reason": "synthetic failure"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "denied",
+      "status": 403,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic backend error"
+        }
+      ],
+      "response": {
+        "success": false,
+        "error": "synthetic backend error"
+      }
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "error",
+      "status": 500,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic backend error"
+        }
+      ],
+      "response": {
+        "success": false,
+        "error": "synthetic backend error"
+      }
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "missing",
+      "status": 200,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已删除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "count": 1,
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "failed": []
+        }
+      }
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "cleanup",
+      "status": 200,
+      "accepted": false,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已删除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failedCount": 0,
+        "failed": [],
+        "cleanupPendingIds": [
+          "deleted"
+        ]
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "success",
+      "status": 200,
+      "accepted": true,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": []
+        }
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "partial",
+      "status": 207,
+      "accepted": true,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已移除 1 项。1 项删除失败（synthetic failure）"
+        }
+      ],
+      "response": {
+        "success": false,
+        "count": 1,
+        "succeededIds": [
+          "deleted"
+        ],
+        "failed": [
+          {
+            "id": "failed",
+            "reason": "synthetic failure"
+          }
+        ],
+        "data": {
+          "removedCount": 1,
+          "succeededIds": [
+            "deleted"
+          ],
+          "failed": [
+            {
+              "id": "failed",
+              "reason": "synthetic failure"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "denied",
+      "status": 403,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic backend error"
+        }
+      ],
+      "response": {
+        "success": false,
+        "error": "synthetic backend error"
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "error",
+      "status": 500,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic backend error"
+        }
+      ],
+      "response": {
+        "success": false,
+        "error": "synthetic backend error"
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "missing",
+      "status": 200,
+      "accepted": true,
+      "visibleIds": [
+        "deleted",
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "count": 1,
+        "failed": [],
+        "data": {
+          "removedCount": 1,
+          "failed": []
+        }
+      }
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "cleanup",
+      "status": 200,
+      "accepted": false,
+      "visibleIds": [
+        "failed",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 1 项资料"
+        }
+      ],
+      "response": {
+        "success": true,
+        "data": {
+          "removedCount": 1,
+          "skippedCount": 0,
+          "notifiedCount": 0,
+          "failedCount": 0,
+          "failed": [],
+          "succeededIds": [
+            "deleted"
+          ]
+        }
+      }
+    }
+  ],
+  "limits": "Actual callbacks with synthetic fetch/state, no DOM. 10 original list/error scenarios accepted; two cleanup-pending notifications still reported as success."
+}

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { grantPoints, getBalanceSummary } from "@/lib/credit-service";
-import { resolvePaymentMode } from "@/lib/payment-gateway";
+import { resolvePaymentMode, PaymentConfigError, type PaymentMode } from "@/lib/payment-gateway";
 import { isOrderExpired } from "@/lib/order-expiry";
 import { fulfillEnterpriseUpgradeFromOrder } from "@/lib/workspace-upgrade-service";
 
@@ -23,8 +23,59 @@ function getBillingModel() {
   return (prisma as any).billing_record || (prisma as any).billingrecord;
 }
 
+/** 已入账订单的幂等响应（按订单类型区分）；[R0-B1 F1] 超时竞争落败复用同一契约 */
+async function alreadyProcessedPayload(o: any) {
+  const m = (o.metadata || {}) as Record<string, unknown>;
+  const t = (o.type || "TOKEN_RECHARGE") as string;
+  if (t === "SEAT_ADDON") {
+    return {
+      success: true,
+      alreadyProcessed: true,
+      seats: Number(m.seatsAdded ?? m.seats ?? 0),
+      message: "该订单此前已完成入账，未重复扣款。",
+    };
+  }
+  if (t === "PLAN_UPGRADE") {
+    return {
+      success: true,
+      alreadyProcessed: true,
+      workspaceId: String(m.newWorkspaceId ?? ""),
+      message: "该订单此前已完成入账，企业空间已开通。",
+    };
+  }
+  const balance = await getBalanceSummary(o.userId, o.workspaceId);
+  return {
+    success: true,
+    alreadyProcessed: true,
+    points: Number(m.points ?? 0),
+    balance,
+    message: "该订单此前已完成入账，未重复扣款。",
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
+    // KN-SEC：模拟收银台整条链路（含订单详情查询）仅 MOCK 模式可用。
+    // [R0-E] 生产环境显式 mock 必须先于「读取订单/泄露订单信息」显式拒绝：
+    // resolvePaymentMode 在该配置下抛 PaymentConfigError，统一返回稳定 code + 403，不被通用 catch 吞成 500。
+    let mode: PaymentMode;
+    try {
+      mode = resolvePaymentMode();
+    } catch (e) {
+      if (e instanceof PaymentConfigError) {
+        return NextResponse.json(
+          { success: false, code: e.code, error: e.message },
+          { status: 403 },
+        );
+      }
+      throw e;
+    }
+    if (mode !== "MOCK") {
+      return NextResponse.json(
+        { success: false, code: "REAL_MODE_MOCK_UNAVAILABLE", error: "当前为真实支付模式，模拟收银台不可用" },
+        { status: 403 },
+      );
+    }
     const auth = await validateUser(request.headers.get("Authorization"), request);
     if (!auth.valid || !auth.user) return NextResponse.json({ error: "未授权" }, { status: 401 });
 
@@ -63,9 +114,25 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const mode = resolvePaymentMode();
+    // KN-SEC：模拟确认入账（唯一会产生入账动作的地方）仅 MOCK 模式可用。
+    // [R0-E] 生产显式 mock 必须先于读取订单/进入任何发放分支显式拒绝，返回稳定 code + 403。
+    let mode: PaymentMode;
+    try {
+      mode = resolvePaymentMode();
+    } catch (e) {
+      if (e instanceof PaymentConfigError) {
+        return NextResponse.json(
+          { success: false, code: e.code, error: e.message },
+          { status: 403 },
+        );
+      }
+      throw e;
+    }
     if (mode !== "MOCK") {
-      return NextResponse.json({ error: "当前为真实支付模式，禁止使用模拟确认入账" }, { status: 403 });
+      return NextResponse.json(
+        { success: false, code: "REAL_MODE_MOCK_UNAVAILABLE", error: "当前为真实支付模式，禁止使用模拟确认入账" },
+        { status: 403 },
+      );
     }
 
     const auth = await validateUser(request.headers.get("Authorization"), request);
@@ -84,71 +151,65 @@ export async function POST(request: NextRequest) {
 
     // 幂等：已完成入账的订单直接返回成功，不重复执行
     if (order.status === "SUCCESS") {
-      if (orderType === "SEAT_ADDON") {
-        return NextResponse.json({
-          success: true,
-          alreadyProcessed: true,
-          seats: Number(meta.seats ?? 0),
-          message: "该订单此前已完成入账，未重复扣款。",
-        });
-      }
-      if (orderType === "PLAN_UPGRADE") {
-        return NextResponse.json({
-          success: true,
-          alreadyProcessed: true,
-          workspaceId: String(meta.newWorkspaceId ?? ""),
-          message: "该订单此前已完成入账，企业空间已开通。",
-        });
-      }
-      const balance = await getBalanceSummary(auth.user.id, order.workspaceId);
-      return NextResponse.json({
-        success: true,
-        alreadyProcessed: true,
-        points: Number(meta.points ?? 0),
-        balance,
-        message: "该订单此前已完成入账，未重复扣款。",
-      });
+      return NextResponse.json(await alreadyProcessedPayload(order));
     }
     if (order.status !== "PENDING") {
       return NextResponse.json({ error: `订单当前状态为 ${order.status}，不可入账` }, { status: 409 });
     }
-    // 订单生命周期：超时未付的订单不可再入账（顺手落库置 EXPIRED，再拒绝）
+    // 订单生命周期：超时未付的订单不可再入账。
+    // [R0-B1 F1] 条件关闭：仅仍为 PENDING 且确实过截止的记录才可置 EXPIRED；竞争失败
+    // （另一请求刚提交 SUCCESS）按最新状态分类返回"已处理"，不覆盖已完成权益。
     if (isOrderExpired(order as { status: string; expiresAt?: Date | null })) {
-      await billingModel.update({ where: { id: orderNo }, data: { status: "EXPIRED", updatedAt: new Date() } }).catch(() => {});
+      const expired = await billingModel.updateMany({
+        where: { id: orderNo, status: "PENDING" },
+        data: { status: "EXPIRED", updatedAt: new Date() },
+      });
+      if (expired.count !== 1) {
+        const latest = await billingModel.findUnique({ where: { id: orderNo } });
+        if (latest?.status === "SUCCESS") {
+          return NextResponse.json(await alreadyProcessedPayload(latest));
+        }
+        if (latest?.status === "PENDING") {
+          return NextResponse.json({ error: "订单状态处理冲突，请稍后重试" }, { status: 409 });
+        }
+        return NextResponse.json(
+          { error: `订单当前状态为 ${latest?.status}，不可入账` },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ error: "订单已超时未支付（超过支付截止时间），请重新下单" }, { status: 409 });
     }
 
-    // 席位增购：支付确认后增加空间 extraSeats（与企业套餐配额一致，有效期至套餐到期日）
+    // 席位增购：[R0-B] 与真实回调共用席位专用履约服务（同一状态机、同一入账规则）：
+    // 事务写边界条件更新裁决唯一履约权，席位增量与订单状态同事务原子提交/回滚。
+    // MOCK 无网关实付金额（isRealPayment=false），paymentMode 如实记录为 MOCK，不冒充真实收入。
     if (orderType === "SEAT_ADDON") {
-      const seats = Number(meta.seats ?? 0);
-      if (!Number.isFinite(seats) || seats <= 0) {
-        return NextResponse.json({ error: "订单缺少有效席位数，无法入账" }, { status: 400 });
-      }
-      const workspaceId = order.workspaceId as string;
-      await prisma.$transaction(async (tx) => {
-        await tx.workspace.update({
-          where: { id: workspaceId },
-          data: { extraSeats: { increment: seats } },
-        });
-        await billingModel.update({
-          where: { id: orderNo },
-          data: {
-            status: "SUCCESS",
-            updatedAt: new Date(),
-            metadata: {
-              ...meta,
-              paidAt: new Date().toISOString(),
-              paymentMode: "MOCK",
-              seatsAdded: seats,
-            },
-          },
-        });
+      const { fulfillSeatAddonOrder } = await import("@/lib/payment/seat-addon-fulfill");
+      const fulfillment = await fulfillSeatAddonOrder({
+        orderNo,
+        paymentMode: "MOCK",
+        isRealPayment: false,
+        gatewayTransactionId: null,
+        gatewayAmountCents: null,
       });
+      if (!fulfillment.ok) {
+        // 暂时冲突/可重试故障 → 503；其余拒绝（含损坏订单/状态不可入账）→ 409，保留错误说明
+        const httpStatus = fulfillment.retryable ? 503 : 409;
+        return NextResponse.json({ error: fulfillment.error }, { status: httpStatus });
+      }
+      if (fulfillment.status === "ALREADY_PROCESSED") {
+        return NextResponse.json({
+          success: true,
+          alreadyProcessed: true,
+          seats: fulfillment.seats,
+          message: "该订单此前已完成入账，未重复扣款。",
+        });
+      }
       return NextResponse.json({
         success: true,
         alreadyProcessed: false,
-        seats,
-        message: `模拟收款成功，已为空间增购 ${seats} 个席位（非真实扣款）`,
+        seats: fulfillment.seats,
+        message: `模拟收款成功，已为空间增购 ${fulfillment.seats} 个席位（非真实扣款）`,
       });
     }
 

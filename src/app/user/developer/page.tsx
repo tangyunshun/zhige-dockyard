@@ -40,6 +40,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { formatTokenBalance, isUnlimitedToken } from "@/utils/quota";
 import { exportToExcel, buildExportFileName } from "@/utils/excel-export";
 import { useExportMaxRows } from "@/lib/use-export-max-rows";
@@ -183,6 +184,7 @@ export default function DeveloperCenterPage() {
   const [logPageSize, setLogPageSize] = useState<5 | 10 | 20 | 50>(10);
   const [selectedLogIds, setSelectedLogIds] = useState<string[]>([]);
   const [viewingLog, setViewingLog] = useState<RecentCallLog | null>(null);
+  useEscapeKey(!!viewingLog, () => setViewingLog(null));
   const [logDeleteConfirm, setLogDeleteConfirm] = useState<{
     kind: "single" | "batch";
     ids: string[];
@@ -205,6 +207,7 @@ export default function DeveloperCenterPage() {
 
   // 创建弹窗
   const [showCreate, setShowCreate] = useState(false);
+  useEscapeKey(showCreate, () => setShowCreate(false));
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
   const [nameError, setNameError] = useState<string | null>(null);
@@ -212,6 +215,7 @@ export default function DeveloperCenterPage() {
 
   // 编辑弹窗
   const [editingKey, setEditingKey] = useState<ApiKey | null>(null);
+  useEscapeKey(!!editingKey, () => setEditingKey(null));
   const [editName, setEditName] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
@@ -222,6 +226,9 @@ export default function DeveloperCenterPage() {
 
   // 删除密钥确认
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  // KN-UI：吊销密钥「输入 DELETE」强确认（自查清单指令四）
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  useEscapeKey(!!deleteId, () => setDeleteId(null));
   const [deleting, setDeleting] = useState(false);
 
   const authHeaders = (): Record<string, string> => {
@@ -2319,6 +2326,24 @@ export default function DeveloperCenterPage() {
                 </div>
               )}
 
+              <div className="space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  此操作不可撤销，请输入「<span className="font-mono text-red-600">DELETE</span>」以确认吊销删除
+                  <span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  maxLength={10}
+                  placeholder="DELETE"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-xs font-mono"
+                />
+                {deleteConfirmText.trim() !== "DELETE" && deleteConfirmText.length > 0 && (
+                  <p className="text-xs text-red-600 font-medium">输入不匹配，请输入 DELETE</p>
+                )}
+              </div>
+
               <div className="flex justify-end gap-2.5">
                 <button
                   type="button"
@@ -2330,7 +2355,7 @@ export default function DeveloperCenterPage() {
                 <button
                   type="button"
                   onClick={() => void handleDelete()}
-                  disabled={deleting}
+                  disabled={deleting || deleteConfirmText.trim() !== "DELETE"}
                   className="zg-btn zg-btn-danger text-xs h-8 px-4 font-bold"
                 >
                   {deleting ? "正在吊销…" : "确认吊销删除"}

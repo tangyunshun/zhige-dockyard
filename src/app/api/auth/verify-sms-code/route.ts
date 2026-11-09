@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 校验验证码（不立即消费，由 reset-password 接口消费，避免验证与改密之间 token 丢失）
-    const result = verifySmsCode(phone, code);
+    const result = await verifySmsCode(phone, code, type as any);
     if (!result.valid) {
       return NextResponse.json(
         { message: result.error || "验证码错误" },

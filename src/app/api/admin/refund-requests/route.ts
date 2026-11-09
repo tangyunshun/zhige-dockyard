@@ -56,6 +56,15 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      // [R0-D] 能力事实：人工批准加点已暂停，页面据此禁用批准控件；
+      // 不是资金授权、也不是可配置开关，旧页/直接 HTTP 仍由 resolve 的专用权限与暂停分支拒绝。
+      capabilities: {
+        manualApprovalPaused: true,
+        manualApprovalCode: "MANUAL_REFUND_APPROVAL_PAUSED",
+        manualApprovalMessage: "人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包",
+        // 列表中的 points 是用户申请的历史扣点参考值，尚未扣除既有自动退款，不是已核准净可退金额
+        pointsAreReferenceOnly: true,
+      },
       data: rows.map((r) => ({
         ...r,
         points: Number(r.points),

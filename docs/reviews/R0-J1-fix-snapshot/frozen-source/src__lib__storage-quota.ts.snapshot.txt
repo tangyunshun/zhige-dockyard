@@ -1,0 +1,369 @@
+import { prisma } from "@/lib/prisma";
+
+/**
+ * 空间文件存储配额（真实记账，原子占用闭环）——原方案 F13 / R0-J。
+ *
+ * 统计口径：知识库/资料上传的真实物理文件（document.fileSize = 服务端收到的实际字节），
+ * 物理载体为服务器本地磁盘 uploads/assets/{workspaceId}/ 或 S3 私有桶。
+ * 配额数据落在 workspacequota.storageUsed / storageLimit（单位：字节，BigInt）。
+ *
+ * [R0-J S01] 配额语义（不得默认无限）：
+ *  - 配额行缺失 / limit=0 / limit 非法（< -1）/ usage 非法（负数）→ 新增物理文件前明确拒绝（稳定 code）；
+ *  - limit = 0：不允许新增正字节文件；
+ *  - limit = -1：唯一表示不限（服务端既有事实），仍如实记录真实占用；
+ *  - 判定与增减全程 BigInt，不接受 number 精度绕过；
+ *  - JSON 文本兼容上传没有物理文件 → 不计入物理占用，也不按客户端伪造 fileSize 入账。
+ *
+ * [R0-J S02] 原子占用：预留 = 数据库级条件更新（单条 UPDATE 同时完成「上限核验 + 预留」），
+ * 不依赖进程内锁或先读后无条件累加；并发请求至多占用至上限。
+ */
+
+export const STORAGE_QUOTA_CODES = {
+  NOT_READY: "STORAGE_QUOTA_NOT_READY",
+  LIMIT_ZERO: "STORAGE_LIMIT_ZERO",
+  LIMIT_INVALID: "STORAGE_LIMIT_INVALID",
+  USAGE_INVALID: "STORAGE_USAGE_INVALID",
+  EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  BYTES_INVALID: "STORAGE_BYTES_INVALID",
+} as const;
+
+export class StorageQuotaError extends Error {
+  code: string;
+  status: number;
+  constructor(code: string, message: string, status = 403) {
+    super(message);
+    this.name = "StorageQuotaError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+/** 校验并规范化入账字节：非负安全整数（0 允许 = 无物理占用，仍走身份/配置检查） */
+function normalizeBytes(raw: number | bigint | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = typeof raw === "bigint" ? Number(raw) : Number(raw);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+/** 校验配额行（BigInt），返回规范化后的 used/limit；非法即抛稳定错误 */
+function resolveQuotaRow(row: {
+  storageUsed: unknown;
+  storageLimit: unknown;
+} | null): { used: bigint; limit: bigint } {
+  if (!row) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.NOT_READY,
+      "空间存储配额尚未初始化，暂无法上传文件。请联系管理员完成空间初始化后重试（本次未扣点、未写入任何文件）。",
+      503,
+    );
+  }
+  const used = typeof row.storageUsed === "bigint" ? row.storageUsed : BigInt(Math.trunc(Number(row.storageUsed ?? 0)));
+  const limitRaw = typeof row.storageLimit === "bigint" ? row.storageLimit : BigInt(Math.trunc(Number(row.storageLimit ?? 0)));
+  if (used < BigInt(0)) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.USAGE_INVALID,
+      "空间存储用量数据异常（负值），暂无法上传文件。请联系管理员核对存储计量数据。",
+      503,
+    );
+  }
+  if (limitRaw < BigInt(-1)) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.LIMIT_INVALID,
+      "空间存储上限数据异常（小于 -1），暂无法上传文件。请联系管理员核对存储配额配置。",
+      503,
+    );
+  }
+  return { used, limit: limitRaw };
+}
+
+function formatGb(bytes: bigint): string {
+  return (Number(bytes) / 1073741824).toFixed(2);
+}
+function formatMb(bytes: bigint | number): string {
+  return (Number(bytes) / 1048576).toFixed(2);
+}
+
+function exceededError(used: bigint, limit: bigint, incoming: bigint): StorageQuotaError {
+  return new StorageQuotaError(
+    STORAGE_QUOTA_CODES.EXCEEDED,
+    `空间文件存储空间不足：已用 ${formatGb(used)}GB / 上限 ${formatGb(limit)}GB，无法再上传 ${formatMb(incoming)}MB 的文件。请先清理不需要的资料（删除后容量会释放），或联系空间管理员提升存储额度。`,
+    403,
+  );
+}
+
+/**
+ * [R0-J S01/S02] 存储预留：上限核验 + 字节预留为同一个受保护的数据库动作。
+ *
+ * - 配额行缺失 / limit=0（新增正字节）/ limit 非法 / usage 负值 → 在任何存储副作用前拒绝（稳定 code）；
+ * - limit = -1（服务端既有事实，唯一不限语义）→ 无条件入账真实占用；
+ * - 有限上限 → 原子条件 UPDATE（`storageUsed + bytes <= storageLimit` 与预留同一语句），
+ *   并发请求至多占用至上限；count=0 时重读分类为超限拒绝；
+ * - bytes = 0（JSON 文本等无物理文件）→ 仅通过配额校验，不变更占用。
+ * 返回 { unlimited, opId }；opId 为本次预留的操作身份（失败释放/重试追踪用）。
+ */
+export async function reserveStorageBytes(
+  workspaceId: string,
+  incomingBytes: number,
+  opId: string,
+): Promise<{ unlimited: boolean }> {
+  if (!workspaceId) {
+    throw new StorageQuotaError(STORAGE_QUOTA_CODES.NOT_READY, "缺少工作空间，无法核定存储配额。", 400);
+  }
+  const bytes = normalizeBytes(incomingBytes);
+  if (bytes === null) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.BYTES_INVALID,
+      "上传文件字节数非法，无法核定存储占用。请重新上传；若反复出现请联系管理员。",
+      400,
+    );
+  }
+  // 1. 读取并校验配额语义（此读仅分类，不作为放行依据；放行由下方条件更新裁决）
+  const row = await prisma.workspacequota.findUnique({
+    where: { workspaceId },
+    select: { storageUsed: true, storageLimit: true },
+  });
+  const { used, limit } = resolveQuotaRow(row);
+
+  if (limit === BigInt(-1)) {
+    // 服务端既有明确 -1 = 不限；仍如实记录真实占用
+    if (bytes === 0) return { unlimited: true };
+    await prisma.workspacequota.update({
+      where: { workspaceId },
+      data: { storageUsed: { increment: BigInt(bytes) } },
+    });
+    return { unlimited: true };
+  }
+  if (limit === BigInt(0)) {
+    if (bytes > 0) {
+      throw new StorageQuotaError(
+        STORAGE_QUOTA_CODES.LIMIT_ZERO,
+        "空间文件存储上限为 0，无法上传文件。请联系空间管理员先配置存储额度后再试。",
+        403,
+      );
+    }
+    return { unlimited: false };
+  }
+
+  // 2. 原子预留：条件更新在数据库端同时完成「上限核验 + 预留」，不依赖进程内锁
+  if (bytes > 0) {
+    if (used + BigInt(bytes) > limit) {
+      throw exceededError(used, limit, BigInt(bytes));
+    }
+    const reserved = await prisma.$executeRaw`
+      UPDATE \`workspacequota\`
+      SET \`storageUsed\` = \`storageUsed\` + ${BigInt(bytes)}
+      WHERE \`workspaceId\` = ${workspaceId}
+        AND \`storageUsed\` + ${BigInt(bytes)} <= \`storageLimit\`
+    `;
+    if (reserved !== 1) {
+      // 写边界未通过：并发占满 / limit 或 used 并发变化 → 重读并按最新事实拒绝
+      const fresh = await prisma.workspacequota.findUnique({
+        where: { workspaceId },
+        select: { storageUsed: true, storageLimit: true },
+      });
+      const freshQ = resolveQuotaRow(fresh);
+      throw exceededError(freshQ.used, freshQ.limit, BigInt(bytes));
+    }
+  }
+  return { unlimited: false };
+}
+
+/**
+ * [R0-J S05] 释放：原子扣减（不读旧值回写），仅当文档记录已在同事务/同流程中删除时调用；
+ * 同一对象的重复/并发释放由「文档行删除」门禁保证只发生一次。
+ * 历史漂移（used < bytes）时钳制为 0 并返回 drift 通知（对账报告会呈现该差异），不静默掩盖。
+ */
+export async function releaseStorageBytes(
+  workspaceId: string,
+  bytes: number,
+): Promise<{ released: boolean; drift: boolean }> {
+  const n = normalizeBytes(bytes);
+  if (!workspaceId || n === null || n <= 0) return { released: false, drift: false };
+  const released = await prisma.$executeRaw`
+    UPDATE \`workspacequota\`
+    SET \`storageUsed\` = \`storageUsed\` - ${BigInt(n)}
+    WHERE \`workspaceId\` = ${workspaceId}
+      AND \`storageUsed\` >= ${BigInt(n)}
+  `;
+  if (released === 1) return { released: true, drift: false };
+  // used < bytes：历史漂移。钳制为 0 并上报差异（不静默掩盖，也不制造负值）
+  const clamped = await prisma.$executeRaw`
+    UPDATE \`workspacequota\`
+    SET \`storageUsed\` = 0
+    WHERE \`workspaceId\` = ${workspaceId}
+      AND \`storageUsed\` > 0
+      AND \`storageUsed\` < ${BigInt(n)}
+  `;
+  return { released: clamped === 1, drift: clamped === 1 };
+}
+
+/**
+ * [R0-J S05] 按已删除的文档记录集合释放占用（彻底删除路径统一入口）：
+ * 仅统计有物理文件（filePath）且字节为正的记录；文本/无文件记录不参与释放。
+ * bytes 求和后做一次原子扣减，不同对象并发删除互不影响。
+ */
+export async function releaseStorageForDeletedDocuments(
+  workspaceId: string,
+  docs: Array<{ filePath?: string | null; fileSize?: number | null }>,
+): Promise<{ releasedBytes: number; drift: boolean }> {
+  let total = 0;
+  for (const d of docs || []) {
+    if (!d || !d.filePath) continue; // 无物理文件：不释放
+    const n = normalizeBytes(d.fileSize);
+    if (n === null || n <= 0) continue; // 字节未知/非法：不在此释放（对账报告差异）
+    total += n;
+  }
+  if (total <= 0) return { releasedBytes: 0, drift: false };
+  const r = await releaseStorageBytes(workspaceId, total);
+  return { releasedBytes: r.released ? total : 0, drift: r.drift };
+}
+
+// ---- 兼容旧调用名（既有非本批路径保留原语义；内部走新原子实现） ----
+
+/**
+ * [兼容] 上传入账：优先使用 reserveStorageBytes（原子预留）。
+ */
+export async function addStorageUsed(workspaceId: string, deltaBytes: number): Promise<void> {
+  try {
+    await reserveStorageBytes(workspaceId, deltaBytes, `legacy_add_${Date.now()}`);
+  } catch (e) {
+    if (e instanceof StorageQuotaError && e.code === STORAGE_QUOTA_CODES.BYTES_INVALID) return;
+    throw e;
+  }
+}
+
+/**
+ * [兼容] 删除出账（原子扣减 + 漂移钳制上报）。优先使用 releaseStorageForDeletedDocuments。
+ */
+export async function subtractStorageUsed(workspaceId: string, deltaBytes: number): Promise<void> {
+  try {
+    await releaseStorageBytes(workspaceId, deltaBytes);
+  } catch {
+    // 与旧语义一致：出账失败不阻断主流程，但由对账报告呈现差异
+  }
+}
+
+// ---- [R0-J S06] 最小只读对账（不改库、不删文件、不释放未知占用） ----
+
+export interface StorageReconcileDocRow {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+  visibility?: string | null;
+  filePath?: string | null;
+  fileSize?: number | null;
+}
+
+export interface StorageReconcileReport {
+  quota: { present: boolean; used: string | null; limit: string | null; kind: "unlimited" | "finite" | "invalid" | "missing" };
+  docs: {
+    totalRows: number;
+    withPhysicalFile: number;
+    physicalBytesSum: string;
+    softDeletedWithFile: number; // 软删除/移除仍占用
+    sizeUnknownOrInvalid: Array<{ id: string; title: string | null; reason: string }>; // 有路径但大小未知/非法 → 差异
+  };
+  usageDrift: { quotaUsed: string; documentsSum: string; diff: string } | null; // 记录求和 ≠ 配额占用 → 差异
+  notes: string[];
+}
+
+/**
+ * [R0-J S06] 只读对账：比较配额快照、文档记录（按唯一对象）与占用，区分差异/重复引用/缺文件。
+ * 绝不改库、不删文件、不自动清零或释放未知占用。物理对象核对由调用方传入可选的
+ * existsFn（如 fs.stat），传入时标注缺文件/孤儿对象；未传入时物理对象记为待核实。
+ */
+export async function reconcileWorkspaceStorage(
+  workspaceId: string,
+  opts?: {
+    docRows?: StorageReconcileDocRow[]; // 内存夹具注入（测试）；未传入时读库
+    quotaRow?: { storageUsed: unknown; storageLimit: unknown } | null; // 内存夹具注入
+    fileExists?: (filePath: string) => Promise<boolean>;
+  },
+): Promise<StorageReconcileReport> {
+  const notes: string[] = [];
+  let quota: StorageReconcileReport["quota"];
+  let quotaUsed: bigint | null = null;
+  if (opts?.quotaRow !== undefined) {
+    try {
+      const q = resolveQuotaRow(opts.quotaRow);
+      quotaUsed = q.used;
+      quota = {
+        present: true,
+        used: q.used.toString(),
+        limit: q.limit.toString(),
+        kind: q.limit === BigInt(-1) ? "unlimited" : "finite",
+      };
+    } catch (e) {
+      const code = (e as StorageQuotaError).code;
+      quota = { present: opts.quotaRow !== null, used: null, limit: null, kind: code === STORAGE_QUOTA_CODES.NOT_READY ? "missing" : "invalid" };
+      notes.push(`配额行异常（${code}），占用无法与记录核对`);
+    }
+  } else {
+    const row = await prisma.workspacequota.findUnique({
+      where: { workspaceId },
+      select: { storageUsed: true, storageLimit: true },
+    });
+    if (!row) {
+      quota = { present: false, used: null, limit: null, kind: "missing" };
+      notes.push("配额行缺失，占用无法与记录核对");
+    } else {
+      try {
+        const q = resolveQuotaRow(row);
+        quotaUsed = q.used;
+        quota = { present: true, used: q.used.toString(), limit: q.limit.toString(), kind: q.limit === BigInt(-1) ? "unlimited" : "finite" };
+      } catch (e) {
+        const code = (e as StorageQuotaError).code;
+        quota = { present: true, used: String(row.storageUsed ?? ""), limit: String(row.storageLimit ?? ""), kind: "invalid" };
+        notes.push(`配额行数值异常（${code}）`);
+      }
+    }
+  }
+
+  const docRows: StorageReconcileDocRow[] = opts?.docRows ?? (await prisma.document.findMany({
+    where: { workspaceId },
+    select: { id: true, title: true, status: true, visibility: true, filePath: true, fileSize: true },
+  }) as any[]);
+
+  let withPhysicalFile = 0;
+  let physicalBytesSum = BigInt(0);
+  let softDeletedWithFile = 0;
+  const sizeUnknownOrInvalid: Array<{ id: string; title: string | null; reason: string }> = [];
+  for (const d of docRows) {
+    if (!d.filePath) continue; // 纯文本/无物理文件：不占物理存储
+    withPhysicalFile++;
+    const isSoftDeleted = d.status === "REMOVED" || d.status === "deleted";
+    if (isSoftDeleted) softDeletedWithFile++;
+    const n = normalizeBytes(d.fileSize);
+    if (n === null) {
+      sizeUnknownOrInvalid.push({ id: d.id, title: d.title ?? null, reason: "有物理文件路径但 fileSize 缺失或非法，占用待核实" });
+      notes.push(`文档 ${d.id}（${d.title ?? "无标题"}）有路径但字节未知，未按 0 处理`);
+      continue;
+    }
+    if (n > 0) physicalBytesSum += BigInt(n);
+    if (opts?.fileExists) {
+      const exists = await opts.fileExists(d.filePath);
+      if (!exists) notes.push(`文档 ${d.id}（${d.title ?? "无标题"}）记录的物理对象缺失（缺文件差异）`);
+    }
+  }
+
+  let usageDrift: StorageReconcileReport["usageDrift"] = null;
+  if (quotaUsed !== null) {
+    const diff = quotaUsed - physicalBytesSum;
+    usageDrift = { quotaUsed: quotaUsed.toString(), documentsSum: physicalBytesSum.toString(), diff: diff.toString() };
+    if (diff !== BigInt(0)) notes.push(`配额占用与文档记录求和不一致（diff=${diff.toString()} 字节），需人工核实`);
+  }
+
+  return {
+    quota,
+    docs: {
+      totalRows: docRows.length,
+      withPhysicalFile,
+      physicalBytesSum: physicalBytesSum.toString(),
+      softDeletedWithFile,
+      sizeUnknownOrInvalid,
+    },
+    usageDrift,
+    notes,
+  };
+}

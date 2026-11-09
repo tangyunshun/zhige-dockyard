@@ -18,12 +18,16 @@ interface EnterprisePool {
 }
 
 /**
- * 企业池管理（回收共享池算力点 + 设置低余额预警阈值）
+ * 企业池管理（共享池余额 / 低余额预警阈值；回收至个人钱包已暂停）
  *
  * 归属：这是「企业空间所有者」自己的资产管理操作，因此在个人工作台（/user/points）
  * 与空间中枢（/workspace-hub）都提供入口，与企业空间内部的充值弹窗「回收」页签互通。
  * 组件自身完成权限收敛：仅返回该用户作为 owner 的企业空间，无任何企业空间时不渲染。
+ *
+ * [R0-C / 原方案 F06 止损] 企业共享池 → 个人钱包转移暂停：本组件不再发起任何回收请求，
+ * 余额读取与低余额阈值设置保持可用；服务端对旧页面/直接 HTTP 请求同样拒绝。
  */
+const POOL_RECYCLE_PAUSED_MESSAGE = "企业额度转入个人钱包暂不可用，原余额保留在企业空间";
 export default function EnterprisePoolManager({
   className = "",
   onChanged,
@@ -37,9 +41,8 @@ export default function EnterprisePoolManager({
   const [loading, setLoading] = useState(true);
   const [selectedId, setSelectedId] = useState("");
 
-  const [recyclePoints, setRecyclePoints] = useState("");
-  const [recycling, setRecycling] = useState(false);
   const [thresholdInput, setThresholdInput] = useState("");
+  const [thresholdError, setThresholdError] = useState<string | undefined>(undefined);
   const [savingThreshold, setSavingThreshold] = useState(false);
 
   const loadPools = useCallback(async () => {
@@ -66,66 +69,42 @@ export default function EnterprisePoolManager({
 
   const selected = pools.find((p) => p.id === selectedId) || null;
 
-  // 切换空间时回填阈值输入框并清空回收输入
+  // 切换空间时回填阈值输入框
   useEffect(() => {
     const sel = pools.find((p) => p.id === selectedId);
     if (!sel) return;
     setThresholdInput(sel.poolLowThreshold !== null ? String(sel.poolLowThreshold) : "");
-    setRecyclePoints("");
+    setThresholdError(undefined);
   }, [selectedId, pools]);
 
-  const isUnlimited = selected?.tokenBalance === -1;
-  const inputAmount = Math.floor(Number(recyclePoints));
-  const noBalance = !!selected && !isUnlimited && selected.tokenBalance === 0;
-  const overBalance =
-    !!selected &&
-    !isUnlimited &&
-    Number.isFinite(inputAmount) &&
-    inputAmount > 0 &&
-    inputAmount > selected.tokenBalance;
-  const recycleBlocked = !selected || isUnlimited || noBalance || overBalance;
+  /** 行内校验：阈值须为非负整数，留空表示重置为套餐默认 */
+  const validateThreshold = (v: string): string | undefined => {
+    const t = v.trim();
+    if (t === "") return undefined;
+    const value = Math.floor(Number(t));
+    if (!Number.isFinite(value) || value < 0) return "请输入非负整数阈值，或留空以重置为套餐默认";
+    return undefined;
+  };
 
-  const handleRecycle = async () => {
-    if (!selected) return;
-    const amount = Math.floor(Number(recyclePoints));
-    if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error("请输入大于 0 的回收算力点数");
-      return;
-    }
-    try {
-      setRecycling(true);
-      const res = await fetch("/api/workspace/quota/recycle", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getAuthToken()}`,
-        },
-        body: JSON.stringify({ workspaceId: selected.id, points: amount }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        toast.success(data.message || `已回收 ${amount.toLocaleString()} 算力点至个人钱包`);
-        setRecyclePoints("");
-        await loadPools();
-        onChanged?.();
-      } else {
-        toast.error(data.error || "回收失败");
-      }
-    } catch {
-      toast.error("回收请求失败，请稍后重试");
-    } finally {
-      setRecycling(false);
-    }
+  const isUnlimited = selected?.tokenBalance === -1;
+
+  // [R0-C] 防御性 handler：即使旧入口/残留事件被触发，也只提示暂停，
+  // 绝不发起转个人请求、绝不显示成功到账。回收执行控件已不再渲染。
+  const handleRecycle = () => {
+    toast.info(POOL_RECYCLE_PAUSED_MESSAGE);
   };
 
   const handleSaveThreshold = async () => {
     if (!selected) return;
-    const raw = thresholdInput.trim();
-    const value = raw === "" ? null : Math.floor(Number(raw));
-    if (value !== null && (!Number.isFinite(value) || value < 0)) {
-      toast.error("请输入非负整数阈值，或留空以重置为套餐默认");
+    const error = validateThreshold(thresholdInput);
+    if (error) {
+      // 行内校验：错误显示在输入框下方并红框高亮
+      setThresholdError(error);
       return;
     }
+    setThresholdError(undefined);
+    const raw = thresholdInput.trim();
+    const value = raw === "" ? null : Math.floor(Number(raw));
     try {
       setSavingThreshold(true);
       const res = await fetch("/api/workspace/quota/pool-threshold", {
@@ -193,46 +172,21 @@ export default function EnterprisePoolManager({
               </span>
             </div>
 
-            {/* 回收：按钮后给出明确限制提示，避免无效点击 */}
+            {/* [R0-C] 企业共享池 → 个人钱包转移暂停：不渲染回收输入/执行控件，不显示成功到账 */}
             <div className="space-y-1.5">
               <label className="block text-[10px] text-slate-400 font-bold">回收至个人钱包</label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="number"
-                  min="1"
-                  value={recyclePoints}
-                  onChange={(e) => setRecyclePoints(e.target.value)}
-                  placeholder="例如 1000"
-                  className="flex-1 h-9 px-2.5 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={handleRecycle}
-                  disabled={recycling || recycleBlocked}
-                  className="px-3 h-9 bg-[#3182ce] hover:bg-[#2b6cb0] text-white font-black rounded-lg text-[11px] shadow-sm transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                >
-                  {recycling ? "回收中..." : "确认回收"}
-                </button>
+              <div className="rounded-lg px-3 py-2.5 bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-800 leading-relaxed flex items-start gap-1.5">
+                <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                <span>{POOL_RECYCLE_PAUSED_MESSAGE}</span>
               </div>
-              {isUnlimited && (
-                <p className="text-[10px] text-amber-600 font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  该空间为无限额度档，无需回收
-                </p>
-              )}
-              {!isUnlimited && noBalance && (
-                <p className="text-[10px] text-red-500 font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  当前企业池余额为 0，暂无可回收算力点
-                </p>
-              )}
-              {!isUnlimited && overBalance && (
-                <p className="text-[10px] text-red-500 font-bold flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
-                  回收金额 {inputAmount.toLocaleString()} 点超过当前企业池可用余额{" "}
-                  {selected.tokenBalance.toLocaleString()} 点
-                </p>
-              )}
+              <button
+                type="button"
+                onClick={handleRecycle}
+                disabled
+                className="w-full px-3 h-9 bg-slate-100 text-slate-400 font-black rounded-lg text-[11px] disabled:cursor-not-allowed"
+              >
+                暂不可用
+              </button>
             </div>
 
             {/* 低余额预警阈值 */}
@@ -250,9 +204,17 @@ export default function EnterprisePoolManager({
                   type="number"
                   min="0"
                   value={thresholdInput}
-                  onChange={(e) => setThresholdInput(e.target.value)}
+                  onChange={(e) => {
+                    setThresholdInput(e.target.value);
+                    // 已有错误时随输入实时重新校验，让提示随修正消失
+                    if (thresholdError) setThresholdError(validateThreshold(e.target.value));
+                  }}
                   placeholder={`默认 ${selected.planDefault}`}
-                  className="flex-1 h-9 px-2.5 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
+                  className={`flex-1 h-9 px-2.5 text-xs border rounded-lg outline-none font-mono transition-colors ${
+                    thresholdError
+                      ? "border-red-300 bg-red-50/30 focus:border-red-400"
+                      : "border-slate-200 focus:border-[#3182ce]"
+                  }`}
                 />
                 <button
                   type="button"
@@ -263,6 +225,12 @@ export default function EnterprisePoolManager({
                   {savingThreshold ? "保存中..." : "保存阈值"}
                 </button>
               </div>
+              {thresholdError && (
+                <p className="text-[10px] text-red-500 font-bold flex items-center gap-1">
+                  <AlertCircle className="w-3 h-3 shrink-0" />
+                  {thresholdError}
+                </p>
+              )}
               <p className="text-[10px] text-slate-400 leading-relaxed">
                 企业池余额低于该阈值时自动提醒补充。留空保存则沿用套餐默认阈值。
               </p>

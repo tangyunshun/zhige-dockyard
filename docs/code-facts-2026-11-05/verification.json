@@ -1,0 +1,29 @@
+{
+  "kind": "isolated reproduction, no live database or valid credentials",
+  "billing": [
+    {
+      "storedBps": 10000,
+      "parsedBps": 10000
+    },
+    {
+      "storedBps": 10001,
+      "parsedBps": 1000
+    },
+    {
+      "storedBps": 20000,
+      "parsedBps": 2000
+    },
+    {
+      "storedBps": 100000,
+      "parsedBps": 10000
+    },
+    {
+      "storedBps": 1000000,
+      "parsedBps": 100000
+    }
+  ],
+  "platformAuth": {
+    "initialValidation": "FORCED_LOGOUT",
+    "fallbackResult": true
+  }
+}

@@ -6,14 +6,19 @@
  * 来源区块：WorkspaceInternalLayoutV3.tsx 的 {showRechargeModal && (...)} 整段 JSX（原约 392 行）
  * 拆分日期：2026-10-25（V3 拆分第 1 步）
  *
- * 本组件只做展示：所有状态（rechargeTab / offlineForm / poolThreshold* / recyclePoints 等）、
+ * 本组件只做展示：所有状态（rechargeTab / offlineForm / poolThreshold* 等）、
  * 状态修改函数（set*）与业务操作（handleExecuteRecharge / submitOfflineOrder /
  * handleSavePoolThreshold / handleExecuteRecycle）均由父组件 V3 通过 props 传入；
  * 本组件不持有任何 state、不发请求。关闭动作统一走 onClose。
+ *
+ * [R0-C / 原方案 F06 止损] recycle 页签的企业共享池 → 个人钱包转移已暂停：
+ * 仅展示暂停说明，保留低余额阈值与充值等相邻功能；不再渲染回收执行控件。
  */
 
 import { Zap, X, Copy } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatNumber } from "@/utils/format";
 import {
   pointsToYuan,
   formatYuanFromPoints,
@@ -84,9 +89,6 @@ export interface RechargeModalProps {
   setPoolThresholdInput: (v: string) => void;
   poolThresholdSaving: boolean;
   handleSavePoolThreshold: () => void;
-  recycling: boolean;
-  recyclePoints: string;
-  setRecyclePoints: (v: string) => void;
   handleExecuteRecycle: () => void;
   /** 平台官方对公收款账户（由管理员后台配置，供用户汇款参考） */
   officialAccount: {
@@ -124,9 +126,6 @@ export default function RechargeModal(props: RechargeModalProps) {
     setPoolThresholdInput,
     poolThresholdSaving,
     handleSavePoolThreshold,
-    recycling,
-    recyclePoints,
-    setRecyclePoints,
     handleExecuteRecycle,
     officialAccount,
   } = props;
@@ -342,7 +341,7 @@ export default function RechargeModal(props: RechargeModalProps) {
             <button
               type="button"
               onClick={handleExecuteRecharge}
-              disabled={recharging}
+              disabled={recharging || !selectedRechargePack || !selectedRechargePack.points}
               className="shrink-0 whitespace-nowrap px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
             >
               {recharging
@@ -473,7 +472,7 @@ export default function RechargeModal(props: RechargeModalProps) {
               <button
                 type="button"
                 onClick={submitOfflineOrder}
-                disabled={submittingOffline}
+                disabled={submittingOffline || !String(offlineForm?.points || "").trim() || Math.floor(Number(offlineForm?.points || 0)) <= 0}
                 className="px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50"
               >
                 {submittingOffline ? "提交中..." : "提交充值工单"}
@@ -484,8 +483,9 @@ export default function RechargeModal(props: RechargeModalProps) {
       )}
       {rechargeTab === "recycle" && (
         <div className="shrink-0 space-y-3 border-t border-slate-100 pt-3">
-          <div className="bg-blue-50/80 border border-blue-200 rounded-xl px-3 py-2 text-[11px] font-bold text-blue-800 leading-relaxed">
-            将企业共享池的算力点回收至您的个人钱包。回收后点数进入个人钱包（跨空间通用），企业共享池余额相应减少。
+          {/* [R0-C] 企业共享池 → 个人钱包转移暂停：不宣称到账、不渲染回收执行控件 */}
+          <div className="bg-amber-50/80 border border-amber-200 rounded-xl px-3 py-2 text-[11px] font-bold text-amber-800 leading-relaxed">
+            企业额度转入个人钱包暂不可用，原余额保留在企业空间
           </div>
           <div className="bg-white border border-blue-200 rounded-xl px-3 py-3 space-y-2">
             <div className="flex items-center justify-between">
@@ -517,33 +517,6 @@ export default function RechargeModal(props: RechargeModalProps) {
               </button>
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-black text-slate-700 mb-1">
-              回收算力点数 <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="number" min="1"
-              value={recyclePoints}
-              onChange={(e) => setRecyclePoints(e.target.value)}
-              placeholder="例如 1000"
-              className="w-full h-9 px-3 text-xs border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none font-mono"
-            />
-          </div>
-          {(() => {
-            // 限制提示（按钮后给出红字）：企业池为 0 或 输入金额超过可用余额时拦截
-            const unlimited = availableTokenForUser === -1;
-            const inputAmount = Math.floor(Number(recyclePoints));
-            const noBalance = !unlimited && availableTokenForUser === 0;
-            const overBalance = !unlimited && Number.isFinite(inputAmount) && inputAmount > 0 && inputAmount > availableTokenForUser;
-            if (!noBalance && !overBalance) return null;
-            return (
-              <div className="text-[11px] text-red-500 font-bold flex items-center justify-end gap-1.5">
-                ⚠️ {noBalance
-                  ? "当前企业池余额为 0，暂无可回收算力点"
-                  : `回收金额 ${inputAmount.toLocaleString()} 点超过当前企业池可用余额 ${availableTokenForUser.toLocaleString()} 点`}
-              </div>
-            );
-          })()}
           <div className="flex items-center justify-end gap-3 pt-1">
             <button
               type="button"
@@ -555,16 +528,10 @@ export default function RechargeModal(props: RechargeModalProps) {
             <button
               type="button"
               onClick={handleExecuteRecycle}
-              disabled={
-                recycling ||
-                (availableTokenForUser !== -1 &&
-                  (availableTokenForUser === 0 ||
-                    (Math.floor(Number(recyclePoints)) > 0 &&
-                      Math.floor(Number(recyclePoints)) > availableTokenForUser)))
-              }
-              className="px-5 py-2.5 bg-gradient-to-r from-[#3182ce] to-[#2b6cb0] text-white font-black rounded-xl text-xs shadow-md transition-all cursor-pointer active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled
+              className="px-5 py-2.5 bg-slate-100 text-slate-400 font-black rounded-xl text-xs disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {recycling ? "回收中..." : "确认回收至个人钱包"}
+              暂不可用
             </button>
           </div>
         </div>

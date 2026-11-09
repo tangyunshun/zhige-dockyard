@@ -1,0 +1,109 @@
+{
+  "capturedAt": "2026-11-06T17:32:31.686Z",
+  "originalIssue": "F09 public maintenance GET writes",
+  "cases": [
+    {
+      "scenario": "ordinary_public_query_control",
+      "requestHadAuthentication": false,
+      "httpStatus": 200,
+      "authCalls": 0,
+      "returnedMode": true,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "after": {
+        "maintenance_mode": "true",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "writes": []
+    },
+    {
+      "scenario": "anonymous_GET_disables_maintenance",
+      "requestHadAuthentication": false,
+      "httpStatus": 200,
+      "authCalls": 0,
+      "returnedMode": false,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "writes": [
+        {
+          "method": "upsert",
+          "key": "maintenance_mode"
+        }
+      ]
+    },
+    {
+      "scenario": "ordinary_GET_cleans_historical_records",
+      "requestHadAuthentication": false,
+      "httpStatus": 200,
+      "authCalls": 0,
+      "returnedMode": true,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0.0.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "after": {
+        "maintenance_mode": "true",
+        "maintenance_message": "fixture maintenance",
+        "maintenance_estimated": "30",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"fixture-release\",\"version\":\"v1.2.0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"fixture-schedule\",\"title\":\"fixture\",\"status\":\"SCHEDULED\"}]"
+      },
+      "writes": [
+        {
+          "method": "update",
+          "key": "SYSTEM_RELEASE_NOTES_V1"
+        },
+        {
+          "method": "update",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1"
+        }
+      ]
+    }
+  ],
+  "staticFacts": {
+    "publicPrefixListed": true,
+    "writeAuditLogSwallowsFailure": true,
+    "existingPermissionKeys": [
+      "system:maintenance_toggle",
+      "maintenance:publish",
+      "maintenance:read"
+    ]
+  },
+  "isolation": "Actual GET and actual is/setMaintenanceMode/getMaintenanceMessage with local systemconfig memory. No credential headers, DB, network, actual configuration or sessions modified.",
+  "limits": "Direct route execution plus static public-prefix inspection; not actual middleware HTTP deployment or online incident. Legacy IDs are deliberate synthetic inputs, not production inventory. Admin POST/DELETE/audit hardening are next implementation scope, not executed here.",
+  "sha256": {
+    "src/lib/maintenance.ts": "3c9ea09d82f1b96b0ac8b2640f7af02b0ca708400d52f00b6a9fb1a719a23911",
+    "package.json": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+    "src/app/api/system/maintenance/route.ts": "bfbb49ff3950e506e7f148122eef363e7ae96e375d1d40605318b7c8fbb0520d",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+    "src/components/MaintenanceUpcomingBanner.tsx": "faa7458c9c2c7f9cd18a0c430ecb9ad15a10a5d48375e8ea06021024b8269b05",
+    "src/app/releases/page.tsx": "327e4b3e73c1794bd206663ff18c09a6fc887823f9303ac6e949d76c4cdb40ab",
+    "src/app/maintenance/page.tsx": "7094cc2c122cc80dfb52ea9c7b101886a5d2d07632ff5e651e417ab194b43f88",
+    "src/app/api/admin/permissions/route.ts": "00c72e11da2a2f8eaa3c5deac6829f9a38e11d1834234c3b521b58e6db81f8e2"
+  }
+}

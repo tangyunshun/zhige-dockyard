@@ -1,0 +1,22 @@
+describe('R0-J6 independent final-count failure and mixed state acceptance',()=>{
+ it('final count failure returns unknown without changing unresolved claim or its quota',async()=>{
+  seedQuota('w1',10n,30n);pending();let calls=0;h.beforeOpMany=async()=>{calls++;if(calls===2)throw new Error('final pending count unavailable');};
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(calls).toBe(2);expect(body.storage.pendingCountKnown).toBe(false);expect(body.storage.pendingCount).toBe(null);expect(body.storage.recoveryCheckFailed).toBe(true);expect(body.message).not.toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(10n);expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');
+  observe('final-count-failure-positive',{status:res.status,body,used:10,calls});
+ });
+ it('mixed success and shared retention count one unique remaining claim, scoped to current workspace',async()=>{
+  seedQuota('w1',50n,50n);seedQuota('w2',10n,10n);pending();memFiles.set(abs(),Buffer.alloc(30));
+  doc('s1','assets/w1/shared.bin',20);doc('s2','w1/shared.bin',20);memFiles.set(abs('w1/shared.bin'),Buffer.alloc(20));
+  h.tables.storageoperation.set('shared',{id:'shared',opId:'del-w1-w1/shared.bin',workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:'w1/shared.bin',documentId:'s1',bytes:20});
+  h.tables.storageoperation.set('foreign',{id:'foreign',opId:'del-w2-w2/foreign.bin',workspaceId:'w2',userId:'u2',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:'w2/foreign.bin',documentId:'foreign',bytes:10});memFiles.set(abs('w2/foreign.bin'),Buffer.alloc(10));
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingRecovered).toBe(1);expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);expect(h.tables.workspacequota.get('q-w2').storageUsed).toBe(10n);expect(h.tables.document.size).toBe(2);expect(memFiles.has(abs('w1/shared.bin'))).toBe(true);expect(memFiles.has(abs('w2/foreign.bin'))).toBe(true);expect(h.tables.storageoperation.get('foreign').status).toBe('PENDING_CLEANUP');
+  observe('mixed-count-scoped-positive',{status:res.status,body,used:20,otherWorkspaceUsed:10});
+ });
+ it('normal empty collection yields known zero and preserves normal reset response',async()=>{
+  seedQuota('w1',0n,30n);const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect(body.storage.recoveryCheckFailed).toBe(false);expect(body.message).toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('empty-count-positive',{status:res.status,body,used:0});
+ });
+});

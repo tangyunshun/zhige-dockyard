@@ -3,7 +3,7 @@ import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { createCharge, resolvePaymentMode } from "@/lib/payment-gateway";
+import { createCharge, resolvePaymentMode, PaymentConfigError } from "@/lib/payment-gateway";
 import { newOrderExpiry } from "@/lib/order-expiry";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -34,10 +34,11 @@ export async function POST(request: NextRequest) {
     const workspaceId = body.workspaceId;
     // 归档 / 停用空间禁止写入（硬只读）
     await assertWorkspaceWritable(workspaceId);
-    const seats = Math.floor(Number(body.seats));
+    // [R0-B] 席位数必须是正安全整数：不接受小数/NaN/负数/溢出，不用 Math.floor 把损坏输入猜成有效
+    const seats = Number(body.seats);
     const channel = body.paymentMethod === "ALIPAY" ? "ALIPAY" : "WECHAT_PAY";
     if (!workspaceId) return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
-    if (!Number.isFinite(seats) || seats <= 0) {
+    if (!Number.isSafeInteger(seats) || seats <= 0 || seats > 2147483647) {
       return NextResponse.json({ error: "增购席位数必须为正整数" }, { status: 400 });
     }
 
@@ -66,6 +67,16 @@ export async function POST(request: NextRequest) {
     if (!workspace.planExpiresAt) {
       return NextResponse.json({ error: "当前套餐未设置到期时间，无法折算增购价格" }, { status: 400 });
     }
+    // [R0-B2-2] 下单与收费入口使用同一合法周期规则：空间真实 planBillingCycle 必须是 MONTH 或 YEAR；
+    // 缺失/空值/其它字符串（含历史损坏的 WEEK）一律在创建订单与调用 createCharge 之前阻断，
+    // 零新订单、零网关调用、零席位变化。不默认 MONTH、不清洗历史库、不改价格公式。
+    const billingCycle = workspace.planBillingCycle;
+    if (billingCycle !== "MONTH" && billingCycle !== "YEAR") {
+      return NextResponse.json(
+        { error: "当前空间的计费周期不合规（仅支持月付/年付），无法创建增购订单，请人工核查" },
+        { status: 400 },
+      );
+    }
 
     const planRow = await prisma.workspaceplan.findUnique({ where: { key: workspace.plan } });
     if (!planRow) return NextResponse.json({ error: "套餐配置不存在" }, { status: 404 });
@@ -82,13 +93,37 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "套餐已到期，请先续费后再增购席位" }, { status: 400 });
     }
     const remainingDays = Math.max(1, Math.ceil(remainingMs / DAY_MS));
-    const daysInCycle = workspace.planBillingCycle === "YEAR" ? 365 : 30;
+    const daysInCycle = billingCycle === "YEAR" ? 365 : 30;
     const proratedPerSeat = (seatUnitMonthly * remainingDays) / daysInCycle;
     const amountCents = Math.round(seats * proratedPerSeat); // 单位：分
 
     const orderNo = `SA_${Date.now()}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
     const expiresAtIso = workspace.planExpiresAt.toISOString();
-    const mode = resolvePaymentMode();
+
+    // [R0-E] 统一模式裁决前置：生产显式 mock 必须在「创建本次 PENDING 订单、调用渠道、任何席位写入」之前拒绝。
+    // 复用 resolvePaymentMode 的 PaymentConfigError，统一返回 503 + 稳定 code，零新订单、零渠道调用、零席位变化。
+    try {
+      resolvePaymentMode();
+    } catch (e) {
+      if (e instanceof PaymentConfigError) {
+        return NextResponse.json(
+          { success: false, code: e.code, error: e.message },
+          { status: 503 },
+        );
+      }
+      throw e;
+    }
+
+    const orderMeta = {
+      seats,
+      billingCycle,
+      remainingDays,
+      seatUnitMonthly,
+      planKey: workspace.plan,
+      expiresAt: expiresAtIso,
+      workspaceName: workspace.name,
+      createdVia: "seat-addon",
+    };
 
     // 仅创建 PENDING 订单，绝不立即加席位；席位增加发生在支付确认之后
     await prisma.billingrecord.create({
@@ -104,16 +139,7 @@ export async function POST(request: NextRequest) {
         expiresAt: newOrderExpiry(),
         channel,
         referenceId: workspaceId,
-        metadata: {
-          seats,
-          billingCycle: workspace.planBillingCycle,
-          remainingDays,
-          seatUnitMonthly,
-          planKey: workspace.plan,
-          expiresAt: expiresAtIso,
-          workspaceName: workspace.name,
-          createdVia: "seat-addon",
-        },
+        metadata: orderMeta,
         updatedAt: new Date(),
       },
     });
@@ -126,6 +152,59 @@ export async function POST(request: NextRequest) {
       subject: "知阁·舟坊 - 席位增购",
       channel,
     });
+
+    // [R0-B1 F3] 真实微信 Native 下单的二维码载体（codeUrl）由服务端保存到订单 metadata，
+    // 本人订单查询（/api/payments/order）读取后由扫码收银台渲染二维码：
+    //  - 只保存必要的展示载体，不保存整个敏感网关 payload，也不接受浏览器自传支付地址；
+    //  - 条件更新（仅 PENDING）确保载体保存不覆盖并发完成的履约记录或订单状态。
+    let codeUrl: string | null = null;
+    if (
+      charge.gatewayPayload &&
+      typeof charge.gatewayPayload === "object" &&
+      typeof (charge.gatewayPayload as Record<string, unknown>).codeUrl === "string"
+    ) {
+      codeUrl = (charge.gatewayPayload as Record<string, unknown>).codeUrl as string;
+    }
+    if (charge.mode === "REAL" && channel === "WECHAT_PAY") {
+      if (!codeUrl) {
+        // 网关未返回二维码载体：诚实告知无法收银，订单保留原状供重试/人工核查，不伪装可付款
+        return NextResponse.json(
+          {
+            success: false,
+            orderNo,
+            error: "未能准备收银台：支付渠道未返回二维码载体，订单已保留（未扣款），请稍后重试或联系客服",
+          },
+          { status: 502 },
+        );
+      }
+      const saved = await prisma.billingrecord.updateMany({
+        where: { id: orderNo, status: "PENDING" },
+        data: { metadata: { ...orderMeta, codeUrl }, updatedAt: new Date() },
+      });
+      if (saved.count !== 1) {
+        // 载体保存竞争失败：按最新事实处理（极小概率下履约已在并发中完成），不覆盖履约记录
+        const latest = await prisma.billingrecord.findUnique({ where: { id: orderNo } });
+        if (latest?.status === "SUCCESS") {
+          return NextResponse.json({
+            success: true,
+            orderNo,
+            amountCents,
+            seats,
+            paymentMode: charge.mode,
+            payUrl: charge.payUrl,
+            notice: "该订单已完成入账，无需再支付。",
+          });
+        }
+        return NextResponse.json(
+          {
+            success: false,
+            orderNo,
+            error: "未能准备收银台：支付载体保存失败，订单已保留（未扣款），请稍后重试或联系客服",
+          },
+          { status: 502 },
+        );
+      }
+    }
 
     return NextResponse.json({
       success: true,

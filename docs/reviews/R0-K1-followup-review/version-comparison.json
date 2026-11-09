@@ -1,0 +1,356 @@
+{
+  "capturedAt": "2026-11-08T12:57:03.631Z",
+  "files": [
+    {
+      "path": "src/lib/text-extract.ts",
+      "previousSHA256": "b5762693c2e975acaacb36a7ec36beef737a99cf59aaf3c46c64b60e5e529d29",
+      "currentSHA256": "8b88f0e6470d60d2f499c498fed0f14cd2968aa1954d2dd3003fc5616016ba5b",
+      "changed": true
+    },
+    {
+      "path": "src/app/api/studio/extract-text/route.ts",
+      "previousSHA256": "170fdd46c92925f80ba8ca77cd03458106c59e2b9f6dd84e24aa62cfc191c851",
+      "currentSHA256": "170fdd46c92925f80ba8ca77cd03458106c59e2b9f6dd84e24aa62cfc191c851",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "previousSHA256": "300df5b0c2eafa983395e98771a9e75920e720fb8ebf43859770f60f87d6dbdf",
+      "currentSHA256": "2c3fff90931fe7ea2f31e4eabd941a9eab87e86cda9f3df46e525f97469568be",
+      "changed": true
+    },
+    {
+      "path": "src/app/api/workspace/assets/[assetId]/preview/route.ts",
+      "previousSHA256": "e544b4a4d4071902568ee02e10e954913330a2e4020f98be19e6eb0a1ee5b838",
+      "currentSHA256": "e544b4a4d4071902568ee02e10e954913330a2e4020f98be19e6eb0a1ee5b838",
+      "changed": false
+    },
+    {
+      "path": "prisma/schema.prisma",
+      "previousSHA256": "8506f23459746d6beb6357947ecd093ade22e52327cf6038b59d74808e8724bb",
+      "currentSHA256": "8506f23459746d6beb6357947ecd093ade22e52327cf6038b59d74808e8724bb",
+      "changed": false
+    },
+    {
+      "path": "src/lib/__tests__/text-extract.test.ts",
+      "previousSHA256": "c5099f7c1ea78432e7d42afe0cd86401f487929d4119e558a0ec3000f7ab4bae",
+      "currentSHA256": "c5099f7c1ea78432e7d42afe0cd86401f487929d4119e558a0ec3000f7ab4bae",
+      "changed": false
+    },
+    {
+      "path": "next.config.js",
+      "previousSHA256": "8ff7a4e2a42b4c6089a99aaa6aa07383c716779f421f837ccc454671d98b9a40",
+      "currentSHA256": "8ff7a4e2a42b4c6089a99aaa6aa07383c716779f421f837ccc454671d98b9a40",
+      "changed": false
+    },
+    {
+      "path": "src/lib/parse-policy.ts",
+      "previousSHA256": "503e2708a1aeed841dd0fe977fe3e28fb6de503e707fd676df841153cbe18160",
+      "currentSHA256": "503e2708a1aeed841dd0fe977fe3e28fb6de503e707fd676df841153cbe18160",
+      "changed": false
+    },
+    {
+      "path": "src/lib/parse-worker.cjs",
+      "previousSHA256": "801ed84f30989b2c34747f3abfff588bb60fa25c05eedf320ce6cd7e3b8c7a15",
+      "currentSHA256": "e854005b30cd3fbe8c3fa58eea13bc1cdd7c9827ceb37f1ea3609f092cd9f286",
+      "changed": true
+    },
+    {
+      "path": "src/lib/parse-runner.ts",
+      "previousSHA256": "b76fe4f0882786f5523a3ab5ddd5457f282f79ab54814de5c09306ad299ff86e",
+      "currentSHA256": "b76fe4f0882786f5523a3ab5ddd5457f282f79ab54814de5c09306ad299ff86e",
+      "changed": false
+    },
+    {
+      "path": "src/lib/parse-admission.ts",
+      "previousSHA256": "0e10d03749b22d5cbaf8aa35831a7911b3e7da871136a63137b639456bbe4c18",
+      "currentSHA256": "0e10d03749b22d5cbaf8aa35831a7911b3e7da871136a63137b639456bbe4c18",
+      "changed": false
+    },
+    {
+      "path": "prisma/migrations/20261108000000_parse_admission/migration.sql",
+      "previousSHA256": "2fbf32b00222ca3d94cab2172f213b5a7bc67d8a9a4fc3b89e291bb9a96d7717",
+      "currentSHA256": "2fbf32b00222ca3d94cab2172f213b5a7bc67d8a9a4fc3b89e291bb9a96d7717",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0k-parse-resource.test.ts",
+      "previousSHA256": "174d0738f1bf4bc1f7493050f548d25d6fed1944947a0d427a330507dcca1dca",
+      "currentSHA256": "174d0738f1bf4bc1f7493050f548d25d6fed1944947a0d427a330507dcca1dca",
+      "changed": false
+    },
+    {
+      "path": "docs/reviews/R0-K-fix-snapshot/vitest.r0k.config.ts",
+      "previousSHA256": "e361bc456047d19f0b55aeba694a871c025b82a8813dc425fa0b45b1926c602b",
+      "currentSHA256": "e361bc456047d19f0b55aeba694a871c025b82a8813dc425fa0b45b1926c602b",
+      "changed": false
+    },
+    {
+      "path": "src/lib/__tests__/text-extract-paths.test.ts",
+      "previousSHA256": "1f49b9d7d743c2a23818ce54bfda7322209539376d97fc8d7e7ca35682a61985",
+      "currentSHA256": "1f49b9d7d743c2a23818ce54bfda7322209539376d97fc8d7e7ca35682a61985",
+      "changed": false
+    },
+    {
+      "path": "src/lib/file-store.ts",
+      "previousSHA256": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+      "currentSHA256": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+      "changed": false
+    },
+    {
+      "path": "src/lib/security.ts",
+      "previousSHA256": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+      "currentSHA256": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+      "changed": false
+    },
+    {
+      "path": "package.json",
+      "previousSHA256": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+      "currentSHA256": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+      "changed": false
+    },
+    {
+      "path": "tsconfig.json",
+      "previousSHA256": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329",
+      "currentSHA256": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329",
+      "changed": false
+    },
+    {
+      "path": "src/lib/storage-quota.ts",
+      "previousSHA256": "0bef7f02d6206544c45045e89239945a60309f4a512a9f0227186cf2498f0666",
+      "currentSHA256": "0bef7f02d6206544c45045e89239945a60309f4a512a9f0227186cf2498f0666",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "previousSHA256": "7e4aea48aecbbac40a5e65dfd354aaed430202b840d72d378e79856521a88c26",
+      "currentSHA256": "7e4aea48aecbbac40a5e65dfd354aaed430202b840d72d378e79856521a88c26",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "previousSHA256": "ca36bb2fa67479b67c0cab47ddea6f3cc369e36e2f8046a57cbcf91e5b7436cc",
+      "currentSHA256": "ca36bb2fa67479b67c0cab47ddea6f3cc369e36e2f8046a57cbcf91e5b7436cc",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "previousSHA256": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005",
+      "currentSHA256": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "previousSHA256": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef",
+      "currentSHA256": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "previousSHA256": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "currentSHA256": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "changed": false
+    },
+    {
+      "path": "src/components/WorkspaceInternalLayoutV3.tsx",
+      "previousSHA256": "7c0dd62c88bf644b333feb094226debcef3fa74abdc2af426e34f442c570be5b",
+      "currentSHA256": "7c0dd62c88bf644b333feb094226debcef3fa74abdc2af426e34f442c570be5b",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j-storage.test.ts",
+      "previousSHA256": "44e4f40635c32227b575544a48b409fc4811e89b285c7065fccf814cedf8e0ee",
+      "currentSHA256": "44e4f40635c32227b575544a48b409fc4811e89b285c7065fccf814cedf8e0ee",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "previousSHA256": "d7f9e9543fefe16d537907ef9be7bc57c60e5d35658ad43ce7d1e106be59f64e",
+      "currentSHA256": "d7f9e9543fefe16d537907ef9be7bc57c60e5d35658ad43ce7d1e106be59f64e",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/workspace/assets/[assetId]/file/route.ts",
+      "previousSHA256": "d4ac28fcb0036d3fdb36fe0046c42648cbdb095093f6c4fd7b7eab4536b90204",
+      "currentSHA256": "d4ac28fcb0036d3fdb36fe0046c42648cbdb095093f6c4fd7b7eab4536b90204",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/billing/estimate/route.ts",
+      "previousSHA256": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+      "currentSHA256": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+      "changed": false
+    },
+    {
+      "path": "src/lib/model-registry.ts",
+      "previousSHA256": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+      "currentSHA256": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+      "changed": false
+    },
+    {
+      "path": "src/lib/workspace-byo-model.ts",
+      "previousSHA256": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+      "currentSHA256": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "previousSHA256": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+      "currentSHA256": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "previousSHA256": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+      "currentSHA256": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+      "changed": false
+    },
+    {
+      "path": "src/app/admin/models/byok-service-rate.tsx",
+      "previousSHA256": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+      "currentSHA256": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/billing/byok-preview/route.ts",
+      "previousSHA256": "099c797e4b657c7055838a509c6e9deda29f0c586bc1b9cf7197bbf0145f9575",
+      "currentSHA256": "099c797e4b657c7055838a509c6e9deda29f0c586bc1b9cf7197bbf0145f9575",
+      "changed": false
+    },
+    {
+      "path": "src/components/studio/WorkspaceModelPolicyTab.tsx",
+      "previousSHA256": "93a7e73e1a11570ac1d219e102de53b887429baa94dab9d811a322b668cea6c9",
+      "currentSHA256": "93a7e73e1a11570ac1d219e102de53b887429baa94dab9d811a322b668cea6c9",
+      "changed": false
+    },
+    {
+      "path": "src/lib/model-cost-admission.ts",
+      "previousSHA256": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+      "currentSHA256": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/cron/workspace-subscription-expire/route.ts",
+      "previousSHA256": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+      "currentSHA256": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/system/maintenance/route.ts",
+      "previousSHA256": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+      "currentSHA256": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+      "changed": false
+    },
+    {
+      "path": "src/lib/maintenance.ts",
+      "previousSHA256": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+      "currentSHA256": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+      "changed": false
+    },
+    {
+      "path": "src/lib/credit-service.ts",
+      "previousSHA256": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+      "currentSHA256": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+      "changed": false
+    },
+    {
+      "path": "src/lib/payment-gateway.ts",
+      "previousSHA256": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+      "currentSHA256": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+      "changed": false
+    },
+    {
+      "path": "src/lib/payment/fulfill.ts",
+      "previousSHA256": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+      "currentSHA256": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+      "changed": false
+    },
+    {
+      "path": "src/lib/payment/seat-addon-fulfill.ts",
+      "previousSHA256": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+      "currentSHA256": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+      "changed": false
+    },
+    {
+      "path": "src/middleware.ts",
+      "previousSHA256": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+      "currentSHA256": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+      "changed": false
+    },
+    {
+      "path": "src/app/admin/maintenance/page.tsx",
+      "previousSHA256": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+      "currentSHA256": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+      "changed": false
+    },
+    {
+      "path": "src/lib/point-rate.ts",
+      "previousSHA256": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+      "currentSHA256": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+      "changed": false
+    },
+    {
+      "path": "src/lib/component-cost-floor.ts",
+      "previousSHA256": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+      "currentSHA256": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+      "changed": false
+    },
+    {
+      "path": "src/lib/model-pricing.ts",
+      "previousSHA256": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+      "currentSHA256": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+      "changed": false
+    },
+    {
+      "path": "src/lib/model-adapter.ts",
+      "previousSHA256": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+      "currentSHA256": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+      "changed": false
+    },
+    {
+      "path": "src/lib/billing/billing-config.ts",
+      "previousSHA256": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+      "currentSHA256": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+      "changed": false
+    },
+    {
+      "path": "src/lib/billing/pricing-center.ts",
+      "previousSHA256": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+      "currentSHA256": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+      "changed": false
+    },
+    {
+      "path": "src/lib/quota-cycle.ts",
+      "previousSHA256": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+      "currentSHA256": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/workspace/byo-model/test/route.ts",
+      "previousSHA256": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+      "currentSHA256": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+      "changed": false
+    },
+    {
+      "path": "src/app/knowledge/page.tsx",
+      "previousSHA256": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f",
+      "currentSHA256": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f",
+      "changed": false
+    },
+    {
+      "path": "src/app/api/__tests__/r0k1-fixes.test.ts",
+      "previousSHA256": "0d6b35b33a3bdb49f1a160440ea45ecf60416dc616ede8dac30ed7115f96cdbf",
+      "currentSHA256": "33e108272f4a5cbac4a7d0b1d84ecd3162a6f3f5fe89a638d35351ac2532b798",
+      "changed": true
+    }
+  ],
+  "changed": [
+    "src/lib/text-extract.ts",
+    "src/app/api/studio/handler.ts",
+    "src/lib/parse-worker.cjs",
+    "src/app/api/__tests__/r0k1-fixes.test.ts"
+  ],
+  "unchanged": 53,
+  "deliveryReportSHA256": "5d88a1041316a4364ea7ac147d42a4922c5568e577ba22cdc63d124044d53496",
+  "deliverySnapshotExists": false
+}

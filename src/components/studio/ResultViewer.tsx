@@ -1045,7 +1045,7 @@ export function ResultViewer({
               <span>·</span>
               {task.status && task.status !== "SUCCESS" ? (
                 <span className="text-rose-600 font-bold" title={`结果状态：${task.status}`}>
-                  ⚠️ 结果状态：{task.status}
+                  ⚠️ 结果状态：{task.status === "FAILED" ? "已失败" : task.status === "HOLD" ? "待复核" : task.status === "RUNNING" ? "运行中" : task.status === "UNKNOWN" ? "未知" : task.status}
                 </span>
               ) : !hasValidArtifact ? (
                 <span className="text-amber-600 font-bold" title="任务已完成但没有可查看的成果物">

@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useToast } from "@/components/Toast";
 import { Activity, Star, ThumbsUp, Calendar, Heart, CheckCircle2 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { formatDateTime } from "@/utils/format";
 
 interface UsageStatsProps {
   componentId: string;
@@ -76,15 +77,8 @@ export default function UsageStats({ componentId }: UsageStatsProps) {
 
   // 格式化时间
   const formatTime = (timeStr?: string | null) => {
-    if (!timeStr) return "暂无使用记录";
-    const date = new Date(timeStr);
-    return date.toLocaleString("zh-CN", {
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    if (!timeStr) return "-"; // KN-UI：空数据占位规范（自查清单指令五）
+    return formatDateTime(timeStr);
   };
 
   return (

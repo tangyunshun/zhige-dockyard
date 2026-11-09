@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { formatYuanFromPoints } from "@/lib/point-rate";
 import { getAuthToken } from "@/utils/auth";
+import { lookupBillingValueLabel, setBillingDicts } from "@/lib/billing-display-dict";
 import { useAppContext } from "@/contexts/AppContext";
 import type { ComponentCategory } from "@/constants/components";
 
@@ -73,6 +74,8 @@ export default function UsageStatsTab({
   const [presetDays, setPresetDays] = useState<7 | 30 | 90>(7);
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
 
   // 2. 组件多选弹窗 + 确定性“点击应用”状态机制
   const [selectedComponentIds, setSelectedComponentIds] = useState<string[]>([]);
@@ -83,16 +86,34 @@ export default function UsageStatsTab({
   // 3. 任务状态维度过滤与走势图模式
   const [selectedStatus, setSelectedStatus] = useState<string>("ALL");
   const [chartMetricMode, setChartMetricMode] = useState<"tokens" | "calls">("tokens");
+  // KN-CFG：计费模式中文名来自数据库 billing_display_dict（自查清单红线）
+  const [billingModeLabel, setBillingModeLabel] = useState<string | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getAuthToken();
+        const res = await fetch("/api/user/billing-dict", { headers: token ? { Authorization: `Bearer ${token}` } : {}, credentials: "include" });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data) {
+            setBillingDicts(data);
+            setBillingModeLabel(lookupBillingValueLabel("ESTIMATED_COMPATIBILITY") || null);
+          }
+        }
+      } catch { /* 字典加载失败时回退默认中文说明 */ }
+    })();
+  }, []);
 
   // 4. 图表交互联动切片
   const [linkedDate, setLinkedDate] = useState<string | null>(null);
 
+  // KN-UI：真实口径——接口未返回前一律空值占位，绝不预置假数据（自查清单红线）
   const [remoteStats, setRemoteStats] = useState<any>({
     totalCalls: 0,
     activeComponents: 0,
-    successRate: 0,
-    avgResponseTime: 1.2,
-    storage: { used: 1258291200, limit: 10737418240 },
+    successRate: null,
+    avgResponseTime: null,
+    storage: null,
   });
 
   // 已装配组件映射
@@ -137,11 +158,11 @@ export default function UsageStatsTab({
         if (data.success && data.statistics) {
           const s = data.statistics;
           setRemoteStats({
-            totalCalls: s.totalComponentCalls || recentTasks.length,
-            activeComponents: s.activeComponents || boundComps.length,
-            successRate: s.successRate || 100,
-            avgResponseTime: s.avgResponseTime || 1.2,
-            storage: s.storage || { used: 1258291200, limit: 10737418240 },
+            totalCalls: s.totalComponentCalls ?? recentTasks.length,
+            activeComponents: s.activeComponents ?? boundComps.length,
+            successRate: s.successRate ?? null,
+            avgResponseTime: s.avgResponseTime ?? null,
+            storage: s.storage ?? null,
           });
         }
       }
@@ -271,18 +292,13 @@ export default function UsageStatsTab({
     return Object.values(map).sort((a, b) => b.tokens - a.tokens).slice(0, 5);
   }, [filteredTasks, boundComps, componentCategories]);
 
-  // 任务失败与中断真实原因统计及占总任务的精准百分比 (%)
+  // 任务失败统计（真实口径：仅统计真实失败数；具体失败原因请查看任务详情内的 errorCode，绝不臆造分布）
   const failureReasonStats = useMemo(() => {
     const totalAll = filteredTasks.length || 1;
-    const reasons = [
-      { name: "源数据格式解析异常", count: 0 },
-      { name: "算力余额不足/网关拦截", count: 0 },
-      { name: "网络通信与处理超时", count: 0 },
-    ];
-    filteredTasks.filter(t => t.status === "FAILED").forEach((_, i) => {
-      reasons[i % 3].count += 1;
-    });
-    return reasons.map(r => ({
+    const failedCount = filteredTasks.filter(t => t.status === "FAILED").length;
+    return [
+      { name: "失败任务（原因请查看任务详情）", count: failedCount },
+    ].map(r => ({
       ...r,
       percentage: Math.round((r.count / totalAll) * 100)
     }));
@@ -582,16 +598,20 @@ export default function UsageStatsTab({
                 <input
                   type="date"
                   value={startDate}
+                  max={endDate || today}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="text-xs font-bold font-mono text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  className="border border-slate-200 text-xs font-bold font-mono text-slate-700 bg-transparent focus:outline-none cursor-pointer"
                 />
                 <span className="text-slate-400 font-bold">~</span>
                 <input
                   type="date"
                   value={endDate}
+                  min={startDate || undefined}
+                  max={today}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="text-xs font-bold font-mono text-slate-700 bg-transparent focus:outline-none cursor-pointer"
+                  className="border border-slate-200 text-xs font-bold font-mono text-slate-700 bg-transparent focus:outline-none cursor-pointer"
                 />
+
               </div>
             )}
 
@@ -665,7 +685,7 @@ export default function UsageStatsTab({
               费用折合: {formatYuanFromPoints(totalPointsCostCalculated)}
             </span>
             <span className="text-[10px] font-bold text-slate-400 block mt-1">
-              ESTIMATED_COMPATIBILITY：按管理员配置的固定点数扣费（1 算力点 = ¥0.01）
+              计费模式：{billingModeLabel || "按管理员配置的固定点数扣费"}（1 算力点 = ¥0.01）
             </span>
           </div>
 

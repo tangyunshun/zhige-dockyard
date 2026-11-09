@@ -1,0 +1,164 @@
+{
+  "capturedAt": "2026-11-07T08:34:28.457Z",
+  "verdict": "NOT ACCEPTED: one original H-BOUND remainder (unconditional UTF8 + unverified 128 framing for every model/protocol)",
+  "evidence": [
+    {
+      "scenario": "arithmetic_only",
+      "results": [
+        {
+          "points": 100,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "1000000",
+            "conservativeCostPoints": 100,
+            "inputTokenUpperBound": 1000000,
+            "inputBoundSource": "UTF8_BYTES_PLUS_FRAMING",
+            "budgetPoints": 100
+          }
+        },
+        {
+          "points": 101,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "points": 150,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "points": 200,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        },
+        {
+          "points": 201,
+          "decision": {
+            "allowed": false,
+            "code": "MODEL_COST_EXCEEDS_BUDGET",
+            "error": "本次任务按当前模型定价评估的执行成本已超过该组件定价（100 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。"
+          }
+        }
+      ],
+      "limitation": "Arithmetic correctness does not certify the protocol allowance or tokenizer applicability."
+    },
+    {
+      "id": "H-BOUND-REMAINDER",
+      "scenario": "protocol_and_verified_bound_not_required",
+      "rows": [
+        {
+          "protocol": "OPENAI_COMPATIBLE",
+          "contextLimit": 0,
+          "httpStatus": 200,
+          "consumeCalls": 1,
+          "executeCalls": 1,
+          "promptBytes": 577,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "706",
+            "conservativeCostPoints": 1,
+            "inputTokenUpperBound": 705,
+            "inputBoundSource": "UTF8_BYTES_PLUS_FRAMING",
+            "budgetPoints": 100
+          }
+        },
+        {
+          "protocol": "ANTHROPIC",
+          "contextLimit": 0,
+          "httpStatus": 200,
+          "consumeCalls": 1,
+          "executeCalls": 1,
+          "promptBytes": 577,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "706",
+            "conservativeCostPoints": 1,
+            "inputTokenUpperBound": 705,
+            "inputBoundSource": "UTF8_BYTES_PLUS_FRAMING",
+            "budgetPoints": 100
+          }
+        },
+        {
+          "protocol": "GEMINI",
+          "contextLimit": 0,
+          "httpStatus": 200,
+          "consumeCalls": 1,
+          "executeCalls": 1,
+          "promptBytes": 577,
+          "decision": {
+            "allowed": true,
+            "conservativeCostMicros": "706",
+            "conservativeCostPoints": 1,
+            "inputTokenUpperBound": 705,
+            "inputBoundSource": "UTF8_BYTES_PLUS_FRAMING",
+            "budgetPoints": 100
+          }
+        }
+      ],
+      "limitation": "Adapter creation/execution and registry are isolated IO. No real provider token counts or financial loss claimed. Shows handler cannot reject a missing/unsupported applicability proof because the formula is unconditional."
+    },
+    {
+      "scenario": "rules_cache_and_free",
+      "rows": [
+        {
+          "patch": {
+            "rules": {
+              "unexplainedCost": {
+                "amountMicros": 2000000
+              }
+            }
+          },
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY"
+        },
+        {
+          "patch": {
+            "costCacheWriteMicrosPerMillion": 1000
+          },
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY"
+        }
+      ],
+      "freeStatus": 200
+    },
+    {
+      "scenario": "mode_matrix",
+      "compatStatus": 400,
+      "settlementStatus": 202,
+      "settlementCounters": {
+        "hold": 1,
+        "execute": 1
+      },
+      "byoStatus": 200,
+      "byoPoints": 7,
+      "limitation": "Only synthetic test-only flag and in-memory config; no production switch/actual hold/provider."
+    },
+    {
+      "scenario": "task_and_refund_calls",
+      "successStatus": 200,
+      "failureStatus": 502,
+      "refundCalls": 1,
+      "limitation": "Accounting functions are IO spies, not real source-ledger verification."
+    }
+  ],
+  "sha256": {
+    "src/app/api/studio/handler.ts": "0ebac90f9956718b3604a442626ed1e23da395c8b97dcc2576e75208d58e0ff1",
+    "src/lib/model-cost-admission.ts": "ff2333685ab1bbf789980f1a183c76fb034954c955d558c461b18ea29777b9dc",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": "4fe6505c779849ae262aa1615f124177dbe2d21b7afe25163d0c3a22fa50a455",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/token-settlement-service.ts": "ac1440924110c3300282b64f0d44f0b583a7a17d0d19f85c44aba7258139a659",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02",
+    "tsconfig.json": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329"
+  },
+  "isolation": "Actual handler/helper; copied closed-IO fixtures, no business-source edits/DB/network/paid calls. Passing expected-defect assertions means reproduction, not acceptance."
+}

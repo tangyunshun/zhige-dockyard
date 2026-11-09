@@ -1,0 +1,263 @@
+{
+  "capturedAt": "2026-11-06T17:29:41.604Z",
+  "verdict": "PASS bounded R0-E production-mock stop-loss; freeze batch",
+  "modes": [
+    {
+      "raw": "mock",
+      "credentials": false,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": "mock",
+      "credentials": true,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": " MOCK ",
+      "credentials": false,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": " MOCK ",
+      "credentials": true,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": "Mock",
+      "credentials": false,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": "Mock",
+      "credentials": true,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": "mOcK",
+      "credentials": false,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    },
+    {
+      "raw": "mOcK",
+      "credentials": true,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "providerCalls": []
+    }
+  ],
+  "blockedConfirm": [
+    {
+      "type": "TOKEN_RECHARGE",
+      "get": 403,
+      "post": 403,
+      "orderReads": 0,
+      "writes": []
+    },
+    {
+      "type": "SEAT_ADDON",
+      "get": 403,
+      "post": 403,
+      "orderReads": 0,
+      "writes": []
+    },
+    {
+      "type": "PLAN_UPGRADE",
+      "get": 403,
+      "post": 403,
+      "orderReads": 0,
+      "writes": []
+    }
+  ],
+  "blockedOrders": [
+    {
+      "kind": "create",
+      "status": 503,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "writes": [],
+      "providerCalls": []
+    },
+    {
+      "kind": "seat",
+      "status": 503,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "writes": [],
+      "providerCalls": []
+    },
+    {
+      "kind": "upgrade",
+      "status": 503,
+      "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+      "writes": [],
+      "providerCalls": []
+    }
+  ],
+  "controls": [
+    {
+      "scenario": "free_branch_preserved",
+      "status": 200,
+      "provisionCalls": 1
+    },
+    {
+      "scenario": "safe_real_without_credentials",
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": "real"
+      },
+      "mockStatus": 403
+    },
+    {
+      "scenario": "safe_real_without_credentials",
+      "fixtureEnv": {
+        "NODE_ENV": "production"
+      },
+      "mockStatus": 403
+    },
+    {
+      "scenario": "safe_real_without_credentials",
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": "invalid"
+      },
+      "mockStatus": 403
+    },
+    {
+      "scenario": "nonproduction_real_grant_code",
+      "fixtureEnv": {
+        "NODE_ENV": "development",
+        "PAYMENT_MODE": "mock"
+      },
+      "status": 200,
+      "wallet": "100"
+    },
+    {
+      "scenario": "nonproduction_real_grant_code",
+      "fixtureEnv": {
+        "NODE_ENV": "test"
+      },
+      "status": 200,
+      "wallet": "100"
+    },
+    {
+      "scenario": "real_gateway_provider_IO_stub",
+      "channel": "WECHAT_PAY",
+      "mode": "REAL"
+    },
+    {
+      "scenario": "real_gateway_provider_IO_stub",
+      "channel": "ALIPAY",
+      "mode": "REAL"
+    },
+    {
+      "scenario": "real_notify_actual_fulfill_and_grant",
+      "badSignature": false,
+      "status": 200,
+      "wallet": "100"
+    },
+    {
+      "scenario": "real_notify_actual_fulfill_and_grant",
+      "badSignature": true,
+      "status": 401,
+      "wallet": "0"
+    },
+    {
+      "scenario": "history_read_unchanged",
+      "status": 200
+    }
+  ],
+  "snapshots": [
+    {
+      "file": "src/lib/payment-gateway.ts",
+      "startMatchesManifest": true,
+      "priorAuditMatch": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/payments/mock/confirm/route.ts",
+      "startMatchesManifest": true,
+      "priorAuditMatch": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/payments/create/route.ts",
+      "startMatchesManifest": true,
+      "priorAuditMatch": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/workspace/seat-addon/route.ts",
+      "startMatchesManifest": true,
+      "priorAuditMatch": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/workspace/upgrade/route.ts",
+      "startMatchesManifest": true,
+      "priorAuditMatch": "not-recorded-in-that-audit",
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    }
+  ],
+  "protectedChecks": [
+    {
+      "file": "src/lib/credit-service.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment/seat-addon-fulfill.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment/fulfill.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment-cashier-display.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/order-expiry.ts",
+      "unchanged": true
+    }
+  ],
+  "isolation": "Actual payment gateway, mock GET/POST, three paid-order routes, real grantPoints/getBalanceSummary, actual WX notify+fulfill+grant, read-only history GET. Identity, persistence, pricing/plan/provision and provider/verify IO are fixtures. Synthetic env only, no secrets/provider/DB/network.",
+  "limits": "Free branch invokes a provision fixture; full R0-A service covered by existing targeted regressions. Conditions exercised in memory, not deployed environment or actual MySQL. No shared source swapping; no actual payment or production readiness claim.",
+  "sha256": {
+    "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/app/api/payments/mock/confirm/route.ts": "41a6dd652f0fca66a95d49670f879ad4642005554ffd3be57973c23a502f0af6",
+    "src/app/api/payments/create/route.ts": "c4462ae15d01aebb51ae5044a5aa2a00cf639149cac9e35539b852a4ff3894d2",
+    "src/app/api/workspace/seat-addon/route.ts": "054ec8a2a61e366bba55f0c0b98abd7e4803581be3dec6e7a64f817e3d3a78a1",
+    "src/app/api/workspace/upgrade/route.ts": "90825304c7542cc7ef7b1669a420a440f2d314f3f6f5f7df4211b151f4fd1d48",
+    "src/app/api/payments/order/route.ts": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/app/api/payments/notify/wechat/route.ts": "eebc2b3edd185d034bc6a7efe725d12d055ab581ea3b861f941251e77d462deb",
+    "docs/reviews/R0-E-fix-snapshot/manifest.json": "13f267ad424170056ace3888395f3a11aff0c5032eede2eccac3908d9fd3c80d",
+    "docs/reviews/R0-D-independent-review/next-production-mock-verification.json": "b741dd2ea6b720f2a1459bd39bf4dd234211edf5b6debc76f6344cff76c35dae",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/src__lib__payment-gateway.ts": "56972d800e62068843c2c7086f48577a14157046f85da4b10fbf0586d5de79b2",
+    "docs/reviews/R0-E-fix-snapshot/end-source/src__lib__payment-gateway.ts.frozen": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/src__app__api__payments__mock__confirm__route.ts": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0",
+    "docs/reviews/R0-E-fix-snapshot/end-source/src__app__api__payments__mock__confirm__route.ts.frozen": "41a6dd652f0fca66a95d49670f879ad4642005554ffd3be57973c23a502f0af6",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/src__app__api__payments__create__route.ts": "eb338f49b2d8d07b43c710129d6074f6d2c060134f5c51aaf2049b3c09bec58f",
+    "docs/reviews/R0-E-fix-snapshot/end-source/src__app__api__payments__create__route.ts.frozen": "c4462ae15d01aebb51ae5044a5aa2a00cf639149cac9e35539b852a4ff3894d2",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/src__app__api__workspace__seat-addon__route.ts": "0ab6a55c346664fec69a48a0b66fb92680d72acf91dadc2b71b7910c710cb263",
+    "docs/reviews/R0-E-fix-snapshot/end-source/src__app__api__workspace__seat-addon__route.ts.frozen": "054ec8a2a61e366bba55f0c0b98abd7e4803581be3dec6e7a64f817e3d3a78a1",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/src__app__api__workspace__upgrade__route.ts": "d6b3a40e7d065460e3d97f1b70bb89f66de31db2097bf97cc1e8e4d5c921a399",
+    "docs/reviews/R0-E-fix-snapshot/end-source/src__app__api__workspace__upgrade__route.ts.frozen": "90825304c7542cc7ef7b1669a420a440f2d314f3f6f5f7df4211b151f4fd1d48",
+    "docs/reviews/R0-D-independent-review/verification.json": "9013e6cf3f61a90e87c8a35214caab56a16761b9481b40c7aa1f56a5f5b1402a",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc590179a3c6766d9cb60b2785818caf0a0d3052d1c9dc86db11",
+    "src/app/api/__tests__/r0e-production-mock.test.ts": "48ffaf69ab2bcc990303e7d79f2610256c240e2c1b5f83ea243c129974e64f8a",
+    "docs/reviews/R0-E-fix-report.md": "c7859bec49fb901be1fb5fc96a3ccbbedaf73c8b4547260e6e15c13d28c49573"
+  }
+}

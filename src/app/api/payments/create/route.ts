@@ -6,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
 import { requireWorkspaceMembership } from "@/lib/security";
 import { pointsToCents, discountedCents, formatDiscountLabel } from "@/lib/point-rate";
-import { createCharge, resolvePaymentMode, isRealGatewayConfigured } from "@/lib/payment-gateway";
+import { createCharge, resolvePaymentMode, isRealGatewayConfigured, PaymentConfigError, type PaymentMode } from "@/lib/payment-gateway";
 import { newOrderExpiry } from "@/lib/order-expiry";
 
 /**
@@ -78,7 +78,21 @@ export async function POST(request: NextRequest) {
 
     const orderNo = `TR_${Date.now()}_${randomUUID().replace(/-/g, "").slice(0, 8)}`;
     const packName = matchedPack?.name || "算力加油包";
-    const mode = resolvePaymentMode();
+
+    // [R0-E] 统一模式裁决前置：生产显式 mock 必须在「创建本次 PENDING 订单、调用渠道、任何权益写入」之前拒绝。
+    // resolvePaymentMode 在该配置下抛 PaymentConfigError，统一返回 503 + 稳定 code，不被通用 catch 吞成 500。
+    let mode: PaymentMode;
+    try {
+      mode = resolvePaymentMode();
+    } catch (e) {
+      if (e instanceof PaymentConfigError) {
+        return NextResponse.json(
+          { success: false, code: e.code, error: e.message },
+          { status: 503 },
+        );
+      }
+      throw e;
+    }
 
     // 落 PENDING 订单（billing_record），尚未支付成功，绝不加点数
     const billingModel = (prisma as any).billing_record || (prisma as any).billingrecord;

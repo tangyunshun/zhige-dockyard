@@ -755,9 +755,11 @@ export default function AdminUsersPage() {
     }
   };
 
+  // 可批量勾选：默认仅普通用户；管理员账号仅超级管理员可勾选（与行内「操作」菜单口径一致）；
+  // 超级管理员目标与操作者本人始终不可勾选
   const isSelectableUser = (user: User) =>
     !isSuperAdminRole(user.role) &&
-    !isAdminRole(user.role) &&
+    (!isAdminRole(user.role) || isSuperAdmin) &&
     user.id !== currentUserId;
 
   // 统一规范化账号状态用于比较：Prisma UserStatus 枚举为小写（active/inactive/banned/deleted），
@@ -2214,8 +2216,8 @@ export default function AdminUsersPage() {
                           onChange={toggleSelectAll}
                           title={
                             selectAllMatching
-                              ? "点击取消跨页全选并退出批量操作"
-                              : "点击表头复选框可清空全部选择并退出批量操作"
+                              ? "已跨页全选：点击可取消并退出批量操作"
+                              : "点击可全选 / 取消当前页全部可选用户"
                           }
                           className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                         />
@@ -2279,7 +2281,9 @@ export default function AdminUsersPage() {
                         <tr
                           key={user.id}
                           className={`group hover:bg-white/60 transition-all duration-300 ${
-                            selectedUserList.some((u) => u.id === user.id)
+                            (selectAllMatching
+                              ? isSelectableUser(user)
+                              : selectedUserList.some((u) => u.id === user.id))
                               ? "bg-[#3182ce]/5"
                               : ""
                           }`}
@@ -2289,7 +2293,7 @@ export default function AdminUsersPage() {
                             {isSelectableUser(user) ? (
                               <input
                                 type="checkbox"
-                                checked={selectedUsers.has(user.id)}
+                                checked={selectAllMatching ? true : selectedUsers.has(user.id)}
                                 onChange={() => toggleSelectUser(user)}
                                 className="w-4 h-4 rounded border-slate-300 text-[#3182ce] focus:ring-[#3182ce] cursor-pointer"
                                 title={`选择用户: ${user.name || user.email || user.id}`}
@@ -2419,7 +2423,10 @@ export default function AdminUsersPage() {
                               )}
 
                               {(() => {
-                                const isTargetAdmin = isSuperAdminRole(user.role) || isAdminRole(user.role);
+                                const isTargetSuperAdmin = isSuperAdminRole(user.role);
+                                const isTargetAdminRole = isAdminRole(user.role);
+                                // 平台安全规则：超级管理员目标受保护不可操作；管理员目标仅超级管理员可操作
+                                const canOperateTarget = !isTargetSuperAdmin && (!isTargetAdminRole || isSuperAdmin);
                                 // 状态门控：注销中(deleting)处于 7 天冷静期，全局锁定，任何变更操作都不开放；
                                 // 已注销(deleted)仅对超级管理员开放“删除数据”操作，其余角色不展示操作入口；
                                 // 其余状态按各自权限判定
@@ -2430,7 +2437,7 @@ export default function AdminUsersPage() {
                                       ? isSuperAdmin
                                       : true;
                                 const hasRowAction =
-                                  !isTargetAdmin &&
+                                  canOperateTarget &&
                                   user.id !== currentUserId &&
                                   statusGate && (
                                   (canResetSession && normStatus(user.status) === "active" && !!user.hasSession) ||
@@ -4336,6 +4343,11 @@ export default function AdminUsersPage() {
         const isLocked =
           normStatus(currentMenuUser.status) === "deleted" ||
           normStatus(currentMenuUser.status) === "deleting";
+        // 平台安全规则：超级管理员目标受保护；管理员目标仅超级管理员可操作（普通管理员不可见不可操作）
+        const targetIsSuperAdmin = isSuperAdminRole(currentMenuUser.role);
+        const targetIsPlatformAdmin = isAdminRole(currentMenuUser.role);
+        const canOperateTarget =
+          !targetIsSuperAdmin && (!targetIsPlatformAdmin || isSuperAdmin);
         return createPortal(
           <div
             ref={actionMenuRef}
@@ -4355,7 +4367,7 @@ export default function AdminUsersPage() {
             {canResetSession &&
               normStatus(currentMenuUser.status) === "active" &&
               !!currentMenuUser.hasSession &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -4375,7 +4387,7 @@ export default function AdminUsersPage() {
             {canUpdate &&
               normStatus(currentMenuUser.status) === "active" &&
               !currentMenuUser.hasSession &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -4394,7 +4406,7 @@ export default function AdminUsersPage() {
             {/* 解禁登录 - 受控于 canUpdate：已停用用户恢复登录，不能操作超级管理员和自己 */}
             {canUpdate &&
               normStatus(currentMenuUser.status) === "inactive" &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={(e) => {
@@ -4414,7 +4426,7 @@ export default function AdminUsersPage() {
             {canBan &&
               (normStatus(currentMenuUser.status) === "active" ||
                 normStatus(currentMenuUser.status) === "inactive") &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={() => {
@@ -4433,7 +4445,7 @@ export default function AdminUsersPage() {
             {/* 解封用户 - 受控于 canUnban：对已封禁用户显示，不能操作超级管理员和自己 */}
             {canUnban &&
               normStatus(currentMenuUser.status) === "banned" &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <button
                   onClick={() => {
@@ -4450,7 +4462,7 @@ export default function AdminUsersPage() {
 
             {/* 修改角色身份 - 受控于 canChangeRole：不能操作超级管理员和自己 */}
             {canChangeRole &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId &&
               !isLocked && (
                 <button
@@ -4468,7 +4480,7 @@ export default function AdminUsersPage() {
 
             {/* 单用户高级运营操作分区（重置密码 / 发送通知 / 调整算力 / 查看登录历史） */}
             {!isLocked &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId &&
               (canSecurityReset ||
                 hasPermission("announcement:create") ||
@@ -4545,7 +4557,7 @@ export default function AdminUsersPage() {
             {isSuperAdmin &&
               (normStatus(currentMenuUser.status) === "banned" ||
                 normStatus(currentMenuUser.status) === "deleted") &&
-              !isSuperAdminRole(currentMenuUser.role) &&
+              canOperateTarget &&
               currentMenuUser.id !== currentUserId && (
                 <>
                   <div className="my-1 border-t border-slate-100" />

@@ -2128,3 +2128,95 @@ model tokensettlementrecovery {
   @@index([userId], map: "TokenSettlementRecovery_userId_idx")
 }
 
+
+// ─────────────────────────────────────────────────────────────
+// [R0-J1 离线 schema 草案] 原方案 F13 存储操作记录
+// 上线前需执行迁移（prisma migrate dev）并重新生成客户端；
+// 迁移未执行前存储写入诚实拒绝（STORAGE_QUOTA_NOT_READY），请求中不自动 DDL。
+// 回滚：drop TABLE storageoperation 即可，不影响既有表。
+// ─────────────────────────────────────────────────────────────
+model storageoperation {
+  id          String   @id @default(cuid())
+  /// 幂等键：同一操作身份重放不重复占用/确认/释放
+  opId        String   @unique
+  workspaceId String
+  userId      String
+  /// RESERVE(预留) | RELEASE(释放)
+  opType      String
+  /// RESERVED 已预留待确认 | CONFIRMED 已确认(文档已创建) | RELEASED 已释放 | PENDING_CLEANUP 待清理(对象状态未知) | CANCELLED 认领关闭(对象保留/并发让位，未释放)
+  status      String
+  /// 对象定位（保存成功后回填；未知保存结果为 null → PENDING_CLEANUP）
+  filePath    String?
+  bytes       Int
+  documentId  String?
+  /// 失败/待核实原因
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([opId])
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// [R0-K / 原 F14 K03 离线 schema 草案] 文件解析资源准入
+// 上线前需执行 prisma/migrations/20261108000000_parse_admission/migration.sql
+// 并重新生成客户端；迁移未执行前解析准入诚实拒绝
+// （PARSE_ADMISSION_NOT_READY 503），请求中不自动 DDL。
+// 仅服务本批解析资源准入；不修改既有存储/账务表。
+// 回滚：DROP TABLE parselease; DROP TABLE parseadmissioncounter;
+// ─────────────────────────────────────────────────────────────
+model parseadmissioncounter {
+  id          String    @id
+  /// 当前活跃租约数（平台行 id="platform"；用户行 id="user:<uid>"）
+  active      Int       @default(0)
+  /// 平台行累计工作预算单位
+  workUnits   Int       @default(0)
+  /// 用户行：频次窗口内请求数
+  requests    Int       @default(0)
+  windowStart DateTime?
+  updatedAt   DateTime  @updatedAt
+}
+
+model parselease {
+  id          String    @id @default(cuid())
+  /// 租约唯一身份
+  leaseId     String    @unique
+  /// 持有者令牌：释放/隔离/续约均按此校验，旧执行者不能释放新租约
+  claimToken  String    @unique
+  userId      String
+  instanceId  String
+  /// ACTIVE | RELEASED | EXPIRED | QUARANTINED（退出确认失败保守隔离）
+  status      String
+  workUnits   Int       @default(0)
+  leaseUntil  DateTime
+  releasedAt  DateTime?
+  note        String?   @db.VarChar(240)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([status, leaseUntil])
+  @@index([status, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────────
+// [R0 / 原 F15 离线 schema 草案] 发送前共享原子预算（L02）
+// 由 B2 统一增量合并自 deliverables/B1/schema/verificationbudget.prisma。
+// 等价 DDL 见 deliverables/B1/schema/verificationbudget.sql。
+// 上线前需执行对应离线迁移并重新生成客户端；迁移未执行前
+// admitSend 诚实返回 not-ready（503），请求中不自动 DDL。
+// 预算键 id 形如 platform | ip:<ip> | target:<channel>:<target>；
+// version 为乐观并发（CAS）控制列。
+// 回滚：DROP TABLE VerificationBudget;
+// ─────────────────────────────────────────────────────────────
+model VerificationBudget {
+  id          String   @id // 预算键：platform | ip:<ip> | target:<channel>:<target>
+  count       Int      @default(0)
+  windowStart BigInt   // 滚动窗口起点（毫秒时间戳；B2 真实列，代码侧已 Number() 兼容）
+  version     Int      @default(1) // 乐观并发控制（CAS）版本号
+  updatedAt   DateTime @updatedAt
+
+  @@index([id])
+}

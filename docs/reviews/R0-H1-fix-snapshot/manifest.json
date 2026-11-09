@@ -1,0 +1,21 @@
+{
+  "capturedAtReal": "2026-11-07T16:01:37.709377+08:00",
+  "purpose": "R0-H1 batch start baseline (before trusted-bound and mode-isolation fixes)",
+  "files": {
+    "src/app/api/studio/handler.ts": {
+      "sha256": "0c486109d2f51e3df6d1f7d25c3b49b6c6df595f4f6b140aa650e92037138150",
+      "bytes": 335347,
+      "snapshotCopy": "docs/reviews/R0-H1-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    },
+    "src/lib/model-cost-admission.ts": {
+      "sha256": "46f02efaf85d2d410899c6bbe53d08410823c3870bdbea392726e6208bae5514",
+      "bytes": 7839,
+      "snapshotCopy": "docs/reviews/R0-H1-fix-snapshot/frozen-source/src__lib__model-cost-admission.ts.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+      "sha256": "1160d748e83b5203aaee2bbf922d5c2bb3360190da5dde8cae594b5fa4085874",
+      "bytes": 28215,
+      "snapshotCopy": "docs/reviews/R0-H1-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt"
+    }
+  }
+}

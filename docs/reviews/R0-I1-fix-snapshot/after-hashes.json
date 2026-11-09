@@ -1,0 +1,26 @@
+{
+  "src/app/api/studio/handler.ts": {
+    "sha256After": "80fe316293fb007f858282bd7212aad5c881d3a31e4c0b42909b816060ed46d0",
+    "bytes": 336264
+  },
+  "src/app/api/billing/estimate/route.ts": {
+    "sha256After": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+    "bytes": 9426
+  },
+  "src/lib/model-registry.ts": {
+    "sha256After": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+    "bytes": 68159
+  },
+  "src/lib/workspace-byo-model.ts": {
+    "sha256After": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+    "bytes": 20307
+  },
+  "src/app/admin/models/byok-service-rate.tsx": {
+    "sha256After": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+    "bytes": 8107
+  },
+  "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+    "sha256After": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+    "bytes": 52002
+  }
+}

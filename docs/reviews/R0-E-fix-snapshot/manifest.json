@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-11-07T00:32:57+08:00",
+  "purpose": "R0-E：原方案 F08 生产环境禁止模拟支付入账",
+  "note": "改动前保存的真实原始副本在 frozen-source/，结束态在 end-source/；两者加 .frozen 后缀以退出 tsconfig 的 **/*.ts(x) 编译收集，内容逐字节未变。frozen-source 的 5 个 SHA256 与 R0-D 独立审核 next-production-mock-verification.json 的 sha256 字段逐项一致。历史报告、审核材料、历史反例脚本均未改动。",
+  "gitHead": "761684be8d5661d6ed288f3b91d1fedfdc795a75",
+  "gitStatusAtStart": { "total": 123, "modified": 109, "untracked": 14 },
+  "startSource": "docs/reviews/R0-E-fix-snapshot/frozen-source/",
+  "endSource": "docs/reviews/R0-E-fix-snapshot/end-source/",
+  "files": [
+    { "path": "src/lib/payment-gateway.ts", "startSha256": "56972d800e62068843c2c7086f48577a14157046f85da4b10fbf0586d5de79b2", "endSha256": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141", "diff": "+24 / -1" },
+    { "path": "src/app/api/payments/mock/confirm/route.ts", "startSha256": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0", "endSha256": "41a6dd652f0fca66a95d49670f879ad4642005554ffd3be57973c23a502f0af6", "diff": "+39 / -6" },
+    { "path": "src/app/api/payments/create/route.ts", "startSha256": "eb338f49b2d8d07b43c710129d6074f6d2c060134f5c51aaf2049b3c09bec58f", "endSha256": "c4462ae15d01aebb51ae5044a5aa2a00cf639149cac9e35539b852a4ff3894d2", "diff": "+16 / -2" },
+    { "path": "src/app/api/workspace/seat-addon/route.ts", "startSha256": "0ab6a55c346664fec69a48a0b66fb92680d72acf91dadc2b71b7910c710cb263", "endSha256": "054ec8a2a61e366bba55f0c0b98abd7e4803581be3dec6e7a64f817e3d3a78a1", "diff": "+16 / -2" },
+    { "path": "src/app/api/workspace/upgrade/route.ts", "startSha256": "d6b3a40e7d065460e3d97f1b70bb89f66de31db2097bf97cc1e8e4d5c921a399", "endSha256": "90825304c7542cc7ef7b1669a420a440f2d314f3f6f5f7df4211b151f4fd1d48", "diff": "+17 / -3" }
+  ],
+  "newFiles": [
+    "src/app/api/__tests__/r0e-production-mock.test.ts",
+    "docs/reviews/R0-E-fix-report.md",
+    "docs/reviews/R0-E-fix-snapshot/manifest.json",
+    "docs/reviews/R0-E-fix-snapshot/verify-r0e-pages.cjs",
+    "docs/reviews/R0-E-fix-snapshot/frozen-source/*",
+    "docs/reviews/R0-E-fix-snapshot/end-source/*"
+  ],
+  "errorContract": {
+    "code": "PRODUCTION_MOCK_PAYMENT_DISABLED",
+    "httpStatus": { "mockGetPost": 403, "paidOrderRoutes": 503 },
+    "success": false,
+    "message": "当前支付配置不允许在生产环境使用模拟支付（PAYMENT_MODE=mock）。该操作已拒绝；请改用真实支付渠道或修正部署配置。",
+    "realModeMessage": "当前为真实支付模式，模拟收银台不可用",
+    "rejectedBefore": "读取订单、调用账务/履约（grantPoints）、创建本次 PENDING 付费订单、调用真实/模拟渠道、发送确认或成功通知",
+    "configSwitchAdded": false,
+    "bypassEndpointAdded": false,
+    "autoSwitchToRealAdded": false
+  },
+  "environmentMatrix": {
+    "production+mock(含大小写/空格变体)": "resolvePaymentMode 抛 PaymentConfigError；createCharge 拒绝；mock GET/POST 403；create/seat/upgrade 503；零订单/零入账/零渠道",
+    "production+real": "resolvePaymentMode 返回 REAL；mock GET/POST 403(REAL_MODE_MOCK_UNAVAILABLE)；create 缺凭证诚实拒绝（不 MOCK 降级）",
+    "production+未配置/非法值": "resolvePaymentMode 返回 REAL（fail-closed）；mock GET/POST 403",
+    "development/test+mock 或 缺失配置": "保持 MOCK 联调：mock GET/POST 可用、create/seat/upgrade 创建 PENDING 订单并返回 MOCK 收银台、不入账",
+    "合法免费升级(基础档月年均为0)": "不经付款路径，按既有规则直接开通，不受生产+mock 影响"
+  },
+  "protectedUnchanged": {
+    "src/lib/credit-service.ts": "未改动（grantPoints/扣点/自动退款恢复队列零差量，仅被隔离测试桩替换）",
+    "src/lib/payment/wechatpay.ts": "未改动（真实 notify 验签算法/证书处理保持）",
+    "src/lib/payment/alipay.ts": "未改动",
+    "src/app/api/payments/notify/wechat/route.ts": "未改动（真实回调既有合法流程与 ACK 保持）",
+    "docs/reviews/R0-D-independent-review/verify-next-production-mock.cjs": "未运行、未修改、不删除",
+    "docs/reviews/R0-D-independent-review/next-production-mock-verification.json": "未改动（哈希作为本批还原基线）",
+    "R0-A/B/C 相关代码与冻结材料": "继续冻结，未重新开发"
+  },
+  "reproduction": {
+    "method": "把 5 个源文件临时换成 frozen-source 原始副本，在完全相同的一组 E01—E08 断言上跑；finally 恢复工作区并逐项校验哈希",
+    "startCopyResult": "8 failed / 11 passed, exit 1（复现：生产 mock 仍能下单/入账、mock GET/POST 在配置错误下未统一拒绝）",
+    "fixedResult": "19 passed, exit 0",
+    "restoredAll": true,
+    "workspaceRollbackPerformed": false,
+    "note": "还原过程中因 swap 脚本文件名冲突（route.ts 被覆盖）导致临时损坏，已用 frozen-source 重新还原并逐字节复核结束态哈希一致；未实际回退工作区"
+  },
+  "isolation": "内存 Prisma / 权限 / 计费 / 履约 / 验签 IO 夹具；环境、凭证、渠道、数据库均隔离；process.env 用 vi.stubEnv 隔离并自动恢复；零真实库写入/迁移/清账补账/退款、零真实支付/模型调用/密钥读取/网络访问、零部署。"
+}

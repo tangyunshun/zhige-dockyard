@@ -1,0 +1,46 @@
+{
+  "capturedAt": "2026-11-07T16:49:00.436Z",
+  "evidence": [
+    {
+      "case": "historical local object",
+      "legacy": "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\assets\\w1\\legacy.txt",
+      "result": {
+        "ok": true,
+        "notExists": true
+      },
+      "remainingObjects": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\assets\\w1\\legacy.txt"
+      ]
+    },
+    {
+      "case": "S3 path mismatch",
+      "saved": {
+        "filePath": "assets/w1/387608d5-82f1-4280-879c-fc68d94ffdd1.txt",
+        "size": 3,
+        "mimeType": "text/plain"
+      },
+      "result": {
+        "ok": true,
+        "notExists": false
+      },
+      "commands": [
+        {
+          "kind": "PutObjectCommand",
+          "key": "assets/w1/387608d5-82f1-4280-879c-fc68d94ffdd1.txt"
+        },
+        {
+          "kind": "GetObjectCommand",
+          "key": "w1/387608d5-82f1-4280-879c-fc68d94ffdd1.txt"
+        },
+        {
+          "kind": "DeleteObjectCommand",
+          "key": "w1/387608d5-82f1-4280-879c-fc68d94ffdd1.txt"
+        }
+      ],
+      "remainingKeys": [
+        "assets/w1/387608d5-82f1-4280-879c-fc68d94ffdd1.txt"
+      ]
+    }
+  ],
+  "limits": "Actual file-store, fake local fs and fake AWS SDK command transport; dummy environment values; no actual files, keys or cloud requests."
+}

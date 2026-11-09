@@ -1,0 +1,36 @@
+{
+  "capturedAtReal": "2026-11-07T18:07:15.381171+08:00",
+  "purpose": "R0-I1 batch start baseline (before month-order / read-only-resolver / admin-copy fixes)",
+  "files": {
+    "src/app/api/studio/handler.ts": {
+      "sha256": "f9c6364636e2638bbd3b94b24940d1db08201af3530411f4516ea1719df3e2ff",
+      "bytes": 335304,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    },
+    "src/app/api/billing/estimate/route.ts": {
+      "sha256": "8a2fd467ec31ec0d2bfcd60ec1446687f119807ea220c5460c01e06ea66fa1e6",
+      "bytes": 9293,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt"
+    },
+    "src/lib/model-registry.ts": {
+      "sha256": "3c0a0bd9d2a0b0c719d67fa7fecfe33d362af7d517f03dbb2dc83c295f7b7ee2",
+      "bytes": 69569,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__lib__model-registry.ts.snapshot.txt"
+    },
+    "src/lib/workspace-byo-model.ts": {
+      "sha256": "fe9eb769098679f9a5b07bd1a95f3a96fb71879b3f11a5509d42b3f8bbdfed7d",
+      "bytes": 19271,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__lib__workspace-byo-model.ts.snapshot.txt"
+    },
+    "src/app/admin/models/byok-service-rate.tsx": {
+      "sha256": "1583e06f95c5b195d0835b554c25d5c3b20e4646f758cd5eb2b4ca08af96744f",
+      "bytes": 7798,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__app__admin__models__byok-service-rate.tsx.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+      "sha256": "2c0bac24b0438cf239ffc8653091709e7d9da1ae23bf835b0f75f72de5069ada",
+      "bytes": 40952,
+      "snapshotCopy": "docs/reviews/R0-I1-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt"
+    }
+  }
+}

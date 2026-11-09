@@ -1,0 +1,71 @@
+{
+  "capturedAt": "2026-11-05T16:45:08.573Z",
+  "purpose": "Audit-time snapshot of reviewed non-secret files; not a claim that IDE saved a pre-change snapshot or that production is approved.",
+  "files": [
+    {
+      "source": "src/constants/workspace-plans.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/constants/workspace-plans.ts.snapshot.txt",
+      "sha256": "caaf9d799be130fbcf5f505eb6722652f63926e389444a3c03164492eef2e78a"
+    },
+    {
+      "source": "src/lib/limit-utils.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/lib/limit-utils.ts.snapshot.txt",
+      "sha256": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a"
+    },
+    {
+      "source": "src/lib/upgrade-response-protocol.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/lib/upgrade-response-protocol.ts.snapshot.txt",
+      "sha256": "121d9c59f78ef7046c1c9aefa59de52086d4de4c636d7787a6ca82aa8d83a2db"
+    },
+    {
+      "source": "src/lib/workspace-plan-service.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/lib/workspace-plan-service.ts.snapshot.txt",
+      "sha256": "ad70260b22588ad412d0b8838fda7abd4d8bdda769a71d309dff67f56609b9ee"
+    },
+    {
+      "source": "src/lib/workspace-upgrade-service.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/lib/workspace-upgrade-service.ts.snapshot.txt",
+      "sha256": "925df6f1d20aae92c70851a5e1d532c736b7754b8da56cc2872931c0f9defc6b"
+    },
+    {
+      "source": "src/app/api/workspace/upgrade/route.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/app/api/workspace/upgrade/route.ts.snapshot.txt",
+      "sha256": "d6b3a40e7d065460e3d97f1b70bb89f66de31db2097bf97cc1e8e4d5c921a399"
+    },
+    {
+      "source": "src/app/workspace/upgrade/page.tsx",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/app/workspace/upgrade/page.tsx.snapshot.txt",
+      "sha256": "63e992941029129993dd390c8061dfd504360eb084dbc7270c9e98e78d18a8ac"
+    },
+    {
+      "source": "src/components/studio/UpgradeModal.tsx",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/components/studio/UpgradeModal.tsx.snapshot.txt",
+      "sha256": "b5e837e85324943a4fa14453fc5fd00636613c457b382e68bb63aa83dbb6ec94"
+    },
+    {
+      "source": "src/components/workspace-hub/modals/UpgradeModal.tsx",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/components/workspace-hub/modals/UpgradeModal.tsx.snapshot.txt",
+      "sha256": "309645d183366b51f97661754aeb8ce341db795682a0eb3e1516f9f7d5fd3bb2"
+    },
+    {
+      "source": "src/app/api/__tests__/r0a4-combo-regression.test.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/app/api/__tests__/r0a4-combo-regression.test.ts.snapshot.txt",
+      "sha256": "a0dce63c667f734a6af592394b1de8d731de3d180d361b8761c556eb7447691d"
+    },
+    {
+      "source": "docs/reviews/R0-A5-fix-report.md",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/docs/reviews/R0-A5-fix-report.md.snapshot.txt",
+      "sha256": "ba7ea67e278c05e0632a74a11dde84ab2275f14c9b6965e1590dbafee34f4c5d"
+    },
+    {
+      "source": "src/lib/payment/fulfill.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/lib/payment/fulfill.ts.snapshot.txt",
+      "sha256": "63371884f259e0eea85bd4552194dd04f9812c98235684c8de9dc257fd226ce0"
+    },
+    {
+      "source": "src/app/api/payments/mock/confirm/route.ts",
+      "snapshot": "docs/reviews/R0-A5-independent-review/frozen-source/src/app/api/payments/mock/confirm/route.ts.snapshot.txt",
+      "sha256": "7be08326998d6a043bb5a4d9281c2283169f85770bc95ceee4f3a2fd4d0693d8"
+    }
+  ]
+}

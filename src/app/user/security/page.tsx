@@ -35,6 +35,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useToast } from "@/components/Toast";
 
 interface LoginHistory {
@@ -100,12 +101,15 @@ export default function UserSecurityPage() {
   const [kickTarget, setKickTarget] = useState<any | null>(null);
   const [kicking, setKicking] = useState(false);
   const [kickAllModal, setKickAllModal] = useState(false);
+  useEscapeKey(kickAllModal, () => setKickAllModal(false));
   const [kickingAll, setKickingAll] = useState(false);
 
   // 删除历史记录二次确认状态
   const [deleteHistoryTarget, setDeleteHistoryTarget] = useState<LoginHistory | null>(null);
   const [clearAllHistoryModal, setClearAllHistoryModal] = useState(false);
+  useEscapeKey(clearAllHistoryModal, () => setClearAllHistoryModal(false));
   const [deletingHistory, setDeletingHistory] = useState(false);
+  const [clearAllConfirmText, setClearAllConfirmText] = useState("");
 
   // 敏感操作二次验证 (2FA / 高危防护) 与告警偏好
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(false);
@@ -1094,7 +1098,7 @@ export default function UserSecurityPage() {
                 {loginHistory.length > 0 && (
                   <button
                     type="button"
-                    onClick={() => setClearAllHistoryModal(true)}
+                    onClick={() => { setClearAllConfirmText(""); setClearAllHistoryModal(true); }}
                     className="text-xs text-slate-500 hover:text-rose-600 font-semibold hover:bg-rose-50 px-2.5 py-1 rounded-lg transition-colors border border-slate-200 hover:border-rose-200 cursor-pointer"
                   >
                     清空历史
@@ -1335,6 +1339,20 @@ export default function UserSecurityPage() {
               <p className="text-xs text-slate-500 mt-1">
                 确认清空个人所有的历史登录审计日志吗？清空后将无法查阅过去的登录记录。
               </p>
+              <div className="mt-3 text-left space-y-1">
+                <label className="block text-xs font-bold text-slate-700">
+                  请输入「<span className="font-mono text-rose-600">清空</span>」以确认执行
+                  <span className="text-red-500 ml-0.5">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={clearAllConfirmText}
+                  onChange={(e) => { setClearAllConfirmText(e.target.value); }}
+                  maxLength={6}
+                  placeholder="清空"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-xs"
+                />
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 mt-5">
@@ -1348,7 +1366,7 @@ export default function UserSecurityPage() {
               <button
                 type="button"
                 onClick={confirmClearAllHistory}
-                disabled={deletingHistory}
+                disabled={deletingHistory || clearAllConfirmText !== "清空"}
                 className="px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {deletingHistory ? "正在清空..." : "确认清空全部"}

@@ -1,0 +1,1 @@
+import {defineConfig} from "vitest/config";import path from "node:path";export default defineConfig({resolve:{alias:{"@":path.resolve(__dirname,"../../../src")}},test:{environment:"node",include:["docs/reviews/R0-K1-implementation-review/*-review.test.ts","src/app/api/__tests__/r0k1-fixes.test.ts"],fileParallelism:false,isolate:true,testTimeout:20000}});

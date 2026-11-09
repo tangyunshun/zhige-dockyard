@@ -1,0 +1,20 @@
+
+import fs from 'node:fs';
+import {afterEach} from 'vitest';
+beforeEach(()=>{vi.stubEnv('NODE_ENV','test');vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','false');});
+afterEach(()=>vi.unstubAllEnvs());
+it('J03 fresh module: '+coldFixture.mode,async()=>{
+  fx.useRealResolver=true;
+  h.tables.workspace_model_policy=new Map([['policy',{id:'policy',workspaceId:'w1',defaultDeploymentId:coldFixture.defaultId,allowedDeploymentIds:['dep-1'],disabledDeploymentIds:[]}]]);
+  h.tables.workspace_member_model_preference=new Map(coldFixture.personal?[['preference',{id:'preference',userId:'u1',workspaceId:'w1',isAuto:false,deploymentId:'byo'}]]:[]);
+  h.tables.workspace_byo_model=new Map([['byo-row',{id:'byo-row',workspaceId:'w1',label:'synthetic-model',enabled:true,capabilities:['TEXT_GENERATION'],protocol:'OPENAI_COMPATIBLE',baseUrl:'https://fixture.invalid',apiKeyCipher:'enc:synthetic-key',contextLimit:128000,shareWithMembers:true,priceInputMicrosPerMillion:1000,priceOutputMicrosPerMillion:1000,priceStatus:'VERIFIED'}]]);
+  h.tables.user_byo_model_assignment=new Map();h.rawFault.fail=coldFixture.fail;
+  // No registry function or helper has been called in this isolated test file.
+  const {GET}=await import('@/app/api/billing/estimate/route');
+  const response=await GET(new NextRequest('http://localhost/api/billing/estimate?componentId=comp-1&workspaceId=w1'+coldFixture.query,{headers:{authorization:'Bearer fixture'}}));
+  const body=await response.json();
+  const writes=h.rawSql.filter(s=>/^EXEC\s+(ALTER|CREATE|DROP|TRUNCATE|INSERT|UPDATE|DELETE|REPLACE)\b/i.test(s));
+  expect(response.status).toBe(coldFixture.status);expect(writes).toHaveLength(coldFixture.exec);expect(h.writes).toHaveLength(0);
+  if(coldFixture.fail){expect(body.code).toBe('BYO_SHARE_COLUMN_NOT_READY');expect(h.rawSql[0]).toMatch(/^QUERY SELECT/);}else{expect(body.data.code).toBe('BYOK_BILLING_POLICY_UNCONFIRMED');expect(body.data.points).toBeNull();expect(body.data.yuan).toBeNull();if(coldFixture.exec===0)expect(h.rawSql[0]).toMatch(/^QUERY SELECT/);}
+  fs.writeFileSync('docs/reviews/R0-I1-independent-review/cold-'+coldFixture.mode+'-verification.json',JSON.stringify({capturedAt:new Date().toISOString(),fixture:coldFixture,status:response.status,code:body.code??body.data?.code,rawStatements:[...h.rawSql],rawWriteAttempts:writes.length,regularWrites:[...h.writes],limits:'One fresh isolated Vitest file per cold path; actual GET/registry/BYO helper, only Prisma/decryption IO faked. Expected write count reproduces current defect, not acceptance.'},null,2));
+});

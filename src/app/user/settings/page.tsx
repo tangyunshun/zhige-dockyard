@@ -37,6 +37,8 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 
 // 默认基础系统偏好配置（默认采用亮色系主题，契合知阁全局亮色规范）
 const DEFAULT_SYSTEM_SETTINGS = {
@@ -350,9 +352,11 @@ export default function UserSettingsPage() {
 
   // 加载与保存状态
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  useEscapeKey(showResetConfirm, () => setShowResetConfirm(false));
 
   // 国际化文本解析器
   const t = (key: string): string => {
@@ -398,7 +402,7 @@ export default function UserSettingsPage() {
         }
       }
     } catch (error) {
-      console.error("加载偏好设置异常:", error);
+      setLoadError("偏好设置加载失败，请重试");
     }
   }, []);
 
@@ -412,6 +416,7 @@ export default function UserSettingsPage() {
       });
       if (res.ok) {
         const data = await res.json();
+          setLoadError(null);
         if (data && Array.isArray(data.workspaces)) {
           setUserWorkspaces(
             data.workspaces.map((w: any) => ({
@@ -423,7 +428,7 @@ export default function UserSettingsPage() {
         }
       }
     } catch (error) {
-      console.error("加载真实工作空间列表异常:", error);
+      setLoadError("工作空间列表加载失败，请重试");
     }
   }, []);
 
@@ -446,7 +451,7 @@ export default function UserSettingsPage() {
         }
       }
     } catch (error) {
-      console.error("加载登录设备策略异常:", error);
+      setLoadError("登录设备策略加载失败，请重试");
     }
   }, []);
 
@@ -474,7 +479,7 @@ export default function UserSettingsPage() {
         }
       }
     } catch (error) {
-      console.error("加载通知偏好异常:", error);
+      setLoadError("通知偏好加载失败，请重试");
     }
   }, []);
 
@@ -862,6 +867,11 @@ export default function UserSettingsPage() {
 
   return (
     <div className="space-y-6 pb-24 font-sans text-left">
+      {loadError && (
+        <div className="mb-4">
+          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); window.location.reload(); }} />
+        </div>
+      )}
       {/* 顶部标准页头（对齐全系统个人中心统一头部规范） */}
       <div className="shrink-0 flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-1">
         <div>

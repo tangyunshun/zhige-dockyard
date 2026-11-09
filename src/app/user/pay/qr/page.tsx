@@ -13,12 +13,19 @@ import { useRouter, useSearchParams } from "next/navigation";
 import QRCode from "qrcode";
 import { AlertTriangle, CheckCircle2, CreditCard, Loader2 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import {
+  resolveCashierStatusView,
+  resolveCashierSuccessView,
+  isQrReady,
+} from "@/lib/payment-cashier-display";
 
 interface OrderInfo {
   orderNo: string;
   title: string;
+  type: string;
   amountCents: number;
   points: number;
+  seats: number;
   status: string;
   channel: string;
   expiresAt: string | null;
@@ -85,8 +92,6 @@ export default function PayQrPage() {
     };
   }, [orderNo, order?.status, fetchOrder]);
 
-  const expired = order?.status === "PENDING" && order?.expiresAt && new Date(order.expiresAt) < new Date();
-
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
@@ -116,6 +121,12 @@ export default function PayQrPage() {
   }
 
   const paid = order.status === "SUCCESS";
+  // [R0-B1 F4] 真实状态视图：仅 SUCCESS 为完成；EXPIRED/FAILED/REFUNDED/未知分别诚实呈现
+  const statusView = resolveCashierStatusView(order.status);
+  const expiredPending =
+    order.status === "PENDING" && order?.expiresAt && new Date(order.expiresAt) < new Date();
+  // 二维码可用性：PENDING 且有载体才展示；缺载体明确报错，不无限加载
+  const qrReady = isQrReady(order);
 
   return (
     <div className="max-w-md mx-auto py-8 px-4">
@@ -137,37 +148,96 @@ export default function PayQrPage() {
           </div>
 
           {paid ? (
-            <div className="space-y-3 py-4">
-              <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto" />
-              <p className="text-sm font-black text-emerald-600">支付成功，算力已到账</p>
-              <button
-                onClick={() => router.push("/user/points")}
-                className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
-              >
-                查看点数流水
-              </button>
-            </div>
-          ) : expired || order.status === "EXPIRED" ? (
+            (() => {
+              // [R0-B1 F4] 按商品类型展示完成结果：席位/算力/套餐各自文案与入口，未知类型中性
+              const successView = resolveCashierSuccessView(order.type, order.seats);
+              return (
+                <div className="space-y-3 py-4">
+                  <CheckCircle2 className="w-14 h-14 text-emerald-500 mx-auto" />
+                  <p className="text-sm font-black text-emerald-600">{successView.message}</p>
+                  <div className="flex flex-col gap-2 items-center">
+                    {successView.entries.map((e) => (
+                      <button
+                        key={e.href}
+                        onClick={() => router.push(e.href)}
+                        className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                      >
+                        {e.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()
+          ) : statusView.kind === "expired" || expiredPending ? (
             <div className="space-y-3 py-4">
               <AlertTriangle className="w-14 h-14 text-amber-400 mx-auto" />
               <p className="text-sm font-black text-slate-700">订单已超时关闭</p>
+              <p className="text-[11px] text-slate-400">未完成支付；如已付款请凭订单号联系客服核实，请勿重复支付</p>
               <button
                 onClick={() => router.push("/user/pay")}
                 className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
-                重新下单
+                返回收银台
+              </button>
+            </div>
+          ) : statusView.kind === "failed" ? (
+            <div className="space-y-3 py-4">
+              <AlertTriangle className="w-14 h-14 text-rose-500 mx-auto" />
+              <p className="text-sm font-black text-rose-600">订单支付失败</p>
+              <p className="text-[11px] text-slate-400">未完成入账；如已扣款请凭订单号联系客服核实，请勿重复支付</p>
+              <button
+                onClick={() => router.push("/user/pay")}
+                className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                返回收银台
+              </button>
+            </div>
+          ) : statusView.kind === "refunded" ? (
+            <div className="space-y-3 py-4">
+              <AlertTriangle className="w-14 h-14 text-rose-500 mx-auto" />
+              <p className="text-sm font-black text-rose-600">订单已退款</p>
+              <p className="text-[11px] text-slate-400">对应权益未生效；如有疑问请凭订单号联系客服</p>
+              <button
+                onClick={() => router.push("/user/pay")}
+                className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                返回收银台
+              </button>
+            </div>
+          ) : statusView.kind === "unknown" ? (
+            <div className="space-y-3 py-4">
+              <AlertTriangle className="w-14 h-14 text-slate-400 mx-auto" />
+              <p className="text-sm font-black text-slate-700">{statusView.statusLabel}</p>
+              <p className="text-[11px] text-slate-400">{statusView.resultMessage}</p>
+              <button
+                onClick={() => router.push("/user/pay")}
+                className="px-5 py-2.5 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                返回收银台
               </button>
             </div>
           ) : (
             <div className="space-y-3 py-2">
-              {qrDataUrl ? (
+              {qrReady ? (
                 <div className="inline-block p-3 bg-white border-2 border-slate-100 rounded-2xl shadow-xs">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={qrDataUrl} alt="微信支付二维码" className="w-[220px] h-[220px]" />
+                  <img src={qrDataUrl ?? ""} alt="微信支付二维码" className="w-[220px] h-[220px]" />
                 </div>
               ) : (
-                <div className="h-[244px] flex items-center justify-center">
-                  <Loader2 className="w-6 h-6 text-slate-300 animate-spin" />
+                // [R0-B1 F4] 缺二维码载体：明确报错与出口，不无限加载
+                <div className="h-[244px] flex flex-col items-center justify-center gap-2 px-4">
+                  <AlertTriangle className="w-8 h-8 text-amber-400" />
+                  <p className="text-xs font-bold text-slate-600">未能获取支付二维码</p>
+                  <p className="text-[10px] text-slate-400 text-center leading-relaxed">
+                    支付渠道未返回二维码载体，本次支付无法继续；未支付不会扣款
+                  </p>
+                  <button
+                    onClick={() => router.push("/user/pay")}
+                    className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                  >
+                    返回收银台
+                  </button>
                 </div>
               )}
               <p className="text-[11px] text-slate-400 flex items-center justify-center gap-1.5">
@@ -186,7 +256,7 @@ export default function PayQrPage() {
         <div className="bg-slate-50 border-t border-slate-100 px-5 py-3">
           <p className="text-[10px] text-slate-400 leading-relaxed">
             本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准；
-            平台在收到验签通过的通知后才进行算力入账。
+            平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。
           </p>
         </div>
       </div>

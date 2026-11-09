@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = verifySmsCode(phone, code);
+    const result = await verifySmsCode(phone, code, "login");
 
     return NextResponse.json({
       valid: result.valid,

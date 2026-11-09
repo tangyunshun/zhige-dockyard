@@ -1,0 +1,48 @@
+{
+  "capturedAt": "2026-11-06T23:12:35+08:00",
+  "purpose": "R0-B3 唯一任务：关闭 B2-1 剩余阻断项（事务内部异步数据库等待后仍复用等待前的时间）",
+  "note": "本次在改动前保存了真实原始副本：frozen-source/ 两份文件的 SHA256 与 B2 独立复核 verification.json 的 sha256 字段完全一致，可作为 B3 真实开始态。end-source/ 为结束态副本。历史报告与 B2 快照均未改动。",
+  "gitHead": "761684be8d5661d6ed288f3b91d1fedfdc795a75",
+  "gitStatusAtStart": { "total": 115, "modified": 101, "untracked": 14 },
+  "b3StartSource": "docs/reviews/R0-B3-fix-snapshot/frozen-source/",
+  "b3EndSource": "docs/reviews/R0-B3-fix-snapshot/end-source/",
+  "files": [
+    {
+      "path": "src/lib/payment/seat-addon-fulfill.ts",
+      "startSha256": "4fc0e9a42e95e3df9e457fdcfde7bfba125316a48d750f89546d9e3aefc26c6a",
+      "endSha256": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+      "diff": "81 insertions, 18 deletions"
+    },
+    {
+      "path": "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "startSha256": "ee29b40ac5e60e07b37d9ee67b77e4045d476465ae32b569a7b15345910958e8",
+      "endSha256": "6077a33df08ab79ac554f746af7d6c9e900223992c305568b5009c2bf308b413",
+      "diff": "243 insertions, 1 deletion"
+    }
+  ],
+  "frozenUnchangedVerified": {
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18…",
+    "src/app/api/payments/mock/confirm/route.ts": "2795103fc335ab5b…",
+    "src/app/user/pay/qr/page.tsx": "12663337c65beb3a…",
+    "src/app/user/pay/mock/page.tsx": "0f0b2d84306a964e…",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc59…",
+    "src/app/api/workspace/seat-addon/route.ts": "0ab6a55c346664fe…",
+    "src/lib/order-expiry.ts": "15b9395be8037720…",
+    "docs/reviews/R0-B2-fix-report.md": "70c7d3c1876d31d1…",
+    "docs/reviews/R0-B1-fix-report.md": "13fbac79c2cf4864…"
+  },
+  "newFiles": [
+    "docs/reviews/R0-B3-fix-report.md",
+    "docs/reviews/R0-B3-fix-snapshot/manifest.json",
+    "docs/reviews/R0-B3-fix-snapshot/frozen-source/*",
+    "docs/reviews/R0-B3-fix-snapshot/end-source/*"
+  ],
+  "reproduction": {
+    "method": "把服务临时换成 frozen-source 原始副本，在完全相同的 T01—T08 断言上跑定向矩阵，随后在 finally 中恢复修复版并校验哈希",
+    "startCopyResult": "4 failed / 4 passed, exit 1 (T02/T03/T04/T05 错误履约)",
+    "fixedResult": "8 passed, exit 0",
+    "restoredSha256": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "workspaceRollbackPerformed": false
+  },
+  "isolation": "内存 Prisma 夹具、假时钟确定性推进、零真实库写入/零支付/零模型/零部署/零依赖下载。"
+}

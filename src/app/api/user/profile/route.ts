@@ -238,7 +238,7 @@ export const PUT = withAuth(async (req, user) => {
       }
 
       const { verifySmsCode, consumeSmsCode } = await import("@/lib/sms-store");
-      const verifyResult = verifySmsCode(trimmedPhone, String(smsCode).trim());
+      const verifyResult = await verifySmsCode(trimmedPhone, String(smsCode).trim(), "binding");
       if (!verifyResult.valid) {
         return NextResponse.json(
           { error: verifyResult.error || "短信验证码错误或已过期，请重新获取" },
@@ -247,7 +247,7 @@ export const PUT = withAuth(async (req, user) => {
       }
 
       // 验证通过，立即消费该验证码
-      consumeSmsCode(trimmedPhone);
+      await consumeSmsCode(trimmedPhone, "binding");
     }
 
     // 检查并更新登录邮箱

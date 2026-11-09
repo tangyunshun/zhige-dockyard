@@ -97,6 +97,7 @@ export async function PATCH(
     const startV = (set.startTime as string | undefined) ?? current.startTime;
     const endV = (set.endTime as string | undefined) ?? current.endTime;
     if ((startV && !endV) || (!startV && endV)) errors.push("开始/结束时间须同时设置");
+    if (startV && endV && startV >= endV) errors.push("开始时间不能晚于结束时间");
     for (const f of ["startDate", "endDate"] as const) {
       if (body[f] === undefined) continue;
       if (body[f] === null || body[f] === "") set[f] = null;
@@ -104,6 +105,15 @@ export async function PATCH(
         const dt = new Date(String(body[f]));
         if (isNaN(dt.getTime())) errors.push(`${f} 日期格式非法`);
         else set[f] = dt;
+      }
+    }
+    // 区间顺序校验（以本次提交值优先，缺失则取当前记录值）
+    const startD = (set.startDate !== undefined ? set.startDate : current.startDate) as Date | null;
+    const endD = (set.endDate !== undefined ? set.endDate : current.endDate) as Date | null;
+    if (startD && endD) {
+      if (startD.getTime() > endD.getTime()) errors.push("开始日期不能晚于结束日期");
+      else if (startD.getTime() === endD.getTime() && startV && endV && startV >= endV) {
+        errors.push("同一天内开始时间不能晚于结束时间");
       }
     }
     if (body.priceSource !== undefined) {

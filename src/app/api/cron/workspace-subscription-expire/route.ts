@@ -7,74 +7,136 @@ import { prisma } from "@/lib/prisma";
  * 每日定时任务：扫描「订阅已到期且未续费」的空间套餐，自动降级为免费版（STANDARD）。
  * - 重置 plan / 订阅生命周期字段；
  * - 席位上限回落到免费版自带席位；
- * - 企业算力点是否收回由 RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY 控制（默认 false，保留用户剩余点数，仅收回更高额度权益）。
- *   （如需严格按需求「收回未使用的企业算力点」，置为 true。）
- * - 「超员成员冻结」需要 workspacemember 增加 status 字段并在邀请/执行处做冻结校验，本任务暂不处理，列为后续项。
+ * - [R0-G J04] 到期点数回收整体暂停：无论 RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY 取何值，
+ *   绝不清零 workspacequota.tokenBalance，也不触碰来源 pointgrant/pointledger/钱包等资产。
+ *   响应 reclaimedPoints 恒为 false；旧开关请求回收时以 reclaimPaused 如实说明。
+ *   完整回收引擎（来源账务闭环）属未授权依赖，不在本任务实现。
  *
- * 安全：若配置了 CRON_SECRET，则要求请求头 x-cron-key 与之匹配；未配置时（开发环境）放行。
+ * 到期临界语义（显式声明）：planExpiresAt < now 即到期（严格小于）；恰好等于 now 视为未到期，
+ * 与扫描条件 `planExpiresAt: { lt: now }` 一致；无期限（null）与 STANDARD 不参与降级。
+ *
+ * [R0-G J05] 写边界保护：事务外扫描仅用于筛选；实际降级用条件 updateMany 在事务写边界
+ * 重新确认候选仍为「同一套餐 + 同一到期时间」且 quota 绑定未变——扫描后续费/换套餐/
+ * 期限或 quota 绑定变化的候选整体跳过（套餐与 quota 同事务，一起回滚），不计入成功。
+ *
+ * 安全（J01/J02）：production/development/test 均要求配置非空 CRON_SECRET；
+ * 缺失/空串/纯空白配置 → 503 CRON_SECRET_NOT_CONFIGURED（任何数据库/事务调用之前）；
+ * 缺失/空白/错误的 x-cron-key → 401 CRON_KEY_INVALID。普通登录 token 不能替代专用调度凭证。
+ * 错误响应与日志不回显密钥；无查询参数、公开 GET 或开发默认口令旁路。
  */
-const RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY =
-  process.env.RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY === "true";
+
+/** 条件写边界发现候选事实已变化（续费/换套餐/期限或 quota 绑定变化）→ 跳过该候选 */
+const CANDIDATE_STATE_CHANGED = "CANDIDATE_STATE_CHANGED";
 
 export async function POST(request: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const key = request.headers.get("x-cron-key");
-    if (key !== secret) {
-      return NextResponse.json({ error: "unauthorized" }, { status: 401 });
-    }
+  // ── 1. 调度凭证门禁：在任何数据库查询/事务/业务调用之前（J01/J02） ──
+  const configuredSecret = process.env.CRON_SECRET ?? "";
+  if (!configuredSecret.trim()) {
+    // 缺失 / 空串 / 纯空白 → 视为未配置；production/development/test 一致拒绝，不放行
+    console.error("[cron:workspace-subscription-expire] CRON_SECRET 未配置（缺失/空/纯空白），拒绝执行");
+    return NextResponse.json({ error: "CRON_SECRET_NOT_CONFIGURED" }, { status: 503 });
   }
+  const providedKey = request.headers.get("x-cron-key");
+  if (!providedKey || !providedKey.trim() || providedKey !== configuredSecret) {
+    // 缺失/空白/错误凭证 → 401；仅接受专用调度凭证，精确匹配；不回显任何一方取值
+    return NextResponse.json({ error: "CRON_KEY_INVALID" }, { status: 401 });
+  }
+
+  // [R0-G J04] 旧开关仅用于诚实响应说明；不启用任何回收写路径
+  const reclaimRequested = process.env.RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY === "true";
 
   const now = new Date();
   const affected: any[] = [];
+  let skipped = 0;
 
   try {
-    // 免费版自带席位（与 workspaceplan STANDARD.maxMembers 保持一致）
+    // [R0-G1 G-CONFIG] 在任何降级/席位业务写之前确认取得可用的 STANDARD 席位配置：
+    // 行缺失或席位值不可靠 → 诚实拒绝（稳定错误码），不自动建配置/seed/补默认值，
+    // 也不用写死数字继续；有效实际值（如 4、7）精确使用。
     const std = await prisma.workspaceplan.findUnique({ where: { key: "STANDARD" } });
-    const stdSeats = BigInt(std?.maxMembers ?? 2);
+    const stdSeatsRaw = std ? Number(std.maxMembers) : NaN;
+    if (!std || !Number.isSafeInteger(stdSeatsRaw) || stdSeatsRaw <= 0) {
+      console.error(
+        `[cron:workspace-subscription-expire] STANDARD 席位配置缺失或不可用（maxMembers=${std ? String(std.maxMembers) : "<missing>"}），拒绝降级写入`,
+      );
+      return NextResponse.json({ error: "STANDARD_PLAN_CONFIG_UNAVAILABLE" }, { status: 503 });
+    }
+    const stdSeats = BigInt(stdSeatsRaw);
 
     const expired = await prisma.workspace.findMany({
       where: {
         plan: { not: "STANDARD" },
         planExpiresAt: { not: null, lt: now },
       },
-      select: { id: true, name: true, plan: true, workspacequotaId: true },
+      select: { id: true, name: true, plan: true, planExpiresAt: true, workspacequotaId: true },
     });
 
     for (const ws of expired) {
-      await prisma.$transaction(async (tx) => {
-        await tx.workspace.update({
-          where: { id: ws.id },
-          data: {
-            plan: "STANDARD",
-            planStartedAt: null,
-            planExpiresAt: null,
-            planBillingCycle: null,
-            extraSeats: 0,
-            updatedAt: new Date(),
-          },
-        });
-
-        if (ws.workspacequotaId) {
-          await tx.workspacequota.update({
-            where: { id: ws.workspacequotaId },
+      try {
+        await prisma.$transaction(async (tx) => {
+          // [R0-G J05] 写边界条件降级：仍为同一套餐 + 同一到期期限（未续费/未换套餐/期限未变）
+          // 才允许写入；条件不匹配 count=0 → 整体回滚并跳过，不更新 quota、不计入成功。
+          // [R0-G1 G-BINDING] quota 绑定（含 null）也是候选事实：绑定与扫描时不一致
+          // （null→q2 / q1→q2 / q1→null）即条件不匹配 → 零提交、诚实跳过，新绑定保留。
+          const planWrite = await tx.workspace.updateMany({
+            where: {
+              id: ws.id,
+              plan: ws.plan,
+              planExpiresAt: ws.planExpiresAt,
+              workspacequotaId: ws.workspacequotaId,
+            },
             data: {
-              enterpriseSlots: stdSeats,
-              ...(RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY ? { tokenBalance: BigInt(0) } : {}),
-              updatedAt: new Date(),
+              plan: "STANDARD",
+              planStartedAt: null,
+              planExpiresAt: null,
+              planBillingCycle: null,
+              extraSeats: 0,
+              updatedAt: now,
             },
           });
-        }
-      });
+          if (planWrite.count !== 1) {
+            throw new Error(CANDIDATE_STATE_CHANGED);
+          }
 
-      affected.push({ id: ws.id, name: ws.name, fromPlan: ws.plan, toPlan: "STANDARD" });
+          if (ws.workspacequotaId) {
+            // 非空 quota：仍校验实际归属（错误归属/条件写 count 不符 → 整体回滚）
+            const currentBinding = await tx.workspace.findUnique({
+              where: { id: ws.id },
+              select: { workspacequotaId: true },
+            });
+            if (!currentBinding || currentBinding.workspacequotaId !== ws.workspacequotaId) {
+              throw new Error(CANDIDATE_STATE_CHANGED);
+            }
+            // 条件席位回落：仍绑定同一空间才写入；绝不清零 tokenBalance（J04）
+            const quotaWrite = await tx.workspacequota.updateMany({
+              where: { id: ws.workspacequotaId, workspaceId: ws.id },
+              data: { enterpriseSlots: stdSeats, updatedAt: now },
+            });
+            if (quotaWrite.count !== 1) {
+              throw new Error(CANDIDATE_STATE_CHANGED);
+            }
+          }
+        });
+        affected.push({ id: ws.id, name: ws.name, fromPlan: ws.plan, toPlan: "STANDARD" });
+      } catch (candErr) {
+        if (candErr instanceof Error && candErr.message === CANDIDATE_STATE_CHANGED) {
+          skipped++; // 条件败者诚实跳过，不计入降级成功
+          continue;
+        }
+        throw candErr; // 真实故障：向上抛出（本候选已回滚），响应 500 不假报成功
+      }
     }
 
     return NextResponse.json({
       success: true,
       checkedAt: now.toISOString(),
       downgraded: affected.length,
-      reclaimedPoints: RECLAIM_ENTERPRISE_POINTS_ON_EXPIRY,
+      skipped,
+      // [R0-G J04] 到期点数回收暂停：reclaimedPoints 恒 false；旧开关为 true 时明确说明
+      reclaimedPoints: false,
+      ...(reclaimRequested
+        ? { reclaimPaused: true, notice: "到期点数回收已暂停，剩余点数与来源资产保持不变；套餐/席位处理正常执行" }
+        : {}),
       affected,
     });
   } catch (error) {

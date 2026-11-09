@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { jwtVerify, SignJWT } from "jose";
 import { getJwtSecretKey } from "@/lib/jwt-config";
+import { randomInt } from "node:crypto";
 
 interface VerificationCode {
   code: string;
@@ -13,14 +14,16 @@ interface VerificationCode {
 
 /**
  * 存储验证码的临时对象（实际应该用Redis）
+ *
+ * 注意：本接口为遗留通用验证码接口，不面向页面直连；F15 已移除 devCode 明文回传与日志泄漏。
  */
 const verificationCodes: Map<string, VerificationCode> = new Map();
 
 /**
- * 生成6位数字验证码
+ * 生成6位数字验证码（密码学随机，替代 Math.random）
  */
 function generateCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(100000, 1000000)).padStart(6, "0");
 }
 
 /**
@@ -63,17 +66,11 @@ export async function POST(request: NextRequest) {
       ip,
     });
 
-    // 实际应该发送短信/邮箱，这里简化处理，只在日志中显示
-    console.log(`[验证码] 用户 ${userId} 类型 ${type} 验证码: ${code}（5分钟内有效）`);
-
-    // 实际发送短信/邮箱的逻辑应该在这里
-    // await sendSMS(user.phone, `您的验证码是 ${code}，5分钟内有效`);
+    // 实际发送短信/邮箱的逻辑应该在这里（F15：未接通通道不得签发可用码给客户端）
 
     return NextResponse.json({
       success: true,
-      message: "验证码已发送",
-      // 开发环境下直接返回验证码方便测试
-      devCode: process.env.NODE_ENV === "development" ? code : undefined,
+      message: "验证码已生成，请通过绑定通道查收",
       expiresIn: 300,
     });
   } catch (error) {

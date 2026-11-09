@@ -1,0 +1,47 @@
+{
+  "capturedAtReal": "2026-11-06T01:32:18.522438+08:00",
+  "purpose": "R0-B1 batch start baseline (before F1-F4 fixes)",
+  "note": "This is the R0-B1 start snapshot; distinct from R0-B batch snapshot at docs/reviews/R0-B-fix-snapshot/",
+  "files": {
+    "src/lib/payment/seat-addon-fulfill.ts": {
+      "sha256": "e949ced3379cfa9c050ac0545df2094e52a4923f51a4a372bccb8ecb647d563a",
+      "bytes": 11253,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__lib__payment__seat-addon-fulfill.ts"
+    },
+    "src/lib/payment/fulfill.ts": {
+      "sha256": "58954e4f150f23e4d947337a3eac1e3ab113c541d91dc936fdd631aca7ed5eac",
+      "bytes": 5959,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__lib__payment__fulfill.ts"
+    },
+    "src/app/api/payments/mock/confirm/route.ts": {
+      "sha256": "cf65c1ad5368571a8a760744e9c8760914e134f411705b55328a8857b515db9b",
+      "bytes": 10333,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__api__payments__mock__confirm__route.ts"
+    },
+    "src/app/api/workspace/seat-addon/route.ts": {
+      "sha256": "71edf94bdedc196b60a7b137caff90cf1dd8885636488b13e0ca4dcfee2d8b49",
+      "bytes": 6280,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__api__workspace__seat-addon__route.ts"
+    },
+    "src/app/api/payments/order/route.ts": {
+      "sha256": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+      "bytes": 2003,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__api__payments__order__route.ts"
+    },
+    "src/app/user/pay/mock/page.tsx": {
+      "sha256": "5ce7f505fecd19fdca7bcd8c5a270dc9387a30f0be9e7f7985ace41f33ad0fba",
+      "bytes": 9468,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__user__pay__mock__page.tsx"
+    },
+    "src/app/user/pay/qr/page.tsx": {
+      "sha256": "83902de5ba3e6d691551cb0b19571f13fcaca7d517e73969f41a2095d961c807",
+      "bytes": 7662,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__user__pay__qr__page.tsx"
+    },
+    "src/app/api/__tests__/r0b-seat-addon.test.ts": {
+      "sha256": "0dce1878a794c127ad242d0631e76f5460f56eef888a23658c1260bab1e319ac",
+      "bytes": 31680,
+      "snapshotCopy": "docs/reviews/R0-B1-fix-snapshot/frozen-source/src__app__api____tests____r0b-seat-addon.test.ts"
+    }
+  }
+}

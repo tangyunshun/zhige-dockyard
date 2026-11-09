@@ -1,0 +1,530 @@
+{
+  "capturedAt": "2026-11-07T09:03:14.171Z",
+  "sha256": {
+    "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt": "0ebac90f9956718b3604a442626ed1e23da395c8b97dcc2576e75208d58e0ff1",
+    "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__lib__model-cost-admission.ts.snapshot.txt": "ff2333685ab1bbf789980f1a183c76fb034954c955d558c461b18ea29777b9dc",
+    "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt": "4fe6505c779849ae262aa1615f124177dbe2d21b7afe25163d0c3a22fa50a455",
+    "src/app/api/studio/handler.ts": "743dc697123ed9ea775e486ae4d8bf69d6b307d356b0e82225cc14e093ca2c5c",
+    "src/lib/model-cost-admission.ts": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": "11313a7e78f125167172795b57334bfd817b220dc70fd078c06e3d48669333fb",
+    "tsconfig.json": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329",
+    "src/app/api/cron/workspace-subscription-expire/route.ts": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+    "src/app/api/system/maintenance/route.ts": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+    "src/lib/maintenance.ts": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+    "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+    "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02",
+    "src/lib/model-registry.ts": "3c0a0bd9d2a0b0c719d67fa7fecfe33d362af7d517f03dbb2dc83c295f7b7ee2"
+  },
+  "tests": 6,
+  "evidence": [
+    {
+      "case": "N01",
+      "rows": [
+        {
+          "label": "undefined",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "null",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "0",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "-1",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "NaN",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "Infinity",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "abc",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "9007199254740992",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "0.5",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "1.5",
+          "status": 400,
+          "code": "INPUT_TOO_LARGE",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N02",
+      "rows": [
+        {
+          "label": "OPENAI_COMPATIBLE",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "bound": 8192,
+          "costMicros": "9"
+        },
+        {
+          "label": "ANTHROPIC",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "bound": 8192,
+          "costMicros": "9"
+        },
+        {
+          "label": "GEMINI",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "bound": 8192,
+          "costMicros": "9"
+        }
+      ]
+    },
+    {
+      "case": "N03",
+      "rows": [
+        {
+          "label": "100",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "independentCostMicros": "1000000"
+        },
+        {
+          "label": "101",
+          "status": 400,
+          "code": "MODEL_COST_EXCEEDS_BUDGET",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "independentCostMicros": "1010000"
+        },
+        {
+          "label": "150",
+          "status": 400,
+          "code": "MODEL_COST_EXCEEDS_BUDGET",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "independentCostMicros": "1500000"
+        },
+        {
+          "label": "200",
+          "status": 400,
+          "code": "MODEL_COST_EXCEEDS_BUDGET",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "independentCostMicros": "2000000"
+        },
+        {
+          "label": "201",
+          "status": 400,
+          "code": "MODEL_COST_EXCEEDS_BUDGET",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "independentCostMicros": "2010000"
+        }
+      ]
+    },
+    {
+      "case": "N04-rules",
+      "rows": [
+        {
+          "label": "{\"rules\":{\"extraFee\":1}}",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "{\"costCacheWriteMicrosPerMillion\":1}",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        },
+        {
+          "label": "FREE",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        },
+        {
+          "label": "VERIFIED",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        },
+        {
+          "label": "FREE missing limit",
+          "status": 422,
+          "code": "MODEL_COST_NOT_TRUSTWORTHY",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N04-modes",
+      "rows": [
+        {
+          "label": "BYOK quote passthrough IO fake",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        },
+        {
+          "label": "synthetic ready settlement",
+          "status": 202,
+          "code": "SETTLEMENT_PENDING",
+          "consume": 0,
+          "hold": 1,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany",
+            "ROOT componenttask.update"
+          ]
+        }
+      ]
+    },
+    {
+      "case": "N04-task",
+      "rows": [
+        {
+          "label": "success",
+          "status": 200,
+          "code": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ]
+        },
+        {
+          "label": "upstream failure",
+          "status": 502,
+          "code": "MODEL_UPSTREAM_ERROR",
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 1,
+          "tasks": [
+            "FAILED"
+          ],
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "ROOT componenttask.updateMany"
+          ]
+        }
+      ]
+    }
+  ]
+}

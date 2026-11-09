@@ -6,6 +6,9 @@ import { useToast } from "@/components/Toast";
 import WorkspaceInternalLayout from "@/components/WorkspaceInternalLayoutV3";
 import { Users, KeyRound, Copy, Trash2, RefreshCw, Zap, X, ShieldAlert, Sliders } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskEmail, formatNumber, formatDate } from "@/utils/format";
 
 interface Member {
   userId: string;
@@ -26,7 +29,13 @@ export default function WorkspaceMembersPage() {
   const workspaceId = Array.isArray(params.id) ? params.id[0] : params.id;
 
   const [members, setMembers] = useState<Member[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // KN-UI：移出成员/角色变更确认弹窗与防连点（自查清单指令四/九）
+  const [removeConfirm, setRemoveConfirm] = useState<{ userId: string; name: string } | null>(null);
+  const [ownerConfirm, setOwnerConfirm] = useState<{ userId: string; name: string } | null>(null);
+  const [ownerConfirmText, setOwnerConfirmText] = useState("");
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [currentUserRole, setCurrentUserRole] = useState<"OWNER" | "ADMIN" | "MEMBER">("MEMBER");
   const [generatingCode, setGeneratingCode] = useState(false);
   const [invitationCode, setInvitationCode] = useState("");
@@ -94,6 +103,7 @@ export default function WorkspaceMembersPage() {
         }
 
         setMembers(list);
+        setLoadError(null);
 
         const me = list.find((m) => m.userId === localStorage.getItem("userId"));
         if (me) {
@@ -104,6 +114,7 @@ export default function WorkspaceMembersPage() {
         throw new Error(err.error || "获取成员列表失败");
       }
     } catch (error: any) {
+      setLoadError(error?.message || "成员列表加载失败，请重试");
       console.error("加载成员失败:", error);
       toast.error(error.message || "加载失败，请重试");
     } finally {
@@ -132,7 +143,7 @@ export default function WorkspaceMembersPage() {
         const data = await res.json();
         setInvitationCode(data.invitationCode);
         if (data.expiresAt) {
-          setInvitationExpires(new Date(data.expiresAt).toLocaleDateString("zh-CN"));
+          setInvitationExpires(formatDate(new Date(data.expiresAt)));
         }
         toast.success("邀请码生成成功，快去复制发给您的协同成员吧！");
 
@@ -163,6 +174,8 @@ export default function WorkspaceMembersPage() {
 
   // 移出成员
   const handleRemoveMember = async (targetUserId: string, targetName: string) => {
+    if (busyId) return; // KN-UI：防连点
+    setBusyId(targetUserId);
     try {
       const authToken = getAuthToken();
       const res = await fetch(
@@ -185,11 +198,16 @@ export default function WorkspaceMembersPage() {
     } catch (error: any) {
       console.error("移出成员失败:", error);
       toast.error(error.message || "操作失败");
+    } finally {
+      setBusyId(null);
+      setRemoveConfirm(null);
     }
   };
 
   // 角色变更
   const handleChangeRole = async (targetUserId: string, newRole: string) => {
+    if (busyId) return; // KN-UI：防连点
+    setBusyId(targetUserId);
     try {
       const authToken = getAuthToken();
       const res = await fetch("/api/workspace/members", {
@@ -215,6 +233,8 @@ export default function WorkspaceMembersPage() {
     } catch (error: any) {
       console.error("调整角色失败:", error);
       toast.error(error.message || "操作失败，只有所有者有权调整角色");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -341,6 +361,14 @@ export default function WorkspaceMembersPage() {
             <RefreshCw className="w-5 h-5 animate-spin mx-auto mb-2 text-blue-500" />
             正在拉取协同成员与算力额度...
           </div>
+        ) : loadError ? (
+          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadMembers(); }} retrying={loading} />
+        ) : members.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm p-14 text-center">
+            <Users className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+            <p className="text-sm font-black text-slate-600">当前空间暂无协同成员</p>
+            <p className="text-xs text-slate-400 mt-1">可通过上方「生成邀请码」邀请成员加入协同。</p>
+          </div>
         ) : (
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
             <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
@@ -378,14 +406,14 @@ export default function WorkspaceMembersPage() {
                         <div className="text-xs font-black text-slate-800 flex items-center gap-1.5 flex-wrap">
                           <span>{m.name}</span>
                           {isTargetOwner ? (
-                            <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 border border-amber-200 text-[9px] rounded font-bold">Owner</span>
+                            <span className="px-1.5 py-0.2 bg-amber-50 text-amber-600 border border-amber-200 text-[9px] rounded font-bold">所有者</span>
                           ) : isTargetAdmin ? (
-                            <span className="px-1.5 py-0.2 bg-purple-50 text-purple-600 border border-purple-200 text-[9px] rounded font-bold">Admin</span>
+                            <span className="px-1.5 py-0.2 bg-purple-50 text-purple-600 border border-purple-200 text-[9px] rounded font-bold">管理员</span>
                           ) : (
-                            <span className="px-1.5 py-0.2 bg-slate-100 text-slate-600 border text-[9px] rounded font-bold">Member</span>
+                            <span className="px-1.5 py-0.2 bg-slate-100 text-slate-600 border text-[9px] rounded font-bold">协同成员</span>
                           )}
                         </div>
-                        <p className="text-[10px] text-slate-400 mt-0.5 truncate">{m.email}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 truncate">{maskEmail(m.email)}</p>
                       </div>
                     </div>
 
@@ -399,7 +427,7 @@ export default function WorkspaceMembersPage() {
                           ) : limitVal === null ? (
                             <span className="text-slate-500">不限额 ({usedVal} 已用)</span>
                           ) : (
-                            <span>{limitVal} / <span className="text-blue-600">{usedVal}</span></span>
+                            <span>{formatNumber(limitVal)} / <span className="text-blue-600">{formatNumber(usedVal)}</span></span>
                           )}
                         </span>
                       </div>
@@ -436,7 +464,16 @@ export default function WorkspaceMembersPage() {
                       <select
                         value={m.role}
                         disabled={!canChangeTargetRole}
-                        onChange={(e) => handleChangeRole(m.userId, e.target.value as any)}
+                        onChange={(e) => {
+                          const next = e.target.value as any;
+                          if (next === "OWNER") {
+                            setOwnerConfirm({ userId: m.userId, name: m.name });
+                            setOwnerConfirmText("");
+                            e.target.value = "ADMIN";
+                          } else {
+                            handleChangeRole(m.userId, next);
+                          }
+                        }}
                         className={`px-2.5 py-1 text-[11px] bg-white border rounded-lg focus:outline-none font-bold ${
                           canChangeTargetRole ? "border-slate-300 cursor-pointer text-slate-700 hover:border-slate-400" : "border-slate-200 text-slate-400 cursor-not-allowed"
                         }`}
@@ -449,7 +486,8 @@ export default function WorkspaceMembersPage() {
                       {/* 移出空间按钮 */}
                       {canRemoveTarget ? (
                         <button
-                          onClick={() => handleRemoveMember(m.userId, m.name)}
+                          onClick={() => setRemoveConfirm({ userId: m.userId, name: m.name || "该成员" })}
+                          disabled={busyId === m.userId}
                           className="p-1.5 bg-red-50 hover:bg-red-100 border border-red-100 text-red-600 rounded-lg cursor-pointer transition-colors"
                           title="移出此空间"
                         >
@@ -549,6 +587,36 @@ export default function WorkspaceMembersPage() {
           </div>
         </div>
       )}
+
+      {/* KN-UI：移出成员二次确认弹窗（自查清单指令四） */}
+      <ConfirmDialog
+        isOpen={!!removeConfirm}
+        title="移出成员"
+        message={`确认将「${removeConfirm?.name || ""}」移出本工作空间吗？移出后该成员将无法访问空间内任何资源。`}
+        type="danger"
+        confirmText="确认移出"
+        cancelText="取消"
+        onConfirm={async () => {
+          if (removeConfirm) await handleRemoveMember(removeConfirm.userId, removeConfirm.name);
+        }}
+        onCancel={() => setRemoveConfirm(null)}
+      />
+
+      {/* KN-UI：变更所有者强确认（输入成员姓名解锁；自查清单指令四） */}
+      <ConfirmDialog
+        isOpen={!!ownerConfirm}
+        title="转让所有者身份"
+        message={`确认将所有者身份转让给「${ownerConfirm?.name || ""}」吗？转让后你将变为协同成员，此操作影响重大。`}
+        warnings={["所有者拥有空间的全部管理权限，包括成员管理、算力分配与空间设置。"]}
+        type="danger"
+        confirmText="确认转让"
+        cancelText="取消"
+        requireText={{ expect: ownerConfirm?.name || "", hint: "请输入该成员的完整姓名以确认转让" }}
+        onConfirm={async () => {
+          if (ownerConfirm) await handleChangeRole(ownerConfirm.userId, "OWNER");
+        }}
+        onCancel={() => setOwnerConfirm(null)}
+      />
     </WorkspaceInternalLayout>
   );
 }

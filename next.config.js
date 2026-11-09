@@ -13,6 +13,14 @@ const nextConfig = {
   // 运行时报 "Cannot find module '@prisma/client-<hash>'"（表现为所有访问数据库的接口 500）。
   serverExternalPackages: ["@prisma/client", ".prisma/client"],
 
+  // [R0-K / 原 F14 K01] 解析隔离 worker 是 Node worker_threads 的真实 .cjs 入口，
+  // 不属于 webpack 模块图；构建产物必须显式纳入 file tracing，否则生产环境
+  // resolveParseWorkerPath() 找不到入口并诚实返回 PARSE_WORKER_NOT_READY(503)。
+  // 部署时需连同 node_modules 中的解析依赖一起发布；本环境不执行 next build。
+  outputFileTracingIncludes: {
+    "/*": ["./src/lib/parse-worker.cjs"],
+  },
+
   experimental: {
     // lucide-react 包含上千个图标模块，开发态若走整体 barrel 解析会极大拖慢编译；
     // 开启后按图标按需引入，是本项目编译提速最明显的一项。

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requirePlatformPermission, writeAuditLog } from "@/lib/security";
 import { hashPassword } from "@/lib/auth";
+import { addNotification } from "@/lib/notifications-store";
 
 const getCleanRole = (role: string | null | undefined): string => {
   if (!role) return "USER";
@@ -13,6 +14,9 @@ const getCleanRole = (role: string | null | undefined): string => {
     r === "SUPER"
   ) {
     return "SUPER_ADMIN";
+  }
+  if (r === "ADMIN" || r === "ADMINISTRATOR" || r === "PLATFORM_ADMIN") {
+    return "ADMIN";
   }
   return "USER";
 };
@@ -56,6 +60,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 平台管理员目标保护：管理员账号仅超级管理员可操作
+    if (getCleanRole(target.role) === "ADMIN" && getCleanRole(authResult.user!.role) !== "SUPER_ADMIN") {
+      return NextResponse.json(
+        { error: "权限不足，管理员账号仅超级管理员可操作" },
+        { status: 403 },
+      );
+    }
+
     const temp = genTempPassword();
     const hashed = await hashPassword(temp);
 
@@ -73,6 +85,20 @@ export async function POST(request: NextRequest) {
       null,
       request,
     );
+
+    // 站内通知：密码重置属高危安全事件，登录时弹窗强提醒（临时密码由管理员线下告知；失败不阻断主流程）
+    try {
+      await addNotification(
+        userId,
+        "🔐 登录密码已被重置",
+        "您的登录密码已被平台管理员重置。请使用管理员提供给您的临时密码登录，并尽快在个人设置中修改密码。",
+        "security",
+        null,
+        true,
+      );
+    } catch (notifyErr) {
+      console.error("发送密码重置通知失败:", notifyErr);
+    }
 
     return NextResponse.json({
       success: true,

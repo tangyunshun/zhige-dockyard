@@ -14,6 +14,7 @@ import {
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { formatTokenBalance } from "@/utils/quota";
 import { formatDiscountLabel } from "@/lib/point-rate";
 import { getMembershipLevelIcon } from "@/utils/membership-icon";
@@ -55,6 +56,8 @@ export default function BillingCenterPage() {
   const { userState } = useAppContext();
 
   const [loading, setLoading] = useState(true);
+
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
   const [levels, setLevels] = useState<MembershipLevelRow[]>([]);
   const [stats, setStats] = useState({
@@ -150,11 +153,10 @@ export default function BillingCenterPage() {
             storageUsed: sData.data.storageUsed || 0,
           });
         }
-      }
+    setLoadError(null);      }
 
     } catch (err) {
-      console.error("加载套餐与计费数据失败:", err);
-      toast.error("加载套餐与计费数据失败，请检查网络连接");
+      setLoadError((err as Error)?.message || "账票中心数据加载失败，请重试");
     } finally {
       setLoading(false);
     }
@@ -257,6 +259,10 @@ export default function BillingCenterPage() {
         <div className="py-24 text-center space-y-3">
           <div className="w-9 h-9 border-2 border-[#3182ce] border-t-transparent rounded-full animate-spin mx-auto" />
           <p className="text-xs text-slate-500 font-bold">正在从数据库拉取套餐、空间与账单数据...</p>
+        </div>
+      ) : loadError ? (
+        <div className="px-1 pb-2">
+          <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadBillingData(); }} retrying={loading} />
         </div>
       ) : (
         <>

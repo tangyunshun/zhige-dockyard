@@ -1,0 +1,262 @@
+import { NextRequest, NextResponse } from "next/server";
+import { prisma } from "@/lib/prisma";
+import { validateUser } from "@/lib/auth";
+import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
+
+// 清空工作空间数据
+export async function POST(req: NextRequest) {
+  try {
+    // 验证用户身份
+    const authHeader = req.headers.get("authorization");
+    const authResult = await validateUser(authHeader);
+    
+    if (!authResult.valid) {
+      return NextResponse.json(
+        { error: authResult.error || "UNAUTHORIZED" },
+        { status: 401 }
+      );
+    }
+
+    const userId = authResult.user!.id;
+    const { workspaceId, confirmText } = await req.json();
+
+    // 验证确认文本
+    if (confirmText !== "确认删除" && confirmText !== "确认重置") {
+      return NextResponse.json(
+        { error: "确认文本不正确" },
+        { status: 400 }
+      );
+    }
+
+    // 验证工作空间 ID
+    if (!workspaceId) {
+      return NextResponse.json(
+        { error: "缺少工作空间 ID" },
+        { status: 400 }
+      );
+    }
+
+    // 归档 / 停用空间禁止写入（硬只读）
+    await assertWorkspaceWritable(workspaceId);
+
+    // 获取工作空间信息
+    const workspace = await prisma.workspace.findUnique({
+      where: { id: workspaceId },
+    });
+
+    if (!workspace) {
+      return NextResponse.json(
+        { error: "工作空间不存在" },
+        { status: 404 }
+      );
+    }
+
+    // 验证用户是否有权限管理该工作空间 (Owner 拥有绝对权限，或者在 workspacemember 中是 OWNER/ADMIN)
+    const isOwner = workspace.ownerId === userId;
+    let isAuthorized = isOwner;
+
+    if (!isAuthorized) {
+      const membership = await prisma.workspacemember.findFirst({
+        where: {
+          userId,
+          workspaceId,
+          role: {
+            in: ["OWNER", "ADMIN"],
+          },
+        },
+      });
+      if (membership) {
+        isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return NextResponse.json(
+        { error: "无权管理该工作空间" },
+        { status: 403 }
+      );
+    }
+
+    // 执行真正的空间数据物理清空重置 (彻底清空该空间下所有历史任务、组件装配、文档资料与知识规约)
+    // 1. 删除组件任务运行历史（任务按 tenantId 关联工作空间）
+    await prisma.componenttask.deleteMany({
+      where: { tenantId: workspaceId },
+    });
+
+    // 2. 删除组件装配绑定与装配历史记录
+    await prisma.componentusage.deleteMany({
+      where: { workspaceId },
+    });
+
+    // 3. 删除归档文档资料与分析报告（含 knowledge 类型的知识库条目）
+    //    [R0-J3 §三 J-CLEAR] 可恢复认领协议：
+    //    - 破坏性步骤之前持久认领（确定性 opId，物理失败/提交失败/重启后都可重试完成）；
+    //    - 物理确认删除 → 条件删行认领 → 同一事务 { 条件扣减 + 认领终态 }（元数据终态与额度释放原子绑定）；
+    //    - 扣减/提交失败：认领保持待清理（占用保持计量），重试可完成且不重复扣减；
+    //    - 扫描后新上传完整保留；共享引用（别名身份）保留文件/记录/计量。
+    const removingDocs = await prisma.document.findMany({
+      where: { workspaceId },
+      select: { id: true, filePath: true, fileSize: true, title: true },
+    });
+    const { deleteAssetFile } = await import("@/lib/file-store");
+    const { claimObjectCleanup, finalizeObjectCleanup, closeClaimWithoutRelease, countOtherReferences, objectPathAliases } = await import("@/lib/storage-quota");
+    let clearedCount = 0;
+    const failedObjects: Array<{ id: string; title: string | null; reason: string }> = [];
+    let sharedRefKept = 0;
+    let concurrentSkipped = 0;
+    let driftSkipped = 0;
+    let pendingRecovered = 0;
+    let pendingStill = 0;
+    let recoveryCheckFailed = false;
+    const claimFailureIds: string[] = [];
+    // 0. 恢复重试：上次运行/删除遗留的待清理认领 → 终结释放（条件扣减 + 终态同一事务，幂等）
+    try {
+      const { prisma: prismaLib } = await import("@/lib/prisma");
+      const pendingClaims = await (prismaLib as any).storageoperation.findMany({
+        where: { workspaceId, opType: "RELEASE", status: "PENDING_CLEANUP" },
+        select: { opId: true, filePath: true, bytes: true },
+      });
+      for (const claim of pendingClaims) {
+        try {
+          // [R0-J4 J3-01] 恢复段删除前先复核共享引用：仍被其他资料引用的对象保留文件/记录/计量，计入 sharedRefKept
+          const stillReferenced = await countOtherReferences(workspaceId, claim.filePath, []);
+          if (stillReferenced > 0) {
+            sharedRefKept++;
+            continue;
+          }
+          const fileDel = await deleteAssetFile(claim.filePath, workspaceId);
+          if (!fileDel.ok) { pendingStill++; continue; } // 物理仍在且删除失败：保持待清理（占用保持计量）
+          const fin = await finalizeObjectCleanup(workspaceId, claim.opId, Number(claim.bytes ?? 0));
+          if (fin.drift) { driftSkipped++; continue; }
+          if (fin.conflicted) { pendingStill++; continue; } // 大小矛盾：保留占用与认领待人工核实
+          pendingRecovered++;
+        } catch (claimErr) {
+          // [R0-J4 J3-04] 单条恢复失败必须如实记录为待处理，不得编造 0；保留占用与认领待恢复
+          console.warn("[clear-data] 单条待清理认领恢复失败（保持待处理）:", (claimErr as Error)?.message);
+          pendingStill++;
+        }
+      }
+    } catch (recoverErr) {
+      // [R0-J4 J3-04] 恢复查询失败无法确认数量：明确状态未知，不得编造 0
+      console.warn("[clear-data] 待清理认领恢复检查失败（状态未知）:", (recoverErr as Error)?.message);
+      pendingStill++;
+      recoveryCheckFailed = true;
+    }
+    for (const d of removingDocs) {
+      // 共享引用保护（别名一致身份）：同对象仍有其他在库文档引用 → 保留文件/记录/计量
+      if (d.filePath) {
+        const stillReferenced = await countOtherReferences(workspaceId, d.filePath, [d.id]);
+        if (stillReferenced > 0) {
+          sharedRefKept++;
+          continue;
+        }
+      }
+      // 1. 破坏性步骤之前持久认领：失败 → 中止本对象（记录/文件/占用全保留，如实计入失败）
+      let claim: Awaited<ReturnType<typeof claimObjectCleanup>>;
+      try {
+        claim = await claimObjectCleanup(workspaceId, d.filePath, d.fileSize ?? 0, { userId, documentId: d.id, source: "clear-data" });
+      } catch (claimErr) {
+        if (claimErr instanceof Error && (claimErr as any).code) {
+          failedObjects.push({ id: d.id, title: d.title ?? null, reason: "清理认领持久化失败（" + ((claimErr as any).code || "未知") + "），记录与占用已保留" });
+          claimFailureIds.push(d.id);
+          continue;
+        }
+        throw claimErr;
+      }
+      if (claim.state === "already-released") {
+        // 此前待清理已终结：记录若仍在则只删记录，不再扣减
+        const claimed = await prisma.document.deleteMany({ where: { id: d.id, workspaceId } });
+        if (claimed.count === 1) clearedCount++;
+        else concurrentSkipped++;
+        continue;
+      }
+      // 2. 物理删除（数据库短事务之外）：失败保留记录与计量（认领待清理，可重试）
+      const fileDel = await deleteAssetFile(d.filePath, workspaceId);
+      if (!fileDel.ok) {
+        console.error(`[clear-data] 物理文件删除失败，保留记录与计量: ${d.id}`, fileDel.error);
+        failedObjects.push({ id: d.id, title: d.title ?? null, reason: "物理文件删除失败（" + (fileDel.error || "未知原因") + "）" + (fileDel.ambiguous ? "（多候选位置待人工核实）" : "") });
+        continue;
+      }
+      // 3. 条件删行认领：count=1 才由本次清空负责释放；count=0 = 并发删除已处理
+      const claimed = await prisma.document.deleteMany({ where: { id: d.id, workspaceId } });
+      if (claimed.count !== 1) {
+        concurrentSkipped++;
+        if (claim.claimOpId && claim.state === "claimed") await closeClaimWithoutRelease(claim.claimOpId, "并发删除已处理，本认领让位关闭（未重复释放）").catch(() => {});
+        continue;
+      }
+      // 4. 终结：同一事务 { 条件扣减 + 认领 RELEASED 终态 }；漂移/提交失败 → 认领保持待清理（占用保留，重试可完成）
+      const fin = claim.claimOpId
+        ? await finalizeObjectCleanup(workspaceId, claim.claimOpId, d.fileSize ?? 0)
+        : { released: false, drift: false, finalized: true, alreadyReleased: false };
+      if (fin.drift) {
+        driftSkipped++;
+        continue;
+      }
+      clearedCount++;
+    }
+
+    // 4. 删除该空间的历史操作审计日志 (确保空间彻底还原为物理出厂初始状态)
+    await prisma.operationlog.deleteMany({
+      where: { workspaceId },
+    });
+
+    // 5. 更新工作空间的 updatedAt 时间戳为最新的重置时间 (独立 try-catch 保证绝对写入成功)
+    try {
+      const resetTime = new Date();
+      await prisma.workspace.update({
+        where: { id: workspaceId },
+        data: { updatedAt: resetTime },
+      });
+      console.log(`[clear-data] 工作空间 ${workspaceId} updatedAt 成功更新为: ${resetTime.toISOString()}`);
+    } catch (updateErr) {
+      console.error(`[clear-data] 更新工作空间 ${workspaceId} updatedAt 失败:`, updateErr);
+    }
+
+    // 6. 对个人空间自动进行出厂默认组件装配恢复 (百分百重新自动装配 5 个初始化默认通用效能组件)
+    if (workspace.type === "PERSONAL") {
+      const { ensureDefaultComponents } = await import("@/lib/workspaceInit");
+      await ensureDefaultComponents(workspaceId, userId);
+    }
+
+    // P3：空间数据已清空，立即失效组件数/中枢等只读缓存，保证回中枢后计数即时归位
+    const { clearServerCache } = await import("@/lib/serverCache");
+    clearServerCache();
+
+    // [R0-J3 §三] 结果如实呈现：只有没有任何保留/失败/待处理时才可称为出厂重置完成
+    const hasRetention = failedObjects.length > 0 || driftSkipped > 0 || sharedRefKept > 0 || pendingStill > 0 || claimFailureIds.length > 0 || recoveryCheckFailed;
+    const retentionParts: string[] = [];
+    if (failedObjects.length > 0) retentionParts.push(`${failedObjects.length} 个对象物理删除失败（记录与计量已保留，可重试）`);
+    if (claimFailureIds.length > 0) retentionParts.push(`${claimFailureIds.length} 个对象清理认领持久化失败（记录与计量已保留）`);
+    if (driftSkipped > 0) retentionParts.push(`${driftSkipped} 个对象释放漂移（占用保留待人工核对，待清理认领已登记）`);
+    if (sharedRefKept > 0) retentionParts.push(`${sharedRefKept} 个对象因共享引用保留（文件/记录/计量均保留）`);
+    if (pendingStill > 0) retentionParts.push(`${pendingStill} 条历史待清理认领仍未完成（占用保持计量）`);
+    if (recoveryCheckFailed) retentionParts.push(`恢复检查失败：存在历史待清理认领数量未知（占用保持计量，请稍后核对）`);
+    const retentionNote = retentionParts.length > 0 ? `注意：${retentionParts.join("；")}。` : "";
+    const recoveredNote = pendingRecovered > 0 ? `本次已恢复完成 ${pendingRecovered} 条历史待清理认领。` : "";
+
+    return NextResponse.json({
+      success: true,
+      message: hasRetention
+        ? `空间已重置：${clearedCount} 个资料对象已彻底清除，但尚有未完成清理项。${recoveredNote}${retentionNote}`
+        : `个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配。${recoveredNote}`,
+      resetAt: new Date().toISOString(),
+      storage: {
+        clearedCount,
+        failedCount: failedObjects.length,
+        failedObjects,
+        sharedRefKept,
+        concurrentSkipped,
+        driftSkipped,
+        pendingRecovered,
+        pendingStill,
+        claimFailureCount: claimFailureIds.length,
+      },
+    });
+  } catch (error) {
+    console.error("Clear workspace data error:", error);
+    return NextResponse.json(
+      { error: "清空工作空间数据失败" },
+      { status: 500 }
+    );
+  }
+}

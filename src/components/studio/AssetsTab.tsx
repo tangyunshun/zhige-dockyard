@@ -124,6 +124,26 @@ function getFileIcon(type: string) {
   return <FileText className="w-4 h-4 text-[#3182ce] shrink-0" />;
 }
 
+// 将资料解析出的中文格式标签归类到下拉筛选的有限类别
+function getAssetFormatCategory(item: AssetRecord): string {
+  const label =
+    item.fileTypeLabel ||
+    getFileTypeLabel({ type: item.type, ext: item.fileExt, title: item.title });
+  if (label === "PDF 文档") return "PDF";
+  if (label === "Word 文档") return "WORD";
+  if (label === "Excel 表格") return "EXCEL";
+  if (label === "PPT 演示文稿") return "PPT";
+  if (label === "图片" || label === "矢量图片") return "IMAGE";
+  if (
+    label.includes("文本") ||
+    label.includes("Markdown") ||
+    label.includes("日志")
+  ) {
+    return "TEXT";
+  }
+  return "OTHER";
+}
+
 // 格式化展示标准的 YYYY-MM-DD HH:mm 日期时间
 function formatDateDisplay(dateStr?: string): string {
   if (!dateStr) return "2026-08-31 12:00";
@@ -185,6 +205,12 @@ export default function AssetsTab({
   const toast = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [visibilityFilter, setVisibilityFilter] = useState<"ALL" | "PUBLIC" | "PRIVATE" | "PENDING">("ALL");
+  // 自定义导入时间区间（原生 min/max 置灰，与全站时间约束一致）
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const today = new Date().toISOString().slice(0, 10);
+  // 格式类型筛选（下拉：几个常用格式 + 其他类型）
+  const [formatFilter, setFormatFilter] = useState("ALL");
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -303,15 +329,31 @@ export default function AssetsTab({
         if (itemStatus !== "PENDING") return false;
       }
 
-      // 4. 【搜索框过滤】
+      // 4. 【格式类型筛选】
+      if (formatFilter !== "ALL" && getAssetFormatCategory(item) !== formatFilter) {
+        return false;
+      }
+
+      // 5. 【自定义导入时间区间过滤】
+      if (customStartDate) {
+        const start = new Date(`${customStartDate} 00:00:00`).getTime();
+        if (!isNaN(start) && new Date(item.createdAt).getTime() < start) return false;
+      }
+      if (customEndDate) {
+        const end = new Date(`${customEndDate} 23:59:59`).getTime();
+        if (!isNaN(end) && new Date(item.createdAt).getTime() > end) return false;
+      }
+
+      // 6. 【搜索框过滤】（名称/描述/格式/上传人）
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase();
       const matchTitle = item.title.toLowerCase().includes(q);
       const matchType = (item.type || "").toLowerCase().includes(q);
       const matchDesc = (item.description || "").toLowerCase().includes(q);
-      return matchTitle || matchType || matchDesc;
+      const matchUploader = (item.uploaderName || "").toLowerCase().includes(q);
+      return matchTitle || matchType || matchDesc || matchUploader;
     });
-  }, [assets, searchQuery, visibilityFilter, currentUserName, currentUserId, currentUserEmail, isWorkspaceAdmin]);
+  }, [assets, searchQuery, visibilityFilter, currentUserName, currentUserId, currentUserEmail, isWorkspaceAdmin, customStartDate, customEndDate, formatFilter]);
 
   const totalPages = Math.ceil(filteredAssets.length / pageSize) || 1;
   const paginatedAssets = useMemo(() => {
@@ -591,7 +633,7 @@ export default function AssetsTab({
         <div className="relative flex-1 min-w-[240px]">
           <input
             type="text"
-            placeholder="搜索资料名称、描述或格式扩展名..."
+            placeholder="搜索资料名称、描述、格式或上传人..."
             value={searchQuery}
             onChange={(e) => {
               setSearchQuery(e.target.value);
@@ -601,6 +643,68 @@ export default function AssetsTab({
           />
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
         </div>
+
+        {/* 自定义导入时间区间（原生 min/max 置灰，与全站时间约束一致） */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <input
+            type="date"
+            value={customStartDate}
+            max={customEndDate || today}
+            onChange={(e) => {
+              setCustomStartDate(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-[#3182ce] transition-all cursor-pointer"
+            title="导入起始时间"
+          />
+          <span className="text-slate-400 font-bold">至</span>
+          <input
+            type="date"
+            value={customEndDate}
+            min={customStartDate || undefined}
+            max={today}
+            onChange={(e) => {
+              setCustomEndDate(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-[#3182ce] transition-all cursor-pointer"
+            title="导入截止时间"
+          />
+          {(customStartDate || customEndDate) && (
+            <button
+              type="button"
+              onClick={() => {
+                setCustomStartDate("");
+                setCustomEndDate("");
+                setCurrentPage(1);
+              }}
+              className="px-2 py-1.5 bg-white border border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-300 rounded-xl text-xs font-black transition-all cursor-pointer"
+              title="清除时间筛选"
+            >
+              清除
+            </button>
+          )}
+        </div>
+
+        {/* 格式类型筛选 */}
+        <select
+          value={formatFilter}
+          onChange={(e) => {
+            setFormatFilter(e.target.value);
+            setCurrentPage(1);
+          }}
+          className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-[#3182ce] transition-all cursor-pointer max-w-[160px]"
+          title="按格式类型筛选"
+        >
+          <option value="ALL">全部格式</option>
+          <option value="PDF">PDF</option>
+          <option value="WORD">Word 文档</option>
+          <option value="EXCEL">Excel 表格</option>
+          <option value="PPT">PPT 演示文稿</option>
+          <option value="IMAGE">图片</option>
+          <option value="TEXT">文本 / Markdown</option>
+          <option value="OTHER">其他类型</option>
+        </select>
 
         {/* 共享范围 Filter 选项卡 */}
         <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200/80">
@@ -682,7 +786,7 @@ export default function AssetsTab({
                   
                   // 上传人名称由后端按 uploaderId 从 user 表解析真实昵称/邮箱/手机号
                   const rawUploader = (item.uploaderName || "").trim();
-                  const displayUploader = rawUploader || currentUserName || "系统管理员";
+                  const displayUploader = rawUploader || "未知上传人";
 
                   // 是否本人上传：多维度比对 uploaderName, uploaderId, uploaderEmail 或 isMine
                   const isSelfUploaded = Boolean(

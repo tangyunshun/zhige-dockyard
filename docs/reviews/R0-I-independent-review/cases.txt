@@ -1,0 +1,57 @@
+
+import { afterAll, afterEach } from 'vitest';
+import fs from 'node:fs';
+import { checkAndResetQuotaCycle as realQuotaCycle } from '@/lib/quota-cycle';
+const rawIo: Array<{method:string,args:unknown[]}> = [];
+const evidence:any[]=[];
+vi.mock('@/lib/crypto-secrets',async(importOriginal)=>({...await importOriginal<typeof import('@/lib/crypto-secrets')>(),decryptSecret:()=> 'synthetic-key-with-no-external-use'}));
+beforeEach(()=>{rawIo.length=0;vi.stubEnv('NODE_ENV','test');vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','false');vi.stubEnv('MODEL_MAX_OUTPUT_TOKENS','2000');});
+afterEach(()=>vi.unstubAllEnvs());
+function observation(label:string,r:any,deps?:StudioExecutionDeps){return {label,status:r.status,code:r.body.code??null,error:r.body.error??null,consume:fx.consumeCalls.length,hold:fx.holdCalls.length,execute:fx.adapterExecuteCalls.length,refund:fx.refundCalls.length,tasks:[...h.tables.componenttask.values()].map(t=>t.status),quotaCycleCalls:deps?(deps.checkAndResetQuotaCycle as any).mock.calls.length:null,writes:[...h.writes],rawIo:[...rawIo]};}
+function noEffects(deps:StudioExecutionDeps){expect(fx.consumeCalls).toHaveLength(0);expect(fx.holdCalls).toHaveLength(0);expect(fx.adapterExecuteCalls).toHaveLength(0);expect(fx.refundCalls).toHaveLength(0);expect(h.tables.componenttask.size).toBe(0);expect(h.tables.pointledger.size).toBe(0);expect(deps.checkAndResetQuotaCycle).not.toHaveBeenCalled();expect(deps.getOrCreateQuota).not.toHaveBeenCalled();}
+function byoPlan(){return {deploymentId:'byo:w1',providerId:'fixture-provider',modelId:'fixture-model',contextLimit:128000,pricing:fx.pricing};}
+function monthlyFixture(expired:boolean,used:number){seed();h.tables.workspace.set('w1',{id:'w1',type:'ENTERPRISE',ownerId:'u1',name:'Fixture enterprise',plan:'STANDARD'});h.tables.workspacemember=new Map([['m1',{id:'m1',userId:'u1',workspaceId:'w1',role:'OWNER',monthlyTokenLimit:1000n,monthlyTokenUsed:BigInt(used),quotaResetAt:new Date(expired?'2000-01-01T00:00:00Z':'2099-01-01T00:00:00Z')}]]);const deps=makeDeps();(deps.checkAndResetQuotaCycle as any).mockImplementation(realQuotaCycle);return deps;}
+describe('R0-I independent controls and defect reproduction',()=>{
+  it('I01-I03: explicit BYOK, missing prices, zero rates and fake client fields are paused before quota or funds',async()=>{
+    const rows=[];
+    for(const pricing of [trustedPricing(),null,trustedPricing({costInputMicrosPerMillion:0,costOutputMicrosPerMillion:0})]){
+      seed();fx.pricing=pricing;h.tables.systemconfig.set('billing.byokServiceRateBps',{key:'billing.byokServiceRateBps',value:'0'});const deps=makeDeps();const r=await call({deploymentId:'byo:w1',pricingSource:'PLATFORM',serviceRateBps:0},deps);expect(r.status).toBe(409);expect(r.body.code).toBe('BYOK_BILLING_POLICY_UNCONFIRMED');expect(estimatePoints).not.toHaveBeenCalled();noEffects(deps);rows.push(observation('explicit',r,deps));
+    }
+    evidence.push({case:'I01-I03',rows});
+  });
+  it('I02-I03: auto/default and final-plan switch to BYOK stay paused even with synthetic settlement enabled',async()=>{
+    const rows=[];
+    for(const body of [{deploymentId:'auto'},{}]){
+      seed();const deps=makeDeps();(deps.resolveDefaultDeployment as any).mockResolvedValue(byoPlan());const r=await call(body,deps);expect(r.status).toBe(409);noEffects(deps);rows.push(observation('default BYOK',r,deps));
+    }
+    seed();vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','true');h.tables.systemconfig.set('billing.settlementMode',{key:'billing.settlementMode',value:'ALL'});const deps=makeDeps();(deps.resolveDefaultDeployment as any).mockResolvedValueOnce({deploymentId:'dep-1',providerId:'prov-1',modelId:'model-1',contextLimit:128000,pricing:fx.pricing}).mockResolvedValue(byoPlan());const r=await call({},deps);expect(r.status).toBe(409);noEffects(deps);rows.push(observation('platform to final BYOK with settlement ALL',r,deps));evidence.push({case:'I02-I03',rows});
+  });
+  it('I06 defect: same expired-month fixture succeeds before R0-I but is rejected before reset in current handler',async()=>{
+    const rows=[];const previous=await import('./baseline-handler');
+    let deps=monthlyFixture(true,1000);let res=await previous.runStudioPost(makeReq({}),deps);let r={status:res.status,body:await res.json()};expect(r.status).toBe(200);expect(deps.checkAndResetQuotaCycle).toHaveBeenCalledOnce();expect(h.tables.workspacemember.get('m1').monthlyTokenUsed).toBe(0n);rows.push(observation('R0-H2 snapshot expired month',r,deps));
+    deps=monthlyFixture(true,1000);r=await call({},deps);expect(r.status).toBe(400);expect(r.body.error).toContain('1000/1000');expect(deps.checkAndResetQuotaCycle).not.toHaveBeenCalled();expect(h.tables.workspacemember.get('m1').monthlyTokenUsed).toBe(1000n);expect(fx.adapterExecuteCalls).toHaveLength(0);rows.push(observation('current expired month blocked before reset',r,deps));
+    evidence.push({case:'I-MONTH-ORDER',rows});
+  });
+  it('I06 controls: current month under limit works, current month exhausted remains rejected',async()=>{
+    const rows=[];let deps=monthlyFixture(false,0);let r=await call({},deps);expect(r.status).toBe(200);expect(fx.consumeCalls[0].points).toBe(100);rows.push(observation('current month under limit',r,deps));
+    deps=monthlyFixture(false,1000);r=await call({},deps);expect(r.status).toBe(400);expect(fx.adapterExecuteCalls).toHaveLength(0);expect(fx.consumeCalls).toHaveLength(0);rows.push(observation('current month exhausted',r,deps));evidence.push({case:'I06-month-controls',rows});
+  });
+  it('I04 controls: actual quote routes pause with null prices, retain auth and keep platform quote',async()=>{
+    const {GET:estimate}=await import('@/app/api/billing/estimate/route');const {GET:preview}=await import('@/app/api/billing/byok-preview/route');const rows=[];
+    const req=(url:string)=>new NextRequest('http://localhost'+url,{headers:{authorization:'Bearer fixture'}});
+    for(const url of ['/api/billing/estimate?componentId=comp-1&workspaceId=w1&deploymentId=byo:w1','/api/billing/byok-preview?workspaceId=w1']){
+      seed();h.tables.workspacemember.set('m1',{id:'m1',userId:'u1',workspaceId:'w1'});const res=await (url.includes('byok-preview')?preview:estimate)(req(url));const b=await res.json();expect(res.status).toBe(200);expect(b.data.code).toBe('BYOK_BILLING_POLICY_UNCONFIRMED');expect(b.data.points).toBeNull();expect(b.data.yuan).toBeNull();expect(b.data.canExecute).toBe(false);expect(h.writes).toHaveLength(0);rows.push({url,status:res.status,data:b.data});
+    }
+    authState.valid=false;expect((await estimate(req('/api/billing/estimate?componentId=comp-1&workspaceId=w1'))).status).toBe(401);authState.valid=true;authState.userId='outsider';expect((await preview(req('/api/billing/byok-preview?workspaceId=w1'))).status).toBe(403);
+    evidence.push({case:'I04-mocked-registry-controls',rows,limits:'Registry IO mocked only in this control; real registry checked separately.'});
+  });
+  it('I04 defect: real quote -> real registry -> real BYO column helper attempts ALTER TABLE on a GET',async()=>{
+    seed();h.tables.workspacemember.set('m1',{id:'m1',userId:'u1',workspaceId:'w1'});h.tables.workspace_model_policy=new Map([['policy',{id:'policy',workspaceId:'w1',defaultDeploymentId:'dep-1',allowedDeploymentIds:[],disabledDeploymentIds:[]}]]);
+    h.tables.workspace_byo_model=new Map([['byo1',{id:'byo1',workspaceId:'w1',enabled:true,label:'fixture-model',protocol:'OPENAI_COMPATIBLE',baseUrl:'https://fixture.invalid',apiKeyCipher:'fixture',shareWithMembers:true,contextLimit:128000,capabilities:['TEXT_GENERATION'],priceInputMicrosPerMillion:1000,priceOutputMicrosPerMillion:1000,priceStatus:'VERIFIED'}]]);
+    const actual=await vi.importActual<typeof import('@/lib/model-registry')>('@/lib/model-registry');
+    resolveDeploymentForWorkspace.mockImplementationOnce(actual.resolveDeploymentForWorkspace as any);
+    const {GET:estimate}=await import('@/app/api/billing/estimate/route');const res=await estimate(new NextRequest('http://localhost/api/billing/estimate?componentId=comp-1&workspaceId=w1&deploymentId=byo:w1',{headers:{authorization:'Bearer fixture'}}));const b=await res.json();
+    expect(res.status).toBe(200);expect(b.data.code).toBe('BYOK_BILLING_POLICY_UNCONFIRMED');expect(rawIo).toHaveLength(1);expect(rawIo[0].method).toBe('$executeRawUnsafe');expect(String(rawIo[0].args[0])).toContain('ALTER TABLE `workspace_byo_model`');evidence.push({case:'I-GET-DDL',status:res.status,code:b.data.code,rawIo:[...rawIo],limits:'Raw Prisma IO intercepted; no SQL or actual key decryption executed.'});
+  });
+});
+afterAll(()=>{if(evidence.length!==6)throw Error('Incomplete audit');fs.writeFileSync('docs/reviews/R0-I-independent-review/handler-verification.json',JSON.stringify({capturedAt:new Date().toISOString(),tests:6,evidence},(_,v)=>typeof v==='bigint'?v.toString():v,2));});

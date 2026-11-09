@@ -1,0 +1,94 @@
+{
+  "capturedAt": "2026-11-08T13:24:23.193Z",
+  "kind": "Read-only planning preflight and instruction package, NOT implementation acceptance",
+  "userRequest": "Two IDEs, approximately four batches, unified independent review afterward",
+  "reviewerBusinessSourceEdits": 0,
+  "implementationOrTestsExecutedThisTurn": false,
+  "sourceObservations": [
+    {
+      "path": "docs/PROJECT-DEVELOPMENT-CHARTER.md",
+      "sha256": "57dbf5dba894516e1d36889583cef0c73a334995d001daf3680c2193cdb73874"
+    },
+    {
+      "path": "docs/product-business-review-2026-11-05/RESTRUCTURING-PROPOSAL.md",
+      "sha256": "cdbe807f79bbebecc41bb1533d222edb9221515dd68745896bf9747fbcacf22c"
+    },
+    {
+      "path": "docs/reviews/R0-K1-followup-review/IDE-R0-K1-CLOSEOUT-PROMPT.md",
+      "sha256": "2869c8f92a6c5e6fc933976ecdbd1fcd90a39e0a70c8483377f8f920e7840e04"
+    },
+    {
+      "path": "src/app/api/auth/send-sms/route.ts",
+      "sha256": "68f0bb31664236a5132a6720898b2c5cf9643b1747abfec9377d0028862839c5"
+    },
+    {
+      "path": "src/app/api/auth/send-email-code/route.ts",
+      "sha256": "7317eaec3b85611c5f5f7105e3b7112754687a7dc4a2efcf8599526ea9b4b3e0"
+    },
+    {
+      "path": "src/lib/sms-store.ts",
+      "sha256": "6acb9bf24ae4909fb72553daf4c796b245fdd0ae3ca64e75402a2eeed0557d2d"
+    },
+    {
+      "path": "src/lib/email-code-store.ts",
+      "sha256": "720ded5434cad3683978cc83f78d1176a582910a3e2a4cf588ccea467f014797"
+    },
+    {
+      "path": "src/app/api/workspace/quota/recharge/route.ts",
+      "sha256": "60c7045f37fc5b793bf9d3e3ea3838457b8c839f567978def80c50cc7afbf225"
+    },
+    {
+      "path": "src/app/api/admin/recharge-orders/route.ts",
+      "sha256": "091b8224b3e6493068606d03a68538fd099f422da6377fbc5175882a51d922ac"
+    },
+    {
+      "path": "src/app/api/admin/refund-requests/[id]/resolve/route.ts",
+      "sha256": "3bc318e1f5345b37215ebf8c7e8dee988d1285f9cc8c766deb371e4947380ce3"
+    }
+  ],
+  "scopeMap": [
+    {
+      "task": "A1-F14",
+      "owner": "A",
+      "source": "Original F14/R0-K1 remaining",
+      "ready": "Continue existing task; do not restart"
+    },
+    {
+      "task": "B1-F15",
+      "owner": "B",
+      "source": "Original F15 verification/communication safety",
+      "ready": "May begin in disjoint files alongside A1"
+    },
+    {
+      "task": "A2-F16",
+      "owner": "A",
+      "source": "Original F16 manual funds safety; preserve already accepted F07",
+      "ready": "After A1 delivered/frozen; B1 may still run"
+    },
+    {
+      "task": "B2-INTEGRATE",
+      "owner": "B",
+      "source": "Integration and original verification only, no new F-number",
+      "ready": "After A1/B1/A2 handoffs and source freeze"
+    }
+  ],
+  "schemaWriter": "A1 while running; thereafter no writer until B2 integrates B1/A2 fragments",
+  "dispatchStatus": "Prompts prepared for user forwarding; no external IDE message sent or receipt observed",
+  "reviewStatus": "F14 remains unaccepted; future batches not accepted; unified independent review after final handoff",
+  "limits": [
+    "No live DB, email/SMS/model/payment calls, secrets, migrations or deployment",
+    "No profitability or production-readiness assertion",
+    "F15/F16 facts are bounded planning preflight, not comprehensive current-vulnerability verification",
+    "No source freeze asserted for A1 actively editing files"
+  ],
+  "skills": [
+    {
+      "name": "dispatch-accept-verify",
+      "path": "D:/agents-skills/dispatch-accept-verify/SKILL.md"
+    },
+    {
+      "name": "evidence-before-done",
+      "path": "D:/agents-skills/evidence-before-done/SKILL.md"
+    }
+  ]
+}

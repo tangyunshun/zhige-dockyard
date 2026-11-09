@@ -15,6 +15,8 @@ import {
   FileText,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { formatMoney } from "@/utils/format";
+import { lookupBillingValueLabel, setBillingDicts } from "@/lib/billing-display-dict";
 import { formatYuanFromPoints } from "@/lib/point-rate";
 import EnterprisePoolManager from "@/components/EnterprisePoolManager";
 import UserRefundRequests from "@/components/UserRefundRequests";
@@ -85,6 +87,23 @@ const PAYMENT_LABEL: Record<string, string> = {
 export default function MyPointsPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  // KN-CFG：类型/支付方式中文名唯一真相源 = 数据库 billing_display_dict（红线：不硬编码）
+  const [dbBillingDict, setDbBillingDict] = useState<Record<string, string>>({});
+  useEffect(() => {
+    (async () => {
+      try {
+        const authToken = getAuthToken();
+        const res = await fetch("/api/user/billing-dict", {
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data) setDbBillingDict(data.values || {});
+        }
+      } catch { /* 字典加载失败时回退本地映射 */ }
+    })();
+  }, []);
   const [error, setError] = useState("");
   const [data, setData] = useState<PointsData | null>(null);
   const [typeFilter, setTypeFilter] = useState<string>("all");
@@ -375,7 +394,7 @@ export default function MyPointsPage() {
                                 : "bg-amber-50 text-amber-700 border-amber-200"
                             }`}
                           >
-                            {TYPE_LABEL[r.type] || r.type}
+                            {dbBillingDict[r.type] || TYPE_LABEL[r.type] || "-"}
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-slate-500 font-medium whitespace-nowrap">
@@ -393,7 +412,7 @@ export default function MyPointsPage() {
                           ¥{(Number(r.amountCents || 0) / 100).toFixed(2)}
                         </td>
                         <td className="px-5 py-3.5 whitespace-nowrap text-[11px] font-medium text-slate-600">
-                          {r.paymentMethod ? (PAYMENT_LABEL[r.paymentMethod] || r.paymentMethod) : "—"}
+                          {r.paymentMethod ? (dbBillingDict[r.paymentMethod] || PAYMENT_LABEL[r.paymentMethod] || "-") : "—"}
                         </td>
                       </tr>
                     );

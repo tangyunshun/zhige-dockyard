@@ -1,0 +1,62 @@
+{
+  "capturedAt": "2026-11-08T11:40:05.786Z",
+  "mode": "Current createPrismaBackend and actual route; isolated conditional Prisma models with serialized rollback transactions; controlled lifecycle workers",
+  "observations": [
+    {
+      "name": "concurrent-sweep-positive",
+      "active": 1,
+      "workUnits": 1
+    },
+    {
+      "name": "weighted-release-positive",
+      "active": 0,
+      "workUnits": 0
+    },
+    {
+      "name": "expiry-accounting-positive",
+      "cycles": 12,
+      "active": 0,
+      "workUnits": 0
+    },
+    {
+      "name": "expiry-throw-rollback-positive",
+      "active": 1,
+      "workUnits": 1
+    },
+    {
+      "name": "release-count-zero-still-success",
+      "released": true,
+      "leaseStatus": "RELEASED",
+      "active": 0,
+      "workUnits": 1,
+      "mode": "counter divergence fault injection"
+    },
+    {
+      "name": "release-uses-caller-weight",
+      "persistedWeight": 2,
+      "suppliedWeight": 0,
+      "remainingWeight": 2,
+      "mode": "internal API integrity fault, not public client exploit proof"
+    },
+    {
+      "name": "arraybuffer-expired-request-starts",
+      "configuredCap": 1,
+      "simultaneousWorkers": 2,
+      "counterActiveBeforeCompletion": 1,
+      "oldStatus": "EXPIRED",
+      "statuses": [
+        200,
+        200
+      ]
+    },
+    {
+      "name": "late-exit-quarantine-no-recovery",
+      "response": 503,
+      "exitEventObserved": true,
+      "workerMode": "Controlled EventEmitter lifecycle double, not real thread exit measurement",
+      "status": "QUARANTINED",
+      "remainingActive": 1,
+      "nextAdmission": "PARSE_BUSY"
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "batch": "R0-J5",
+  "capturedAt": "2026-11-08T05:24:00Z",
+  "verification": {
+    "vitest": "17 files, 513 passed, exit 0",
+    "tsc": "tsc.cmd --noEmit --incremental false -p tsconfig.json, exit 0",
+    "lints": "0 diagnostics across 6 touched files"
+  },
+  "files": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "startSha256": "222e56f4474b4688d85e5ad824f2320a49d4ef6f939c343518f686bf215fc10d",
+      "endSha256": "b98803dff5a8386f0984efa48f1deeeeb26a5aaf7776aa7e868e2fb60de3e803",
+      "diff": "41 insertions(+), 12 deletions(-)",
+      "endSnapshot": "end-source/src__lib__storage-quota.ts.snapshot.txt",
+      "status": "modified"
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "startSha256": "b74714f7fd1b99355b2fd0fa55f5a440a914f609d896d2067b3c6038952f8f36",
+      "endSha256": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4",
+      "diff": "36 insertions(+), 4 deletions(-)",
+      "endSnapshot": "end-source/src__app__api__studio__handler.ts.snapshot.txt",
+      "status": "modified"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "startSha256": "78e7775f6107d492974562aef524fcf087ff45bd351b349067e5293011ef7ffc",
+      "endSha256": "adc29f8718c4f0a2f271721e0c4f3fbaf4e7d12e97d42bcaac3ca24c6c62fc18",
+      "diff": "30 insertions(+), 11 deletions(-)",
+      "endSnapshot": "end-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt",
+      "status": "modified"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "startSha256": "82b92abaae2f6dc7df4135796c2ec21e824fbc964a206d8967d8c52089f7afea",
+      "endSha256": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005",
+      "diff": "5 insertions(+), 3 deletions(-)",
+      "endSnapshot": "end-source/src__app__api____tests____r0j2-storage-close.test.ts.snapshot.txt",
+      "status": "modified (defect assertion replaced with positive target)"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "startSha256": "914825d751389cefd496f6765b8fe3b6e4fdd3ec944663acfd03ec70216e7c4f",
+      "endSha256": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef",
+      "diff": "10 insertions(+), 3 deletions(-)",
+      "endSnapshot": "end-source/src__app__api____tests____r0j4-storage-fixes.test.ts.snapshot.txt",
+      "status": "modified (defect assertion replaced with positive target)"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "startSha256": null,
+      "endSha256": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "diff": "new file, 20 tests",
+      "endSnapshot": "end-source/src__app__api____tests____r0j5-remaining-branches.test.ts.snapshot.txt",
+      "status": "new"
+    },
+    {
+      "path": "docs/reviews/R0-J5-fix-report.md",
+      "startSha256": null,
+      "endSha256": null,
+      "status": "new",
+      "note": "本交付报告"
+    }
+  ],
+  "frozenUnchanged": {
+    "J3-06": "classifyExistingOp 起点/期末逐行一致（已核对 IDENTICAL）",
+    "J-KEYS": "src/lib/file-store.ts 未改动",
+    "schema": "prisma/schema.prisma 未改动",
+    "ui": "src/components/WorkspaceInternalLayoutV3.tsx 未改动"
+  }
+}

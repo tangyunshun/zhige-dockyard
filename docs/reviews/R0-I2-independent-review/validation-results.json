@@ -1,0 +1,146 @@
+{
+  "completedAt": "2026-11-07T14:43:06.6839925Z",
+  "verdict": "FUNCTION_ACCEPTED_ARCHIVE_K05_INCOMPLETE",
+  "closedFunctionalIssue": "I-GET-DDL-DEFAULT",
+  "remaining": {
+    "id": "I2-ARCHIVE-MISSING",
+    "priority": "P2",
+    "issue": "Report references missing manifest and four original start snapshots; rollback instructions not actionable as written",
+    "businessCodeRepairRequired": false
+  },
+  "hashCheck": {
+    "matchedCurrentEntries": 29,
+    "deliveryFiles": 5,
+    "protectedFiles": 24,
+    "startHashReferences": 4,
+    "exactInMemoryPriorReconstructions": 4,
+    "deliveryManifestPresent": false,
+    "deliveryFrozenFiles": 0
+  },
+  "verification": [
+    {
+      "kind": "formal targeted regression",
+      "files": 12,
+      "passed": 407,
+      "exitCode": 0,
+      "fileList": [
+        "r0h-cost-admission.test.ts",
+        "r0g-cron-subscription-expire.test.ts",
+        "r0f-maintenance-readonly.test.ts",
+        "r0e-production-mock.test.ts",
+        "r0d-refund-approval.test.ts",
+        "r0c-pool-recycle.test.ts",
+        "r0b-seat-addon.test.ts",
+        "r0a-business-boundary.test.ts",
+        "r0a2-real-combo.test.ts",
+        "r0a3-combo-regression.test.ts",
+        "r0a4-combo-regression.test.ts",
+        "r0i2-cold-quote.test.ts"
+      ],
+      "commandPrefix": ".\\node_modules\\.bin\\vitest.cmd run --no-color",
+      "fileDirectory": "src/app/api/__tests__/"
+    },
+    {
+      "kind": "independent actual cold GET",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-I2-independent-review/vitest.review.config.ts",
+      "files": 10,
+      "passed": 10,
+      "exitCode": 0,
+      "expectedWrites": 0
+    },
+    {
+      "kind": "typecheck",
+      "command": ".\\node_modules\\.bin\\tsc.cmd --noEmit --incremental false -p tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "kind": "exact difference verification",
+      "command": "node docs/reviews/R0-I2-independent-review/check-differences.cjs",
+      "files": 4,
+      "matchedPriorHashes": 4,
+      "exitCode": 0,
+      "recoveredSourceWritten": false
+    }
+  ],
+  "coldEvidence": [
+    {
+      "evidence": "cold-auto-default-missing-verification.json",
+      "status": 503,
+      "code": "BYO_SHARE_COLUMN_NOT_READY",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-auto-default-verification.json",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-explicit-missing-verification.json",
+      "status": 503,
+      "code": "BYO_SHARE_COLUMN_NOT_READY",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-explicit-verification.json",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-personal-canonical-missing-verification.json",
+      "status": 503,
+      "code": "BYO_SHARE_COLUMN_NOT_READY",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-personal-canonical-verification.json",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-personal-legacy-missing-verification.json",
+      "status": 503,
+      "code": "BYO_SHARE_COLUMN_NOT_READY",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-personal-legacy-verification.json",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-space-default-missing-verification.json",
+      "status": 503,
+      "code": "BYO_SHARE_COLUMN_NOT_READY",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    },
+    {
+      "evidence": "cold-space-default-verification.json",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawWriteAttempts": 0,
+      "ormWrites": 0
+    }
+  ],
+  "reusedEvidence": {
+    "source": "R0-I1-independent-review",
+    "basis": "24 protected source files unchanged, including Studio handler and administrator component",
+    "caveat": "No browser DOM or production acceptance implied"
+  },
+  "auditMutationScope": "Only new files in docs/reviews/R0-I2-independent-review",
+  "realDatabaseAccess": false,
+  "realModelOrPaymentCalls": false,
+  "nextGate": "Archive-only correction; no business code changes, no F13 implementation instruction yet"
+}

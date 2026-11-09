@@ -1,0 +1,28 @@
+{
+  "batch": "R0-K",
+  "capturedAt": "2026-11-08T07:27:17.9906224Z",
+  "baseline": "docs/reviews/R0-J6-independent-review/next-batch-baseline.json (all 11 tracked files match exactly; no intermediate changes)",
+  "baselineCapturedAt": "2026-11-08T07:19:30.747Z",
+  "io": "no .env/key read, no live database/cloud/model/vendor/fee; snapshots are read-only copies of local workspace source",
+  "files": [
+    {"path": "src/lib/text-extract.ts", "snapshot": "frozen-source/src__lib__text-extract.ts.snapshot.txt", "sha256": "07be5f5d1d167c88fec1c0fde557b60d88356ed089296e547e23632bff719e0c", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K01/K02/K04: 重解析委托隔离 worker、根预算、稳定错误"},
+    {"path": "src/app/api/studio/extract-text/route.ts", "snapshot": "frozen-source/src__app__api__studio__extract-text__route.ts.snapshot.txt", "sha256": "0fb1e878659595907e597e44c75c95aba849ec0920374a145fecee6ab6dd1a09", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K01/K03/K04: 共享准入、去掉 Promise.race 空串、稳定错误码"},
+    {"path": "src/app/api/studio/handler.ts", "snapshot": "frozen-source/src__app__api__studio__handler.ts.snapshot.txt", "sha256": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K02/K04: file/asset/upload_doc 解析调用接线根预算与稳定异常，F13 清理保持不变"},
+    {"path": "src/app/api/workspace/assets/[assetId]/preview/route.ts", "snapshot": "frozen-source/src__app__api__workspace__assets__(assetId)__preview__route.ts.snapshot.txt", "sha256": "6d3bd0c5a4071a55110191fdf28dea3bddf20b4bc70e042e21f56a0335d5d3f8", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K04: XLSX/mammoth/文本兜底重解析纳入同一资源边界"},
+    {"path": "prisma/schema.prisma", "snapshot": "frozen-source/prisma__schema.prisma.snapshot.txt", "sha256": "dd5955984bbe35f8db4e214d618a25722401db19930ab33044ab3bef0e692905", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K03: 新增解析专用租约/计数模型（离线，不执行迁移）"},
+    {"path": "src/lib/__tests__/text-extract.test.ts", "snapshot": "frozen-source/src__lib____tests____text-extract.test.ts.snapshot.txt", "sha256": "47a3760a039fafff05a8edce04fd414f68fa69b65ca774c2e33e6baa35630344", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "K01: 超时空串断言改为稳定超时错误，保留终止/正常格式目标"},
+    {"path": "src/lib/__tests__/text-extract-paths.test.ts", "snapshot": "frozen-source/src__lib____tests____text-extract-paths.test.ts.snapshot.txt", "sha256": "1f49b9d7d743c2a23818ce54bfda7322209539376d97fc8d7e7ca35682a61985", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "none expected; snapshotted for regression comparison"},
+    {"path": "src/lib/file-store.ts", "snapshot": "frozen-source/src__lib__file-store.ts.snapshot.txt", "sha256": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "none expected"},
+    {"path": "src/lib/security.ts", "snapshot": "frozen-source/src__lib__security.ts.snapshot.txt", "sha256": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "none expected"},
+    {"path": "package.json", "snapshot": "frozen-source/package.json.snapshot.txt", "sha256": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "none expected"},
+    {"path": "tsconfig.json", "snapshot": "frozen-source/tsconfig.json.snapshot.txt", "sha256": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329", "status": "existing", "matchesNextBatchBaseline": true, "plannedChange": "none expected"},
+    {"path": "next.config.js", "snapshot": "frozen-source/next.config.js.snapshot.txt", "sha256": "02276140677d0073ffb7ad4ddfdc5df3966579defb6ea3bd1bbf6e5b24aa1d21", "status": "existing", "matchesNextBatchBaseline": false, "note": "未列入 next-batch-baseline，但为本批拟修改文件（worker 产物 trace），已保存真实起点副本", "plannedChange": "K01: outputFileTracingIncludes 纳入解析 worker 产物"},
+    {"path": "src/lib/parse-policy.ts", "snapshot": null, "sha256": null, "status": "new", "note": "K01/K02/K04 集中阈值、稳定错误码与根预算"},
+    {"path": "src/lib/parse-worker.cjs", "snapshot": null, "sha256": null, "status": "new", "note": "K01 worker_threads 隔离解析入口（Node 运行时 + Next 产物定位）"},
+    {"path": "src/lib/parse-runner.ts", "snapshot": null, "sha256": null, "status": "new", "note": "K01 硬 deadline/取消/崩溃/退出确认生命周期"},
+    {"path": "src/lib/parse-admission.ts", "snapshot": null, "sha256": null, "status": "new", "note": "K03 基于 MySQL/Prisma 的解析专用共享原子准入与租约"},
+    {"path": "prisma/migrations/20261108000000_parse_admission/migration.sql", "snapshot": null, "sha256": null, "status": "new", "note": "K03 离线迁移，授权前不执行"},
+    {"path": "src/app/api/__tests__/r0k-parse-resource.test.ts", "snapshot": null, "sha256": null, "status": "new", "note": "K01-K04 精确隔离测试"},
+    {"path": "docs/reviews/R0-K-fix-report.md", "snapshot": null, "sha256": null, "status": "new", "note": "本轮交付报告"}
+  ]
+}

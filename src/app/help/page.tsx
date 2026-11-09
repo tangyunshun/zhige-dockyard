@@ -123,6 +123,11 @@ export default function HelpPage() {
     );
   }, [searchQuery]);
 
+  // KN-UI：搜索关键词变化时重置展开索引（自查清单指令一）
+  useEffect(() => {
+    setExpandedIndex(null);
+  }, [searchQuery]);
+
   const handleSubmitFeedback = async () => {
     if (!title.trim()) {
       toast.error("请填写反馈标题");
@@ -134,6 +139,12 @@ export default function HelpPage() {
     }
     if (content.trim().length < 10) {
       toast.error("反馈内容至少需要 10 个字符");
+      return;
+    }
+    // KN-UI：联系方式格式校验（填了但太短时拦截；自查清单指令一）
+    const trimmedContact = contact.trim();
+    if (trimmedContact && trimmedContact.length < 5) {
+      toast.error("联系方式格式不正确，请填写有效的邮箱或手机号");
       return;
     }
     try {
@@ -153,6 +164,7 @@ export default function HelpPage() {
         toast.success("反馈提交成功，感谢您的宝贵意见");
         setTitle("");
         setContent("");
+        setContact("");
         setFeedbackType("suggestion");
       } else {
         toast.error(data.error || "提交失败，请稍后重试");
@@ -433,6 +445,7 @@ export default function HelpPage() {
                       value={content}
                       onChange={(e) => setContent(e.target.value)}
                       maxLength={5000}
+                      onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && !submitting) { e.preventDefault(); handleSubmitFeedback(); } }}
                       rows={5}
                       placeholder={
                         feedbackType === "bug"
@@ -442,7 +455,7 @@ export default function HelpPage() {
                       className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder:text-slate-400 focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none transition-all resize-none"
                     />
                     <div className="text-right text-[10px] text-slate-400 font-semibold mt-1">
-                      {content.length}/5000
+                      {content.length}/5000 · Ctrl+Enter 快捷提交
                     </div>
                   </div>
 

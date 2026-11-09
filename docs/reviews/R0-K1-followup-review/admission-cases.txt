@@ -1,0 +1,47 @@
+describe('Current actual Prisma algorithm with condition-aware rollback delegates',()=>{
+ it('positive: concurrent sweep returns counters once and full weight',async()=>{
+  seed();lease('old',true);lease('healthy',false);const a=await import('@/lib/parse-admission');await Promise.all([a.sweepParseLeases(now),a.sweepParseLeases(now)]);
+  expect(h.counters.get('platform').active).toBe(1);expect(h.counters.get('platform').workUnits).toBe(1);expect(h.counters.get('user:u1').active).toBe(1);
+  observations.push({name:'concurrent-sweep-positive',active:1,workUnits:1});
+ });
+ it('positive: weighted release now returns two units, repeats return none',async()=>{
+  const a=await import('@/lib/parse-admission');const one=await a.acquireParseLease({userId:'u1',workUnits:2,now});expect(await a.releaseParseLease(one)).toBe(true);expect(await a.releaseParseLease(one)).toBe(false);expect(h.counters.get('platform').workUnits).toBe(0);expect(h.counters.get('platform').active).toBe(0);
+  observations.push({name:'weighted-release-positive',active:0,workUnits:0});
+ });
+ it('positive: twelve completed expiry accounting cycles leave no units',async()=>{
+  const a=await import('@/lib/parse-admission');for(let i=0;i<12;i++){const stamp=now+i*200000;await a.acquireParseLease({userId:'u1',workUnits:1,now:stamp});await a.sweepParseLeases(stamp+100000);}expect(h.counters.get('platform').workUnits).toBe(0);expect(h.counters.get('platform').active).toBe(0);
+  const next=await a.acquireParseLease({userId:'u1',workUnits:1,now:now+13*200000});await a.releaseParseLease(next);observations.push({name:'expiry-accounting-positive',cycles:12,active:0,workUnits:0});
+ });
+ it('positive: thrown counter fault rolls back expiry and retry recovers',async()=>{
+  seed();lease('old',true);lease('healthy',false);h.failCounterDecrement=true;const a=await import('@/lib/parse-admission');await a.sweepParseLeases(now);expect(h.leases.get('old').status).toBe('ACTIVE');expect(h.counters.get('platform').active).toBe(2);await a.sweepParseLeases(now);expect(h.counters.get('platform').active).toBe(1);expect(h.counters.get('platform').workUnits).toBe(1);
+  observations.push({name:'expiry-throw-rollback-positive',active:1,workUnits:1});
+ });
+ it('defect KR2: zero-row counter update still commits RELEASED',async()=>{
+  const a=await import('@/lib/parse-admission');const one=await a.acquireParseLease({userId:'u1',workUnits:1,now});h.counters.get('platform').active=0;const released=await a.releaseParseLease(one);
+  expect(released).toBe(true);expect(h.counters.get('platform').workUnits).toBe(1);expect([...h.leases.values()][0].status).toBe('RELEASED');
+  observations.push({name:'release-count-zero-still-success',released,leaseStatus:'RELEASED',active:0,workUnits:1,mode:'counter divergence fault injection'});
+ });
+ it('defect KR2: return weight comes from caller instead of persisted lease',async()=>{
+  const a=await import('@/lib/parse-admission');const one=await a.acquireParseLease({userId:'u1',workUnits:2,now});expect(await a.releaseParseLease({...one,workUnits:0})).toBe(true);expect(h.counters.get('platform').workUnits).toBe(2);
+  observations.push({name:'release-uses-caller-weight',persistedWeight:2,suppliedWeight:0,remainingWeight:2,mode:'internal API integrity fault, not public client exploit proof'});
+ });
+ it('defect KR3: slow arrayBuffer outlives acquired lease and still starts after sweep',async()=>{
+  vi.useFakeTimers();vi.setSystemTime(now);const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner');
+  r.__setParseRunnerHooks({workerFactory:()=>{const w=new EventEmitter() as any;w.terminate=async()=>{w.emit('exit',0);return 0;};h.workers.push(w);for(const x of h.workerWaiters)if(h.workers.length>=x.n)x.resolve();return w;}});
+  const waitWorkers=(n:number)=>h.workers.length>=n?Promise.resolve():new Promise<void>(resolve=>h.workerWaiters.push({n,resolve}));const entered=latch();let resolveBytes!:(b:ArrayBuffer)=>void;
+  const slow=Object.assign(new Blob(['Slow bytes'],{type:'text/plain'}),{name:'slow.txt',arrayBuffer:()=>{entered.resolve();return new Promise<ArrayBuffer>(r=>resolveBytes=r);}});
+  const quick=Object.assign(new Blob(['Fast bytes'],{type:'text/plain'}),{name:'fast.txt'});const req=(f:Blob)=>({headers:new Headers({authorization:'Bearer offline'}),formData:async()=>new Map([['file',f]])}) as any;
+  const {POST}=await import('@/app/api/studio/extract-text/route');const first=POST(req(slow));await entered.promise;const oldId=[...h.leases.keys()][0];await vi.advanceTimersByTimeAsync(100000);await a.sweepParseLeases(Date.now());expect(h.leases.get(oldId).status).toBe('EXPIRED');
+  const second=POST(req(quick));await waitWorkers(1);resolveBytes(new TextEncoder().encode('Slow bytes').buffer);await waitWorkers(2);expect(h.counters.get('platform').active).toBe(1);
+  for(const w of h.workers)w.emit('message',{envelope:'result',text:'Controlled parser output',usage:{}});const responses=await Promise.all([first,second]);expect(responses.map(x=>x.status)).toEqual([200,200]);
+  observations.push({name:'arraybuffer-expired-request-starts',configuredCap:1,simultaneousWorkers:2,counterActiveBeforeCompletion:1,oldStatus:'EXPIRED',statuses:[200,200]});
+ });
+ it('defect KR4: actual late worker exit cannot recover quarantined occupancy',async()=>{
+  const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner');let fake:any;
+  r.__setParseRunnerHooks({terminateTimeoutMs:5,exitConfirmMs:5,workerFactory:()=>{fake=new EventEmitter();fake.terminate=()=>new Promise(()=>{});queueMicrotask(()=>fake.emit('message',{envelope:'result',text:'Controlled output',usage:{}}));return fake;}});
+  const f=Object.assign(new Blob(['controlled'],{type:'text/plain'}),{name:'small.txt'}),{POST}=await import('@/app/api/studio/extract-text/route');const res=await POST({headers:new Headers({authorization:'offline'}),formData:async()=>new Map([['file',f]])} as any);expect(res.status).toBe(503);
+  const row=[...h.leases.values()][0];expect(row.status).toBe('QUARANTINED');fake.emit('exit',0);await a.sweepParseLeases(Date.now()+200000);expect(h.counters.get('platform').active).toBe(1);expect(h.leases.get(row.id).status).toBe('QUARANTINED');expect(await a.releaseParseLease(row)).toBe(false);await expect(a.acquireParseLease({userId:'u1',workUnits:1,now:Date.now()+300000})).rejects.toMatchObject({code:'PARSE_BUSY'});
+  observations.push({name:'late-exit-quarantine-no-recovery',response:503,exitEventObserved:true,workerMode:'Controlled EventEmitter lifecycle double, not real thread exit measurement',status:'QUARANTINED',remainingActive:1,nextAdmission:'PARSE_BUSY'});
+ });
+});
+afterAll(()=>fs.writeFileSync(path.join(process.cwd(),'docs/reviews/R0-K1-followup-review/admission-evidence.json'),JSON.stringify({capturedAt:new Date().toISOString(),mode:'Current createPrismaBackend and actual route; isolated conditional Prisma models with serialized rollback transactions; controlled lifecycle workers',observations},null,2)));

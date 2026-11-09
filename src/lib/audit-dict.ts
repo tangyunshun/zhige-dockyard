@@ -16,774 +16,17 @@ export function normalizeIpAddress(ip?: string | null): string {
 // 设计原则：运行时以 system_config 中的 audit_action_dict / audit_resource_dict 为准（可由管理员在库内覆盖），
 // 库内无数据时自动用以下默认值落库（懒种子），保证后台标签 100% 中文、不裸英文。
 // 注意：这里集中维护「标准动作/资源 → 中文名」的唯一真相源，新增业务动作请同步补充此处。
-export const DEFAULT_ACTION_DICT: Record<string, string> = {
-  // 账号与认证
-  USER_REGISTER: "新用户自主注册",
-  OAUTH_REGISTER: "第三方账号联合注册",
-  OAUTH_LOGIN: "第三方账号联合登录",
-  "auth:login": "账号登录",
-  "auth:logout": "用户主动退出登录",
-  "auth:verify": "身份验证",
-  // 个人资料维护
-  "user:profile_update": "更新个人资料",
-  // 组件工作台
-  "studio:refine_prompt": "AI 润色需求描述",
-  SESSION_CONFLICT_LOGOUT: "会话冲突被新登录顶替下线",
-  SESSION_TIMEOUT_LOGOUT: "登录超时自动退出",
-  DEVICE_KICKED_OFFLINE: "设备登录数达上限自动踢出",
-  PasswordChange: "修改登录密码",
-  "Password:Change": "修改登录密码",
-  SecuritySettingUpdate: "更新账号安全设置",
-  "SecuritySetting:Update": "更新账号安全设置",
-  // 账号注销生命周期
-  ACCOUNT_DELETION_REQUESTED: "提交账号注销申请",
-  ACCOUNT_DELETED: "账号注销删除",
-  // 用户管理（管理员侧，writeAuditLog 传入 module:verb 形态）
-  "user:ban": "封禁用户",
-  "user:unban": "解封用户",
-  "user:reset_session": "强制用户下线",
-  "user:delete": "删除用户",
-  "user:create": "创建用户",
-  "user:update": "更新用户资料",
-  // 工作空间
-  CREATE_ENTERPRISE_WORKSPACE: "创建企业工作空间",
-  UPGRADE_WORKSPACE: "工作空间类型升级",
-  UPGRADE_WORKSPACE_PLAN: "工作空间套餐升级",
-  UPGRADE_PERSONAL_TO_ENTERPRISE: "升级为企业工作空间",
-  JOIN_WORKSPACE: "加入工作空间",
-  UPDATE_MEMBER_ROLE: "修改成员角色",
-  // 历史遗留动作键（仅存在于早期落库数据与查询过滤条件中，仍须可译）
-  COMPONENT_EXECUTE: "执行组件任务",
-  TASK_CREATE: "创建协同任务",
-  TASK_RUN: "运行协同任务",
-  TENANT_DISABLE: "停用企业租户",
-  TENANT_ENABLE: "启用企业租户",
-  WORKSPACE_KICK: "移出工作空间成员",
-  CONFIGURE_SOLUTION: "配置解决方案",
-  "workspace:create": "创建工作空间",
-  "workspace:update": "更新工作空间",
-  "workspace:delete": "删除工作空间",
-  "workspace:leave": "退出工作空间",
-  "workspace:quota_update": "调整工作空间配额",
-  // 模型注册 / 禁用启用
-  "model:disable": "禁用模型部署",
-  "model:enable": "启用模型部署",
-  "model:schedule_disable": "设置定时禁用模型",
-  // 组件
-  BIND_COMPONENT: "使用组件",
-  UNBIND_COMPONENT: "解除组件使用",
-  ENABLE_COMPONENT: "启用组件",
-  DISABLE_COMPONENT: "停用组件",
-  SET_RESTRICTED_COMPONENTS: "设置受限组件清单",
-  SAVE_CUSTOM_POSITIONS: "保存组件自定义布局",
-  "component:create": "创建组件",
-  "component:update": "更新组件",
-  "component:delete": "删除组件",
-  "component:ban": "封禁组件",
-  // 知识资产
-  KNOWLEDGE_PUBLISH: "知识内容上架发布",
-  KNOWLEDGE_CATEGORY_CREATE: "新增知识分类",
-  KNOWLEDGE_CATEGORY_DELETE: "删除知识分类",
-  KNOWLEDGE_CATEGORY_RENAME: "重命名知识分类",
-  KNOWLEDGE_CATEGORY_BATCH_DELETE: "批量删除知识分类",
-  KNOWLEDGE_SUBMIT: "知识内容提交审核",
-  KNOWLEDGE_APPROVE: "知识内容审核通过",
-  KNOWLEDGE_REJECT: "知识内容审核驳回",
-  "asset:upload": "上传知识资料",
-  "asset:delete": "删除知识资料",
-  // 生成任务
-  ARCHIVE_TASK: "归档生成任务",
-  DELETE_TASK: "删除生成任务",
-  // 平台安全与系统
-  SECURITY_DIAGNOSIS: "平台安全体检诊断",
-  "security:setting_update": "更新平台安全策略",
-  "admin:login": "管理员登录",
-  "system:test_sms": "测试短信网关",
-  "system:test_email": "测试邮件通道",
-  "system:create_db_backup": "创建数据库备份快照",
-  // 数据导出（含管理员端 / 用户端导出留痕）
-  "DATA_EXPORT": "数据导出",
-  "system:update_oauth_channels": "更新第三方登录渠道",
-  "system:update_settings": "更新系统全局配置",
-  // ===== 扩展业务动作（补齐真实库内已出现但需明确中文映射的动作） =====
-  "system:settings": "系统设置变更",
-  "component:publish": "上架发布组件",
-  "user:batch_ban": "批量封禁用户",
-  "user:batch_unban": "批量解封用户",
-  "user:adjust_points": "调整用户积分",
-  "asset:removal_request": "资料删除申请",
-  "asset:removal_approve": "资料删除申请通过",
-  "asset:removal_reject": "资料删除申请驳回",
-  "appeal:deleted": "删除申诉工单",
-  "testimonial:config": "评价展示配置",
-  "APIKey:Create": "创建API密钥",
-  "APIKey:Delete": "删除API密钥",
-  "stepup:issued": "二次身份认证",
-  MEMBERSHIP_UPGRADE: "会员等级升级",
-  // 裸业务对象词根（曾作为 action/resource 直接落库）兜底
-  user: "用户账号操作",
-  system: "系统核心操作",
-  appeal: "申诉工单操作",
-  APIKey: "API密钥操作",
-  stepup: "二次认证操作",
-  testimonial: "用户评价操作",
-  component: "组件操作",
-  asset: "知识资料操作",
-  // ===== PERM-AUDIT-FIX 批次：补全后台写操作审计的自然语言映射（库内可覆盖） =====
-  "membership:level_create": "创建会员等级",
-  "membership:level_update": "更新会员等级",
-  "token_pack:create": "新建算力加油包",
-  "token_pack:update": "更新算力加油包",
-  "token_pack:delete": "删除算力加油包",
-  "workspace_plan:create": "创建空间套餐",
-  "workspace_plan:update": "更新空间套餐",
-  "workspace_plan:delete": "删除空间套餐",
-  "model_pricing:period_create": "新增模型时段价格",
-  "model_pricing:period_update": "更新模型时段价格",
-  "model_pricing:period_delete": "删除模型时段价格",
-  "token_settlement:resolve": "结算单人工复核裁决",
-  "token_settlement:reconcile": "结算单对账操作",
-  "model_provider:create": "新增模型供应商",
-  "model_provider:update": "更新模型供应商",
-  "model_provider:delete": "删除模型供应商",
-  "model_deployment:create": "新增模型部署",
-  "model_deployment:update": "更新模型部署配置",
-  "model_deployment:delete": "删除模型部署",
-  "platform_default:update": "更新平台模型默认配置",
-  "user:batch_update": "批量更新用户",
-  "user:batch_delete": "批量删除用户",
-  "user:batch_logout": "批量强制下线用户",
-  "user:import_identifiers": "导入用户标识",
-  "user:zombie_scan": "触发僵尸账号扫描",
-  "user:clear_session": "清除用户会话",
-  "user:admin_logout": "管理员强制登出",
-  "post:create": "创建官方岗位",
-  "post:update": "更新官方岗位",
-  "post:delete": "删除官方岗位",
-  "post:usage_remove": "解除岗位装配",
-  "post:submission": "提交岗位审核",
-  "post:submission:delete": "删除岗位审核提交",
-  "post:member_assign": "分配岗位成员",
-  "post:member_remove": "移除岗位成员",
-  "stage:create": "创建流程阶段",
-  "stage:update": "更新流程阶段",
-  "stage:delete": "删除流程阶段",
-  "document:create": "创建系统文档",
-  "document:update": "更新系统文档",
-  "document:delete": "删除系统文档",
-  "notification_group:create": "创建通知组",
-  "notification_group:update": "更新通知组",
-  "notification_group:delete": "删除通知组",
-  "notification_group:member_add": "添加通知组成员",
-  "notification_group:member_remove": "移除通知组成员",
-  "notification:publish": "发布系统通知",
-  "notification:update": "更新通知偏好",
-  "systemconfig:value_update": "更新系统配置值",
-  "quota:grant": "发放用户积分",
-  "quota:approve": "批准算力额度申请",
-  "quota:reject": "拒绝算力额度申请",
-  "upgrade:approve": "审批通过升级企业申请",
-  "account_deletion:config_update": "更新账号注销冷静期配置",
-  "demo:handle": "处理演示申请",
-  "workspace:archive_inactive": "归档非活跃工作空间",
-  "workspace:upgrade_enterprise": "升级为企业工作空间",
-  "model_policy:update": "更新空间模型策略",
-  "refund:resolve": "处理退款申请",
-  "system:upload_logo": "上传平台Logo",
-  "system:upload_qrcode": "上传平台二维码",
-  "audit:login_history_delete": "删除登录历史",
-  "audit_log:delete": "删除操作审计日志",
-  "component:batch_delete": "批量删除组件",
-  "component:batch_publish": "批量上架组件",
-  "component:batch_unpublish": "批量下架组件",
-  "component_contract:update": "编辑组件版本合同",
-  "component_contract:publish": "发布组件合同",
-  "component_contract:delete": "删除组件合同草稿",
-  // —— 穷举补全：以下动作键此前未登记，已全量补入字典，杜绝任何英文裸显 ——
-  "admin:workspace_pool_recycle": "回收空间算力池额度",
-  "admin:workspace_pool_threshold_update": "更新空间算力池预警阈值",
-  "appeal:account_unban_approved": "申诉解封账号已通过",
-  "appeal:account_unban_rejected": "申诉解封账号已驳回",
-  "appeal:workspace_unban_approved": "申诉解封空间已通过",
-  "appeal:workspace_unban_rejected": "申诉解封空间已驳回",
-  "billing:quota_recharge": "账户算力充值",
-  "billing:recharge_order_confirm": "充值订单确认到账",
-  "testimonial:approve": "用户评价审核通过",
-  "testimonial:create_rejected": "用户评价提交被驳回",
-  "testimonial:delete": "删除用户评价",
-  "testimonial:reject": "用户评价审核驳回",
-  "testimonial:update": "更新用户评价",
-  "token_settlement:delete": "删除算力结算单",
-  "user:batch_kick": "批量强制下线设备",
-  "user:delete_blocked": "账号注销被阻断",
-  "user:reset_password": "管理员重置用户密码",
-  "user:security_settings_update": "更新账号安全设置",
-  "user:settings_update": "更新个人偏好设置",
-  "workspace:batch_toggle": "批量切换空间启用状态",
-  "workspace:disable_check": "空间停用前置检查",
-  "workspace:list": "浏览空间清单",
-  "workspace:member_quota_adjust": "调整空间成员算力额度",
-  "workspace:pool_recycle": "回收空间算力池额度",
-  "workspace:pool_threshold_update": "更新空间算力池预警阈值",
-  "workspace:toggle_status": "切换空间启用状态",
-  "workspace:transfer_ownership": "转让空间所有权",
-  // —— 穷举补全（第二批）：以下动作此前仅依赖兜底引擎翻译、未进字典，现统一登记为中文词条 ——
-  UNAUTHORIZED: "未授权访问拦截",
-  "apikey:admin_delete": "管理员删除 API 密钥",
-  "component:unpublish_check": "组件下架前置检查",
-  "component:execute": "执行组件任务",
-  "member:leave": "成员退出空间",
-  "asset:approve": "资料审核通过",
-  "asset:reject": "资料审核驳回",
-  "asset:remove_private": "移除私有资料",
-  "asset:remove": "移除资料",
-  "asset:restore": "恢复资料",
-  "asset:private_review_request": "提交私有资料审核申请",
-  "asset:restore_request": "提交资料恢复申请",
-  "asset:removal_record_delete": "删除资料移除记录",
-  "asset:publish_direct": "资料直接公开发布",
-  "asset:request_publish": "提交资料公开发布申请",
-  "asset:batch_delete": "批量删除资料",
-  "asset:batch_remove": "批量移除资料",
-  "asset:batch_publish_direct": "批量直接公开发布资料",
-  "asset:batch_request_publish": "批量提交资料发布申请",
-  "model_deployment:set_default": "设为默认模型部署",
-  "model_deployment:clear_default": "清除默认模型部署",
-  "model_deployment:test": "测试模型部署连通性",
-  "model_provider:test": "测试模型供应商连通性",
-  "notification:history_delete": "删除通知历史",
-  "points:expire": "算力点过期回收",
-  "workspace:view_detail": "查看空间详情",
-  "sso:revoke": "撤销第三方账号联合授权",
-};
 
-export const DEFAULT_RESOURCE_DICT: Record<string, string> = {
-  user: "用户账号",
-  "user/account": "用户账号",
-  studio: "组件工作台",
-  Password: "登录密码",
-  Security: "平台安全",
-  KNOWLEDGE: "知识资产",
-  TASK: "生成任务",
-  Workspace: "工作空间",
-  SECURITY_MATRIX: "安全矩阵",
-  POSITIONS_CONFIG: "组件布局配置",
-  "auth/session": "安全认证会话",
-  "auth/device": "登录设备",
-  sms_gateway: "短信网关通道",
-  smtp_settings: "邮件SMTP配置",
-  oauth_channels: "第三方登录渠道",
-  system_config: "系统全局配置",
-  database_snapshot: "数据库备份快照",
-  export: "数据导出文件",
-  "workspace/member": "工作空间成员",
-  solution: "解决方案",
-  component: "组件",
-  asset: "知识资料",
-  component_contract: "组件版本合同",
-  model: "模型部署",
-  MODEL_PRICING: "模型计费价格",
-  modelpricingperiod: "模型周期价规则",
-  systemconfig: "系统配置",
-  systemdocumentcategory: "系统文档分类",
-  systemdocument: "系统文档",
-  systemdocumentfeedback: "系统文档反馈",
-  PLATFORM_PERMISSION_CATALOG: "接口权限目录",
-  // 裸业务对象词根兜底（曾作为 resource 直接落库）
-  appeal: "申诉工单",
-  APIKey: "API密钥",
-  stepup: "二次认证",
-  testimonial: "用户评价",
-  system: "系统核心",
-  // 审计域资源（action 模块前缀会直接落库为 resource，必须可译）
-  audit: "安全审计",
-  audit_log: "操作审计日志",
-  login_history: "登录安全历史",
-  // —— 穷举补全：writeAuditLog 落库 resource = action 模块前缀，以下前缀必须 100% 可译 ——
-  workspace: "工作空间",
-  member: "空间成员",
-  admin: "平台管理后台",
-  billing: "账务结算",
-  points: "算力点数",
-  quota: "算力配额",
-  refund: "退款单",
-  stage: "研发阶段",
-  upgrade: "会员升级",
-  demo: "演示环境",
-  document: "系统文档",
-  post: "公告帖子",
-  membership: "会员体系",
-  notification: "系统通知",
-  notification_group: "通知分组",
-  apikey: "API密钥",
-  sso: "第三方联合登录",
-  model_deployment: "模型部署",
-  model_pricing: "模型计费",
-  model_provider: "模型供应商",
-  model_policy: "模型策略",
-  token_pack: "算力礼包",
-  token_settlement: "算力结算单",
-  workspace_plan: "空间套餐",
-  account_deletion: "账号注销",
-  platform_default: "平台默认配置",
-};
 
-// ===== 审计详情「显示字典」权威默认值（字段名 / 字段值 / 词根） =====
-// 说明：与 action/resource 字典同源治理——运行时以 system_config.audit_display_dict 为准，
-// 管理员可在库内直接覆盖/扩展，前端不再内置任何业务字典。
-export const DEFAULT_FIELD_DICT: Record<string, string> = {
-  deviceName: "终端设备名称",
-  deviceType: "设备平台类型",
-  platform: "操作系统环境",
-  browser: "浏览器环境",
-  kickAllOthers: "注销其他设备会话",
-  targetUserId: "目标用户",
-  kickedUserId: "受影响用户",
-  userId: "用户账号标识",
-  bannedUntil: "封禁截止时间",
-  reason: "操作原因",
-  banReason: "封禁案由",
-  name: "名称",
-  tokens: "消耗算力点",
-  componentId: "关联组件",
-  componentName: "组件名称",
-  pathPrefix: "路径",
-  ruleId: "规则编号",
-  resourceKey: "资源标识",
-  moduleId: "模块标识",
-  path: "路径",
-  action: "执行动作",
-  workspaceName: "工作空间名称",
-  workspacePlan: "空间套餐",
-  workspaceType: "空间类型",
-  workspaceVisibility: "空间可见性",
-  invitationCode: "空间邀请码",
-  role: "账号角色",
-  newRole: "变更后角色",
-  oldRole: "原角色",
-  fromType: "变更前空间类型",
-  toType: "变更后空间类型",
-  fromLevel: "原会员等级",
-  toLevel: "目标会员等级",
-  boundAt: "绑定时间",
-  unboundAt: "解绑时间",
-  archivedAt: "任务归档时间",
-  deletedAt: "数据删除时间",
-  deletedCount: "物理删除记录数",
-  restrictedIds: "受限组件范围",
-  positions: "自定义界面布局",
-  knowledgeId: "知识条目",
-  taskId: "协同任务",
-  sourceTaskId: "来源研发任务",
-  solution: "行业解决方案",
-  type: "操作模式",
-  title: "标题名称",
-  documentId: "系统文档",
-  assetId: "资料资产",
-  assetIds: "批量资料列表",
-  appealId: "申诉工单编号",
-  appealIds: "申诉工单编号",
-  statuses: "当前工单状态",
-  businessTypes: "申诉业务类型",
-  targetUserIds: "目标用户",
-  comment: "审核处理意见",
-  reviewComment: "审核意见说明",
-  reviewer: "审核处理人",
-  count: "影响数据量",
-  amount: "配额变动额度",
-  operation: "敏感操作标识",
-  provider: "三方授权源",
-  openid: "三方账号标识",
-  unionid: "统一平台标识",
-  updates: "业务变更明细",
-  status: "业务状态",
-  initialStatus: "初始业务状态",
-  isCurrent: "是否当前终端",
-  message: "处理说明",
-  orderId: "关联订单编号",
-  orderNo: "订单业务流水号",
-  billingCycle: "计费周期",
-  paymentMethod: "支付结算方式",
-  paymentStatus: "支付状态",
-  price: "支付金额",
-  totalPrice: "订单总金额",
-  discount: "优惠抵扣额度",
-  duration: "订阅生效时长",
-  expiresAt: "服务到期时间",
-  autoRenew: "自动续订状态",
-  scope: "操作执行范围",
-  failedCount: "失败数量",
-  skippedCount: "跳过数量",
-  skippedSample: "跳过项说明",
-  totalSelected: "已选目标总数",
-  processedCount: "成功处理数",
-  isPublic: "公开上架状态",
-  isPublished: "公开上架状态",
-  published: "公开上架状态",
-  publish: "公开上架状态",
-  enabled: "启用生效状态",
-  maintenanceMode: "全站维护模式",
-  threshold: "算力预警阈值",
-  recycleCount: "配额回收数量",
-  success: "执行状态",
-  error: "异常报错内容",
-  componentCatalog: "组件所属分类",
-  category: "所属类别",
-  version: "组件版本号",
-  description: "组件描述",
-  oldSessionToken: "原会话凭据 (已踢下线)",
-  newSessionToken: "新会话凭据 (当前有效)",
-  sessionToken: "会话认证凭证",
-  refreshToken: "刷新会话令牌",
-  // 详情页补充字段
-  detail: "详情说明",
-  summary: "摘要",
-  fromPlan: "原套餐",
-  toPlan: "新套餐",
-  planName: "套餐名称",
-  roles: "角色列表",
-  configuredAt: "配置时间",
-  phone: "手机号",
-  signName: "短信签名",
-  templateCode: "模板编号",
-  latencyMs: "耗时(毫秒)",
-  toEmail: "收件邮箱",
-  smtpHost: "SMTP主机",
-  smtpPort: "SMTP端口",
-  messageId: "邮件消息ID",
-  backupTime: "备份时间",
-  updatedKeys: "变更配置项",
-  passwordUpdated: "密码已更新",
-  email: "邮箱",
-  twoFactorEnabled: "两步验证",
-  operatorName: "操作人",
-  deletionDeadline: "注销截止时间",
-  cooldownDays: "冷静期天数",
-  accountType: "注册方式",
-  userName: "用户名",
-  deletionRequestedAt: "注销申请时间",
-  updatedAt: "更新时间",
-  option: "选项",
-  visibility: "可见性",
-  safetyScore: "安全评分",
-  environmentScale: "部署规模",
-  isolationLevel: "隔离级别",
-  complianceType: "合规类型",
-  score: "评分",
-  loginMethod: "登录方式",
-  reasonCode: "原因编码",
-  grantedPermissions: "授予权限",
-  deletedKeys: "删除的配置项",
-  remainingGroups: "剩余权限组",
-  affectedAdmins: "受影响管理员",
-  os: "操作系统",
-};
-
-export const DEFAULT_VALUE_DICT: Record<string, string> = {
-  // —— 会话 / 设备退出语义 ——
-  admin_forced: "管理员强制执行",
-  admin_force: "管理员强制执行",
-  admin_kick: "管理员强制执行",
-  manual_kick: "手动下线设备",
-  kick_all_others: "注销其他所有设备",
-  kick_device: "注销指定设备",
-  conflict: "会话冲突被新登录顶替下线",
-  timeout: "长时间未操作会话过期",
-  self: "用户自主操作",
-  // —— 会员等级 ——
-  BRONZE: "铜牌会员",
-  SILVER: "银牌会员",
-  GOLD: "金牌会员",
-  PLATINUM: "白金会员",
-  DIAMOND: "钻石会员",
-  FREE: "免费版",
-  STANDARD: "标准版",
-  ENTERPRISE: "企业版",
-  PRO: "专业版",
-  // —— 状态 ——
-  active: "正常活跃",
-  banned: "已被封禁",
-  suspended: "已停用冻结",
-  inactive: "已停用 (未激活)",
-  deleted: "已删除",
-  true: "是",
-  false: "否",
-  pending: "待处理审核",
-  approved: "审核通过",
-  rejected: "审核驳回",
-  archived: "已归档",
-  canceled: "用户已撤销",
-  cancelled: "用户已撤销",
-  // —— 计费周期 / 支付 ——
-  MONTH: "按月计费 (月付)",
-  YEAR: "按年计费 (年付)",
-  QUARTER: "按季计费 (季付)",
-  ONCE: "单次付费",
-  ONE_TIME: "单次付费",
-  WEEK: "按周计费",
-  DAY: "按天计费",
-  WECHAT_PAY: "微信支付",
-  WECHAT: "微信支付",
-  ALIPAY: "支付宝支付",
-  STRIPE: "国际信用卡支付",
-  BALANCE: "账户余额支付",
-  PAID: "已支付成功",
-  UNPAID: "待支付",
-  REFUNDED: "已全额退款",
-  PENDING: "待处理审核",
-  APPROVED: "审核通过",
-  REJECTED: "审核驳回",
-  ARCHIVED: "已归档保存",
-  // —— 执行结果 ——
-  SUCCESS: "执行成功",
-  FAILED: "执行失败",
-  FAIL: "失败",
-  OK: "成功",
-  MANUAL: "手动",
-  TIMEOUT: "超时",
-  ACTIVE: "生效",
-  INACTIVE: "停用",
-  BANNED: "已封禁",
-  ENABLED: "已启用",
-  DISABLED: "已停用",
-  // —— 执行范围 / 动作指令 ——
-  explicit: "管理员手动指定",
-  all: "全选当前筛选目标",
-  unban: "解封账号",
-  ban: "封禁账号",
-  kick: "强制安全下线",
-  reset_pwd: "重置登录密码",
-  reset_password: "重置登录密码",
-  reset_session: "重置登录会话",
-  delete: "删除账号",
-  // —— 可见性 ——
-  PUBLIC: "公开共享",
-  PRIVATE: "私有保密",
-  INTERNAL: "内部可见",
-  // —— 内容 / 文件类型 ——
-  json: "JSON 数据文件",
-  markdown: "Markdown 文档",
-  image: "图片素材",
-  excel: "Excel 表格",
-  pdf: "PDF 文档",
-  word: "Word 文档",
-  code: "代码文件",
-  // —— 设备上限替换事件类型 ——
-  DEVICE_LIMIT_REPLACED: "设备数量上限替换",
-  device_limit_replaced: "设备数量上限替换",
-  // —— 登录方式 / 三方来源 / 设备类型 ——
-  github: "GitHub 授权登录",
-  GitHub: "GitHub 授权登录",
-  qq: "QQ 快捷登录",
-  QQ: "QQ 快捷登录",
-  sms: "短信验证码登录",
-  password: "账号密码登录",
-  oauth: "第三方授权登录",
-  oauth_register: "第三方注册登录",
-  wechat: "微信授权登录",
-  weixin: "微信授权登录",
-  web: "网页端浏览器",
-  mobile: "移动端设备",
-  tablet: "平板端设备",
-  desktop: "桌面端",
-  // —— 浏览器 / 操作系统 / 设备环境 ——
-  chrome: "Chrome 浏览器",
-  safari: "Safari 浏览器",
-  firefox: "Firefox 浏览器",
-  edge: "Edge 浏览器",
-  windows: "Windows",
-  mac: "macOS",
-  macos: "macOS",
-  linux: "Linux",
-  ios: "iOS",
-  android: "Android",
-  unknown: "未知",
-  // —— 角色 ——
-  user: "普通用户",
-  admin: "系统管理员",
-  super_admin: "超级管理员",
-  "super-admin": "超级管理员",
-  superadmin: "超级管理员",
-  member: "空间成员",
-  owner: "空间拥有者",
-  viewer: "访客成员",
-  creator: "创作者",
-  project_manager: "项目经理",
-  developer: "研发人员",
-  component_manager: "组件管理员",
-  knowledge_manager: "知识库管理员",
-  componentmanager: "组件管理员",
-  knowledgemanager: "知识库管理员",
-  // —— 空间类型 ——
-  PERSONAL: "个人型",
-  // —— 处理态 / 触发来源 ——
-  processing: "正在处理中",
-  ban_recorded: "违规封禁留痕",
-  system: "平台全局系统域",
-  manual: "用户主动操作",
-  auto: "系统自动处理",
-  automatic: "系统自动处理",
-  succeeded: "执行成功",
-  error: "执行失败",
-  // —— 原因编码 ——
-  other: "其他原因",
-  OTHER: "其他原因",
-};
-
-export const DEFAULT_WORD_DICT: Record<string, string> = {
-  appeal: "申诉工单",
-  business: "业务",
-  evidence: "举证材料",
-  user: "用户",
-  account: "账号",
-  member: "成员",
-  // 个人资料与工作台词根（兜底组合翻译用，杜绝 profile/refine/prompt/studio 裸英文）
-  profile: "个人资料",
-  refine: "润色",
-  prompt: "提示词",
-  studio: "工作台",
-  role: "角色",
-  perm: "权限",
-  permission: "权限",
-  pwd: "密码",
-  password: "密码",
-  phone: "手机号",
-  email: "邮箱",
-  avatar: "头像",
-  name: "名称",
-  title: "标题",
-  nick: "昵称",
-  nickname: "昵称",
-  status: "状态",
-  state: "状态",
-  type: "类型",
-  mode: "模式",
-  time: "时间",
-  date: "日期",
-  at: "时间",
-  created: "创建",
-  updated: "更新",
-  archived: "归档",
-  deleted: "删除",
-  unbound: "解绑",
-  bound: "绑定",
-  expired: "过期",
-  expires: "到期",
-  count: "数量",
-  num: "数量",
-  total: "总计",
-  amount: "额度",
-  tokens: "算力点",
-  token: "算力点",
-  quota: "配额",
-  threshold: "阈值",
-  price: "金额",
-  cost: "费用",
-  fee: "费用",
-  pay: "支付",
-  payment: "支付",
-  method: "方式",
-  order: "订单",
-  cycle: "周期",
-  billing: "计费",
-  plan: "套餐",
-  level: "等级",
-  workspace: "空间",
-  space: "空间",
-  component: "组件",
-  catalog: "分类",
-  category: "分类",
-  version: "版本",
-  desc: "描述",
-  description: "描述",
-  doc: "文档",
-  document: "文档",
-  asset: "资料",
-  knowledge: "知识",
-  task: "任务",
-  source: "来源",
-  target: "目标",
-  reason: "原因",
-  reasonCode: "原因编码",
-  pathPrefix: "路径前缀",
-  ruleId: "规则ID",
-  businessTypes: "业务类型",
-  grantedPermissions: "授予权限",
-  deletedKeys: "删除的配置项",
-  remainingGroups: "剩余权限组",
-  affectedAdmins: "受影响管理员",
-  action: "操作指令",
-  comment: "审核意见",
-  review: "审核",
-  message: "说明",
-  msg: "说明",
-  device: "设备",
-  platform: "平台",
-  browser: "浏览器",
-  ip: "IP地址",
-  url: "网络链接",
-  publish: "公开上架",
-  published: "公开上架",
-  public: "公开上架",
-  enable: "启用",
-  enabled: "启用",
-  disable: "停用",
-  disabled: "停用",
-  active: "活跃",
-  inactive: "未激活",
-  is: "是否",
-  has: "是否具备",
-  from: "变更前",
-  to: "变更后",
-  old: "原",
-  new: "新",
-  session: "会话",
-  provider: "登录源",
-  scope: "执行范围",
-  filter: "筛选条件",
-};
-
-// 审计详情显示字典（字段名 / 字段值 / 词根）统一入库的载荷结构
-export const DEFAULT_DISPLAY_DICT = {
-  fields: DEFAULT_FIELD_DICT,
-  values: DEFAULT_VALUE_DICT,
-  words: DEFAULT_WORD_DICT,
-};
-
-// 懒种子：当 system_config 中尚未录入审计字典时，将权威默认映射落库（幂等 upsert），
-// 之后后台即可在数据库内直接覆盖/扩展标签，无需改代码。
-async function ensureAuditDictionariesSeeded() {
-  try {
-    await prisma.systemconfig.upsert({
-      where: { key: "audit_action_dict" },
-      create: { key: "audit_action_dict", value: JSON.stringify(DEFAULT_ACTION_DICT) },
-      update: { value: JSON.stringify(DEFAULT_ACTION_DICT) },
-    });
-    await prisma.systemconfig.upsert({
-      where: { key: "audit_resource_dict" },
-      create: { key: "audit_resource_dict", value: JSON.stringify(DEFAULT_RESOURCE_DICT) },
-      update: { value: JSON.stringify(DEFAULT_RESOURCE_DICT) },
-    });
-    await prisma.systemconfig.upsert({
-      where: { key: "audit_display_dict" },
-      create: { key: "audit_display_dict", value: JSON.stringify(DEFAULT_DISPLAY_DICT) },
-      update: { value: JSON.stringify(DEFAULT_DISPLAY_DICT) },
-    });
-  } catch (e) {
-    console.warn("[审计字典] 懒种子写入 system_config 失败（不影响兜底翻译）:", e);
-  }
-}
-
-// 从数据库 system_config 表动态获取审计字典（数据库值为准，代码默认值为兜底与种子来源）
+// KN-CFG：审计字典唯一真相源 = 数据库 system_config（用户红线：配置不允许硬编码）。
+// 键：audit_action_dict / audit_resource_dict / audit_display_dict（fields/values/words）。
+// 管理员直接在库内维护词条；代码只负责读取与翻译，不再内置任何默认映射。
 export async function getAuditDictionariesFromDb() {
-  // 以代码权威默认映射打底，确保字段翻译与下拉筛选项 100% 中文、不裸英文
-  let actionDict: Record<string, string> = { ...DEFAULT_ACTION_DICT };
-  let resourceDict: Record<string, string> = { ...DEFAULT_RESOURCE_DICT };
-  let fieldDict: Record<string, string> = { ...DEFAULT_FIELD_DICT };
-  let valueDict: Record<string, string> = { ...DEFAULT_VALUE_DICT };
-  let wordDict: Record<string, string> = { ...DEFAULT_WORD_DICT };
-  let dbHasDict = false;
-  let displayRec: { value: string | null } | undefined;
+  let actionDict: Record<string, string> = {};
+  let resourceDict: Record<string, string> = {};
+  let fieldDict: Record<string, string> = {};
+  let valueDict: Record<string, string> = {};
+  let wordDict: Record<string, string> = {};
 
   try {
     const records = await prisma.systemconfig.findMany({
@@ -795,20 +38,7 @@ export async function getAuditDictionariesFromDb() {
     const actionRec = records.find((r) => r.key === "audit_action_dict");
     if (actionRec?.value) {
       try {
-        // 数据库值优先（允许管理员在库内覆盖/扩展标签），覆盖默认值
-        const parsedDbAction = JSON.parse(actionRec.value) || {};
-        actionDict = { ...DEFAULT_ACTION_DICT, ...parsedDbAction };
-        dbHasDict = true;
-
-        // 增量自愈：如果数据库中尚未包含部分标准动作键（如 UPGRADE_PERSONAL_TO_ENTERPRISE），自动补全写回数据库
-        const missingActionKeys = Object.keys(DEFAULT_ACTION_DICT).filter((k) => !(k in parsedDbAction));
-        if (missingActionKeys.length > 0) {
-          const mergedActions = { ...DEFAULT_ACTION_DICT, ...parsedDbAction };
-          prisma.systemconfig.update({
-            where: { key: "audit_action_dict" },
-            data: { value: JSON.stringify(mergedActions) },
-          }).catch((err) => console.warn("[审计字典] 增量同步动作字典至数据库失败:", err));
-        }
+        actionDict = JSON.parse(actionRec.value) || {};
       } catch (e) {
         console.error("解析数据库 audit_action_dict 失败:", e);
       }
@@ -817,100 +47,46 @@ export async function getAuditDictionariesFromDb() {
     const resourceRec = records.find((r) => r.key === "audit_resource_dict");
     if (resourceRec?.value) {
       try {
-        const parsedDbResource = JSON.parse(resourceRec.value) || {};
-        resourceDict = { ...DEFAULT_RESOURCE_DICT, ...parsedDbResource };
-        dbHasDict = true;
-
-        // 增量自愈：数据库缺失的标准资源键（如 studio）自动补全写回数据库
-        const missingResourceKeys = Object.keys(DEFAULT_RESOURCE_DICT).filter((k) => !(k in parsedDbResource));
-        if (missingResourceKeys.length > 0) {
-          const mergedResources = { ...DEFAULT_RESOURCE_DICT, ...parsedDbResource };
-          prisma.systemconfig.update({
-            where: { key: "audit_resource_dict" },
-            data: { value: JSON.stringify(mergedResources) },
-          }).catch((err) => console.warn("[审计字典] 增量同步资源字典至数据库失败:", err));
-        }
+        resourceDict = JSON.parse(resourceRec.value) || {};
       } catch (e) {
         console.error("解析数据库 audit_resource_dict 失败:", e);
       }
     }
 
-    displayRec = records.find((r) => r.key === "audit_display_dict");
+    const displayRec = records.find((r) => r.key === "audit_display_dict");
     if (displayRec?.value) {
       try {
         const parsed = JSON.parse(displayRec.value) || {};
-        fieldDict = { ...DEFAULT_FIELD_DICT, ...(parsed.fields || {}) };
-        valueDict = { ...DEFAULT_VALUE_DICT, ...(parsed.values || {}) };
-        wordDict = { ...DEFAULT_WORD_DICT, ...(parsed.words || {}) };
-        dbHasDict = true;
-
-        // 增量自愈：数据库缺失的标准词条（fields/values/words）自动补全写回数据库
-        const dbFields = parsed.fields || {};
-        const dbValues = parsed.values || {};
-        const dbWords = parsed.words || {};
-        const missingFields = Object.keys(DEFAULT_FIELD_DICT).filter((k) => !(k in dbFields));
-        const missingValues = Object.keys(DEFAULT_VALUE_DICT).filter((k) => !(k in dbValues));
-        const missingWords = Object.keys(DEFAULT_WORD_DICT).filter((k) => !(k in dbWords));
-        if (missingFields.length > 0 || missingValues.length > 0 || missingWords.length > 0) {
-          const mergedDisplay = {
-            fields: { ...DEFAULT_FIELD_DICT, ...dbFields },
-            values: { ...DEFAULT_VALUE_DICT, ...dbValues },
-            words: { ...DEFAULT_WORD_DICT, ...dbWords },
-          };
-          prisma.systemconfig.update({
-            where: { key: "audit_display_dict" },
-            data: { value: JSON.stringify(mergedDisplay) },
-          }).catch((err) => console.warn("[审计字典] 增量同步显示字典至数据库失败:", err));
-        }
+        fieldDict = parsed.fields || {};
+        valueDict = parsed.values || {};
+        wordDict = parsed.words || {};
       } catch (e) {
         console.error("解析数据库 audit_display_dict 失败:", e);
       }
     }
-
-    // 数据库尚未录入字典：一键落库权威默认值（懒种子），之后可在库内直接维护
-    if (!dbHasDict) {
-      await ensureAuditDictionariesSeeded();
-    } else if (!displayRec) {
-      // 兼容旧库：仅补种缺失的显示字典（update 为空对象，绝不覆盖既有配置）
-      await prisma.systemconfig
-        .upsert({
-          where: { key: "audit_display_dict" },
-          create: { key: "audit_display_dict", value: JSON.stringify(DEFAULT_DISPLAY_DICT) },
-          update: {},
-        })
-        .catch((err) => console.warn("[审计字典] 补种 audit_display_dict 失败:", err));
-    }
-
-    // 组装用于下拉筛选的标准化选项列表（根据合并后的字典动态生成，去重）
-    const actionOptionsMap = new Map<string, string>();
-    for (const [value, label] of Object.entries(actionDict)) {
-      const normLabel = label.trim();
-      if (!actionOptionsMap.has(normLabel)) {
-        actionOptionsMap.set(normLabel, value);
-      }
-    }
-
-    const actionOptions = Array.from(actionOptionsMap.entries()).map(([label, value]) => ({
-      value,
-      label,
-    }));
-
-    return { actionDict, resourceDict, fieldDict, valueDict, wordDict, actionOptions };
   } catch (e) {
-    console.error("读取数据库审计字典失败:", e);
-    // 异常时仍回退到代码默认值，保证后台可用、标签中文
-    return {
-      actionDict: { ...DEFAULT_ACTION_DICT },
-      resourceDict: { ...DEFAULT_RESOURCE_DICT },
-      fieldDict: { ...DEFAULT_FIELD_DICT },
-      valueDict: { ...DEFAULT_VALUE_DICT },
-      wordDict: { ...DEFAULT_WORD_DICT },
-      actionOptions: Object.entries(DEFAULT_ACTION_DICT).map(([value, label]) => ({ value, label })),
-    };
+    console.error("读取数据库审计字典失败（未知动作将按剥离英文兜底）:", e);
   }
+
+  // 组装用于下拉筛选的标准化选项列表（按字典动态生成，去重）
+  const actionOptionsMap = new Map<string, string>();
+  for (const [value, label] of Object.entries(actionDict)) {
+    const normLabel = (label || "").trim();
+    if (!normLabel) continue;
+    if (!actionOptionsMap.has(normLabel)) {
+      actionOptionsMap.set(normLabel, value);
+    }
+  }
+
+  const actionOptions = Array.from(actionOptionsMap.entries()).map(([label, value]) => ({
+    value,
+    label,
+  }));
+
+  return { actionDict, resourceDict, fieldDict, valueDict, wordDict, actionOptions };
 }
 
-// 智能模糊键值查找：不区分大小写、空格与下划线互转
+
 function lookupDict(key: string, dict: Record<string, string>): string | null {
   if (!key) return null;
   const raw = key.trim();
@@ -934,121 +110,32 @@ function lookupDict(key: string, dict: Record<string, string>): string | null {
 }
 
 // 智能动作语义转译引擎（防生僻英文泄漏兜底）
-function fallbackTranslateAction(action: string): string {
-  const clean = action.trim();
-  const lower = clean.toLowerCase();
 
-  // 模块前缀识别
+// 兜底动作翻译：词根全部来自数据库（wordDict = audit_display_dict.words，resourceDict = 模块前缀资源名），
+// 未登记的纯英文词根直接剥离，杜绝审计标签漏英文（用户红线）。
+function fallbackTranslateAction(
+  action: string,
+  wordDict: Record<string, string>,
+  resourceDict: Record<string, string>
+): string {
+  const lower = (action || "").trim().toLowerCase();
+  if (!lower) return "系统操作";
+
   let prefix = "";
   let actBody = lower;
   if (lower.includes(":")) {
     const [mod, ...rest] = lower.split(":");
     actBody = rest.join(":");
-    if (mod === "user") prefix = "用户账号";
-    else if (mod === "workspace") prefix = "工作空间";
-    else if (mod === "component") prefix = "组件";
-    else if (mod === "component_contract") prefix = "组件版本合同";
-    else if (mod === "system") prefix = "系统核心";
-    else if (mod === "systemconfig") prefix = "系统配置";
-    else if (mod === "auth") prefix = "安全认证";
-    else if (mod === "asset") prefix = "知识资料";
-    else if (mod === "security") prefix = "平台安全";
-    else if (mod === "knowledge") prefix = "知识资产";
-    else if (mod === "apikey") prefix = "API密钥";
-    else if (mod === "model") prefix = "模型部署";
-    else if (mod === "testimonial") prefix = "用户评价";
-    else if (mod === "appeal") prefix = "申诉工单";
-    else if (mod === "studio") prefix = "组件工作台";
+    prefix = lookupDict(mod, resourceDict) || "";
   }
 
-  // 动作动词识别
-  const words = actBody.replace(/[:_\s-]+/g, " ").trim().split(" ");
+  const words = actBody.replace(/[:_\s-]+/g, " ").trim().split(" ").filter(Boolean);
   const translatedWords = words.map((w) => {
-    switch (w) {
-      case "test": return "测试";
-      case "sms": return "短信网关";
-      case "email": return "邮件通道";
-      case "settings": return "全局配置";
-      case "config": return "配置属性";
-      case "publish": return "上架发布";
-      case "unpublish": return "下架停用";
-      case "batch": return "批量";
-      case "ban": return "封禁";
-      case "unban": return "解封";
-      case "kick": return "强制下线";
-      case "reset": return "重置";
-      case "password": return "登录密码";
-      case "session": return "在线会话";
-      case "create": return "创建";
-      case "update": return "更新";
-      case "delete": return "删除";
-      case "list": return "查询列表";
-      case "view": return "查看";
-      case "detail": return "详情";
-      case "use": return "调用";
-      case "sync": return "同步";
-      case "check": return "校验";
-      case "permission": return "权限";
-      case "catalog": return "目录";
-      case "pricing": return "计费价格";
-      case "markup": return "成本加价";
-      case "period": return "周期价";
-      case "open": return "开放";
-      case "api": return "接口";
-      case "upgrade": return "升级";
-      case "login": return "登录";
-      case "logout": return "登出";
-      case "register": return "自主注册";
-      case "signup": return "自主注册";
-      case "membership": return "会员权益";
-      case "backup": return "备份";
-      case "knowledge": return "知识资产";
-      case "category": return "分类";
-      case "rename": return "重命名";
-      case "restore": return "恢复";
-      case "task": return "生成任务";
-      case "component": return "组件";
-      case "bind": return "绑定";
-      case "unbind": return "解绑";
-      case "archive": return "归档";
-      case "oauth": return "第三方登录";
-      case "enable": return "启用";
-      case "disable": return "停用";
-      case "configure": return "配置";
-      case "solution": return "解决方案";
-      case "enterprise": return "企业版";
-      case "join": return "加入";
-      case "diagnose": return "诊断";
-      case "restricted": return "受限";
-      case "positions": return "布局";
-      case "plan": return "套餐";
-      case "matrix": return "矩阵";
-      case "device": return "登录设备";
-      case "timeout": return "超时";
-      case "conflict": return "冲突";
-      case "set": return "设置";
-      case "submit": return "提交";
-      case "reject": return "驳回";
-      case "asset": return "知识资料";
-      case "upload": return "上传";
-      case "download": return "下载";
-      case "limited": return "受限";
-      case "replaced": return "替换";
-      case "save": return "保存";
-      case "custom": return "自定义";
-      case "restrictedcomponents": return "受限组件";
-      case "custompositions": return "自定义布局";
-      case "restricted_components": return "受限组件";
-      case "custom_positions": return "自定义布局";
-      // 个人资料与工作台词根（防裸英文泄漏）
-      case "profile": return "个人资料";
-      case "refine": return "AI 润色";
-      case "prompt": return "提示词";
-      default:
-        // KN-UI：未识别的纯英文词根直接剥离，杜绝审计标签漏英文（自查清单用户要求）
-        if (/^[a-z]+$/i.test(w)) return "";
-        return w;
-    }
+    const hit = lookupDict(w, wordDict);
+    if (hit) return hit;
+    // 未识别的纯英文词根直接剥离（含数字/混合形态保留原样以便辨识 ID/版本号）
+    if (/^[a-z]+$/i.test(w)) return "";
+    return w;
   });
 
   const combined = translatedWords.join("");
@@ -1056,11 +143,16 @@ function fallbackTranslateAction(action: string): string {
   return prefix ? `${prefix}: ${combined}` : combined;
 }
 
-// 翻译操作动作并生成对应徽章样式（完全基于数据库驱动 + 智能语义防护）
-export function translateAction(action: string, actionDict: Record<string, string>) {
+
+export function translateAction(
+  action: string,
+  actionDict: Record<string, string>,
+  wordDict: Record<string, string> = {},
+  resourceDict: Record<string, string> = {}
+) {
   const norm = (action || "").trim();
   const matchedLabel = lookupDict(norm, actionDict);
-  const label = matchedLabel || (norm.toUpperCase() === "USER_REGISTER" ? "新用户自主注册" : fallbackTranslateAction(norm));
+  const label = matchedLabel || (norm.toUpperCase() === "USER_REGISTER" ? "新用户自主注册" : fallbackTranslateAction(norm, wordDict, resourceDict));
 
   const act = norm.toLowerCase();
   let bg = "bg-slate-50";

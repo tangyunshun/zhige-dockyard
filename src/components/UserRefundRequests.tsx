@@ -74,9 +74,9 @@ const STATUS_META: Record<
   { text: string; cls: string; hint: string }
 > = {
   PENDING: {
-    text: "待审批",
+    text: "待核查",
     cls: "text-amber-700 bg-amber-50 border-amber-200",
-    hint: "已提交申请，等待平台管理员审核",
+    hint: "已受理，申请保留待核查；人工批准退点暂不可用，不会因此重复退点或转入个人钱包",
   },
   APPROVED: {
     text: "已退回",
@@ -370,11 +370,11 @@ export default function UserRefundRequests({
             </div>
             <h3 className="text-sm font-bold text-slate-800">算力点退回申请</h3>
             <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-              任务已扣点但结果异常时可申请退回；仅退还算力点，需管理员审批
+              任务已扣点但结果异常时可提交核查诉求；仅涉及算力点，申请保留待核查
             </span>
           </div>
           <p className="text-[11px] text-slate-400 font-medium mt-1 sm:hidden">
-            任务已扣点但结果异常时可申请退回；仅退还算力点，需管理员审批
+            任务已扣点但结果异常时可提交核查诉求；申请保留待核查
           </p>
         </div>
 
@@ -389,7 +389,7 @@ export default function UserRefundRequests({
             <span className="font-bold font-mono text-amber-700">{pendingCount}</span>
           </div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50/70 border border-emerald-200/60 text-xs">
-            <span className="text-emerald-700/80 font-medium">累计已退回</span>
+            <span className="text-emerald-700/80 font-medium">累计已退回（历史记录）</span>
             <span className="font-bold font-mono text-emerald-700">
               {totalRefundedPoints.toLocaleString()} 点
             </span>
@@ -408,6 +408,12 @@ export default function UserRefundRequests({
             <span>刷新</span>
           </button>
         </div>
+      </div>
+
+      {/* [R0-D] 人工批准暂停说明：受理/查询/撤销仍可用，不误报到账、不鼓励重复提交 */}
+      <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-[11px] font-bold text-amber-800 leading-relaxed">
+        人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包。历史累计扣点仅作参考申请值，
+        未扣除既有自动退款、也未核验原扣款来源，不代表已核准的净可退金额。技术失败的原路自动退点不受影响。
       </div>
 
       {/* 2. 页签切换与搜索过滤栏 */}
@@ -465,14 +471,14 @@ export default function UserRefundRequests({
             </button>
           </div>
 
-          {/* 当在“我的申请记录”页签时，提供审批状态筛选 */}
+          {/* 当在"我的申请记录"页签时，提供审批状态筛选 */}
           {activeTab === "requests" && (
             <div className="flex items-center gap-1">
               {(
                 [
                   { key: "ALL", label: "全部" },
-                  { key: "PENDING", label: "待审批" },
-                  { key: "APPROVED", label: "已退回" },
+                  { key: "PENDING", label: "待核查" },
+                  { key: "APPROVED", label: "已退回（历史）" },
                   { key: "REJECTED", label: "已驳回" },
                 ] as const
               ).map((st) => (
@@ -656,7 +662,7 @@ export default function UserRefundRequests({
                               点
                             </span>
                           </div>
-                          <div className="text-[10px] text-slate-400">可退额度</div>
+                          <div className="text-[10px] text-slate-400">历史扣点（参考申请值）</div>
                         </div>
                         <button
                           type="button"
@@ -943,7 +949,7 @@ export default function UserRefundRequests({
                       "组件执行任务"}
                   </span>
                   <span className="font-black font-mono text-sm text-[#3182ce] shrink-0">
-                    申请退回 {applyingCandidate.points.toLocaleString()} 点
+                    参考申请值 {applyingCandidate.points.toLocaleString()} 点
                   </span>
                 </div>
                 <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500">

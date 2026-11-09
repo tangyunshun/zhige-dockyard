@@ -1,0 +1,72 @@
+{
+  "checkedAt": "2026-11-07T15:19:16.054Z",
+  "verdict": "R0-I2_ARCHIVE_ACCEPTED",
+  "closedIssue": "I2-ARCHIVE-MISSING",
+  "copies": [
+    {
+      "source": "src/app/api/billing/estimate/route.ts",
+      "copy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt",
+      "sha256": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+      "bytes": 9426,
+      "match": true
+    },
+    {
+      "source": "src/lib/model-registry.ts",
+      "copy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__model-registry.ts.snapshot.txt",
+      "sha256": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+      "bytes": 68159,
+      "match": true
+    },
+    {
+      "source": "src/lib/workspace-byo-model.ts",
+      "copy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__workspace-byo-model.ts.snapshot.txt",
+      "sha256": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+      "bytes": 20307,
+      "match": true
+    },
+    {
+      "source": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "copy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt",
+      "sha256": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+      "bytes": 52002,
+      "match": true
+    }
+  ],
+  "current": [
+    {
+      "source": "src/app/api/billing/estimate/route.ts",
+      "sha256": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+      "match": true
+    },
+    {
+      "source": "src/lib/model-registry.ts",
+      "sha256": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+      "match": true
+    },
+    {
+      "source": "src/lib/workspace-byo-model.ts",
+      "sha256": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+      "match": true
+    },
+    {
+      "source": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "sha256": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+      "match": true
+    },
+    {
+      "source": "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "sha256": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+      "match": true
+    }
+  ],
+  "protectedFiles": 24,
+  "reusedEvidence": {
+    "source": "docs/reviews/R0-I2-independent-review/validation-results.json",
+    "reason": "All 29 accepted source hashes unchanged",
+    "formalTests": 407,
+    "independentColdTests": 10,
+    "typecheckExitCode": 0,
+    "rerun": false
+  },
+  "limits": "Independent file reads and SHA256 verification only; no rollback, database, provider or payment access."
+}

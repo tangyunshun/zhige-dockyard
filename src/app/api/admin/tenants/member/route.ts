@@ -168,7 +168,7 @@ export async function GET(request: NextRequest) {
       ];
     }
     // 操作记录（本空间 + 本成员）；动作与资源一律从数据库审计字典翻译，绝不裸显英文键
-    const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
+    const { actionDict, resourceDict, wordDict } = await getAuditDictionariesFromDb();
     const opTotal = await prisma.operationlog.count({ where: opWhere });
     const opRows = await prisma.operationlog.findMany({
       where: opWhere,
@@ -180,7 +180,7 @@ export async function GET(request: NextRequest) {
     const opItems = opRows.map((o: any) => ({
       id: o.id,
       action: o.action,
-      actionZh: translateAction(o.action, actionDict).label,
+      actionZh: translateAction(o.action, actionDict, wordDict, resourceDict).label,
       resource: o.resource || null,
       resourceZh: translateResource(o.resource, resourceDict),
       ipAddress: o.ipAddress || null,

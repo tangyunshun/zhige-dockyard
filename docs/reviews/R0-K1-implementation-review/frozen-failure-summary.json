@@ -1,0 +1,85 @@
+{
+  "passed": 514,
+  "failed": 9,
+  "files": 18,
+  "failedFiles": 3,
+  "failures": [
+    {
+      "file": "r0j-storage.test.ts",
+      "name": "R0-J S03：真实 handler 两条上传链路 upload_doc multipart：鉴权前置、原子预留、保存可读、记录与占用一致",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 200 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j-storage.test.ts:548:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j-storage.test.ts",
+      "name": "R0-J S03：真实 handler 两条上传链路 upload_doc 超限 → 403 STORAGE_QUOTA_EXCEEDED，无文件、无预留残留",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 403 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j-storage.test.ts:630:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j-storage.test.ts",
+      "name": "R0-J S03：真实 handler 两条上传链路 S03：解析失败 → 文件删除、预留释放、无假成功",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 500 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j-storage.test.ts:646:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j-storage.test.ts",
+      "name": "R0-J1 J-UPLOAD：opId 持久化去重与清理协议 doc.create 失败 → 清理文件 + 释放预留（无假成功）",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 503 to be 500 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j-storage.test.ts:886:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j2-storage-close.test.ts",
+      "name": "R0-J2 C：两条上传链路清理协议 upload_doc 超限（其他空间限额 0 语义同源：有限上限不足）→ 副作用前 403 拒绝",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 403 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j2-storage-close.test.ts:540:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j2-storage-close.test.ts",
+      "name": "R0-J2 C：两条上传链路清理协议 0 字节物理文件 → 操作记录 bytes=0，不产生容量增量，元信息保留 0",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 200 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j2-storage-close.test.ts:555:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j3-recovery-close.test.ts",
+      "name": "R0-J3 A：物理未确认删除 → 占用保持计量（容量不变量） 限额 30：删除 30 物理失败 → 再上传 30 被准入拒绝；清理成功后仅释放一次",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 403 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j3-recovery-close.test.ts:475:25\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j3-recovery-close.test.ts",
+      "name": "R0-J3 C：上传对象键预绑定与稳定待核实 保存写入对象后响应丢失 + 清理失败 → STORAGE_OP_PENDING + 操作持有可定位对象 + 占用保留",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 500 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j3-recovery-close.test.ts:606:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    },
+    {
+      "file": "r0j3-recovery-close.test.ts",
+      "name": "R0-J3 C：上传对象键预绑定与稳定待核实 确认失败 + 残留文档行清理失败 → 保留文件/记录/占用（不留成功外观的空壳）",
+      "status": "failed",
+      "failureMessages": [
+        "AssertionError: expected 429 to be 500 // Object.is equality\n    at D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\src\\app\\api\\__tests__\\r0j3-recovery-close.test.ts:631:24\n    at file:///D:/Project%20Development/ZhiGe-Dockyard/zhige-dockyard-web/node_modules/@vitest/runner/dist/chunk-hooks.js:752:20"
+      ]
+    }
+  ],
+  "diagnostic": {
+    "cases": 69,
+    "passed": 69,
+    "change": "Only appended parse-admission dependency mock; all original test assertions intact; this does not make original formal run green."
+  }
+}

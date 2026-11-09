@@ -1,0 +1,156 @@
+{
+  "capturedAt": "2026-11-08T11:40:26.905Z",
+  "batch": "R0-K1 / original F14",
+  "verdict": "NOT ACCEPTED; partial fixes verified; continue same original scope",
+  "reviewerBusinessSourceEdits": 0,
+  "sourceStableThroughAudit": true,
+  "version": {
+    "changedExisting": [
+      "src/lib/text-extract.ts",
+      "src/app/api/studio/extract-text/route.ts",
+      "src/app/api/studio/handler.ts",
+      "src/app/api/workspace/assets/[assetId]/preview/route.ts",
+      "src/lib/parse-policy.ts",
+      "src/lib/parse-worker.cjs",
+      "src/lib/parse-runner.ts",
+      "src/lib/parse-admission.ts"
+    ],
+    "newTrackedTest": "src/app/api/__tests__/r0k1-fixes.test.ts",
+    "protectedUnchanged": 48,
+    "trackedFiles": 57,
+    "reportExists": false,
+    "executionSnapshotsExist": false,
+    "currentSourceCopies": 9
+  },
+  "author": {
+    "cases": 20,
+    "passed": 20,
+    "exitCode": 0,
+    "result": "author-results.json",
+    "provenance": "Independently executed current author file; exec session 35270"
+  },
+  "originalR0K": {
+    "cases": 32,
+    "passed": 32,
+    "exitCode": 0,
+    "result": "formal-results.json",
+    "copyChange": "Only staging target moved into audit directory; exact transformed equality verified; no actual Next build"
+  },
+  "formalFrozen": {
+    "files": [
+      "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "src/app/api/__tests__/r0j-storage.test.ts",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts",
+      "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+      "src/app/api/__tests__/r0e-production-mock.test.ts",
+      "src/app/api/__tests__/r0d-refund-approval.test.ts",
+      "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+      "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "src/app/api/__tests__/r0a-business-boundary.test.ts",
+      "src/app/api/__tests__/r0a2-real-combo.test.ts",
+      "src/app/api/__tests__/r0a3-combo-regression.test.ts",
+      "src/app/api/__tests__/r0a4-combo-regression.test.ts"
+    ],
+    "cases": 523,
+    "passed": 514,
+    "failed": 9,
+    "exitCode": 1,
+    "result": "frozen-results.json",
+    "provenance": "Independent exec session 88554"
+  },
+  "frozenDiagnostic": {
+    "files": 3,
+    "cases": 69,
+    "passed": 69,
+    "exitCode": 0,
+    "result": "frozen-diagnostic-results.json",
+    "provenance": "Independent exec session 49084",
+    "note": "Appended dependency mock only, no assertion changes. Diagnostic only; original frozen run remains failed."
+  },
+  "typescript": {
+    "command": "tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 1,
+    "diagnostics": 18,
+    "file": "src/app/api/__tests__/r0k1-fixes.test.ts",
+    "provenance": "Independent exec session 59593; full diagnostics observed",
+    "categories": [
+      "Missing required quarantine backend method",
+      "Wrong acquire/release signature and implicit parameter types",
+      "Resolver resolve() missing required value",
+      "Wrong RootBudget constructor argument",
+      "Buffer<ArrayBufferLike> incompatible with BlobPart"
+    ]
+  },
+  "nodeTest": {
+    "files": [
+      "src/lib/__tests__/text-extract.test.ts",
+      "src/lib/__tests__/text-extract-paths.test.ts"
+    ],
+    "command": "tsx --test --test-timeout=8000 src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts",
+    "cases": 18,
+    "passed": 16,
+    "failed": 1,
+    "cancelled": 1,
+    "exitCode": 1,
+    "durationMs": 11833.1545,
+    "provenance": "Independent exec session 94275; complete final output observed",
+    "failures": [
+      {
+        "file": "src/lib/__tests__/text-extract-paths.test.ts",
+        "line": 138,
+        "reason": "OCR recognize never resolves; timed out after 8000ms despite terminate acknowledgment"
+      },
+      {
+        "file": "src/lib/__tests__/text-extract.test.ts",
+        "line": 119,
+        "reason": "Old expected TIMEOUT, received STOP_UNCONFIRMED for initialization late; proper assertion update must retain stop/lease/late-cleanup verification"
+      }
+    ],
+    "priorUnboundedAttempt": {
+      "session": 99917,
+      "terminatedByReviewer": true,
+      "reason": "same OCR pending recognition blocked; rerun with finite node test-timeout",
+      "notCountedAsPass": true
+    }
+  },
+  "workerSyntax": {
+    "command": "node --check src/lib/parse-worker.cjs",
+    "exitCode": 0
+  },
+  "independent": {
+    "cases": 23,
+    "positive": 13,
+    "defectCharacterizations": 10,
+    "exitCode": 0,
+    "summary": "independent-summary.json",
+    "note": "Reuse unchanged handler from first run plus current admission and current parser; superseded runs are not double-counted."
+  },
+  "originalFindingStatus": {
+    "KR1": "Admission wiring positive; lifecycle release on unconfirmed stop still blocks",
+    "KR2": "CAS/weight/cycles/throw rollback positive; zero-row commit and caller-dependent facts remain",
+    "KR3": "formData waiting fixed; arrayBuffer waiting still permits stale start",
+    "KR4": "runner stop bounded; Studio release/OCR await/quarantine recovery incomplete",
+    "KR5": "PNG/DOCX text/binary transfer fixed; XLSX/HTML/TIFF/read-all protections incomplete",
+    "KR6": "Accepted within current finite tests; preserve",
+    "KR7": "Legacy DOC/PPT and rich preview restored; numeric spreadsheet extraction regression remains"
+  },
+  "scope": {
+    "F01ThroughF13BusinessFrozen": true,
+    "F14Closed": false,
+    "proceedToF15OrF16": false,
+    "next": "Same R0-K1 remaining original findings and verification; no new product batch"
+  },
+  "limits": [
+    "No live DB/model/payment/customer file/cloud/real OCR/migration/deployment",
+    "Prisma concurrency simulated with condition-aware delegates; not real MySQL locks/crash validation",
+    "No actual Next build or production capacity proof",
+    "No real OOM or zip-bomb trial; TIFF fixture is header/IFD with fake OCR",
+    "No financial loss amount or profitability guarantee asserted"
+  ]
+}

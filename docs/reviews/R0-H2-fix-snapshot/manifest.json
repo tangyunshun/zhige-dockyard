@@ -1,0 +1,21 @@
+{
+  "capturedAtReal": "2026-11-07T16:42:16.648637+08:00",
+  "purpose": "R0-H2 batch start baseline (before registry-context-limit boundary)",
+  "files": {
+    "src/app/api/studio/handler.ts": {
+      "sha256": "0ebac90f9956718b3604a442626ed1e23da395c8b97dcc2576e75208d58e0ff1",
+      "bytes": 335884,
+      "snapshotCopy": "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    },
+    "src/lib/model-cost-admission.ts": {
+      "sha256": "ff2333685ab1bbf789980f1a183c76fb034954c955d558c461b18ea29777b9dc",
+      "bytes": 12606,
+      "snapshotCopy": "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__lib__model-cost-admission.ts.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+      "sha256": "4fe6505c779849ae262aa1615f124177dbe2d21b7afe25163d0c3a22fa50a455",
+      "bytes": 32985,
+      "snapshotCopy": "docs/reviews/R0-H2-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt"
+    }
+  }
+}

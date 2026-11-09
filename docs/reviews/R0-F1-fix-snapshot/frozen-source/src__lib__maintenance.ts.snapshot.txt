@@ -1,0 +1,107 @@
+/**
+ * 系统维护模式（PRD G-02）
+ *
+ * 持久化到 DB（system_config 表）+ 内存缓存（60s TTL），
+ * 确保多实例/重启后维护状态仍然生效，避免 PRD 原内存变量在重启后丢失的问题。
+ */
+import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
+
+const CACHE_TTL_MS = 60 * 1000;
+let cache: { value: boolean; fetchedAt: number } | null = null;
+
+export async function isMaintenanceMode(): Promise<boolean> {
+  const now = Date.now();
+  if (cache && now - cache.fetchedAt < CACHE_TTL_MS) {
+    return cache.value;
+  }
+  try {
+    const row = await prisma.systemconfig.findUnique({ where: { key: "maintenance_mode" } });
+    const value = row?.value === "true";
+    cache = { value, fetchedAt: now };
+    return value;
+  } catch {
+    return cache?.value ?? false;
+  }
+}
+
+/** 同步读取（用于 validateUser 等高频路径，依赖最近一次缓存） */
+export function isMaintenanceModeSync(): boolean {
+  return cache?.value ?? false;
+}
+
+export async function setMaintenanceMode(enabled: boolean): Promise<void> {
+  await prisma.systemconfig.upsert({
+    where: { key: "maintenance_mode" },
+    create: { key: "maintenance_mode", value: enabled ? "true" : "false" },
+    update: { value: enabled ? "true" : "false" },
+  });
+  cache = { value: enabled, fetchedAt: Date.now() };
+}
+
+export async function getMaintenanceMessage(): Promise<string> {
+  const row = await prisma.systemconfig.findUnique({ where: { key: "maintenance_message" } });
+  return row?.value || "系统正在维护中，请稍后再试";
+}
+
+/**
+ * 仅供维护配置写事务提交成功后调用：刷新内存缓存，使公开 GET 立即反映已提交状态。
+ * 事务回滚时绝不调用，避免缓存显示一个未提交的维护状态。
+ */
+export function setMaintenanceCache(enabled: boolean): void {
+  cache = { value: enabled, fetchedAt: Date.now() };
+}
+
+function genAuditId(): string {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+}
+
+/**
+ * 在单一数据库事务内完成「维护配置写 + 操作审计」：
+ * - writes 回调内的所有持久化必须使用传入的 tx，禁止逃逸到根 prisma 客户端；
+ * - 审计写与配置写同事务提交；审计失败（或任一写入失败）则整体回滚，绝不留下无审计的成功变更。
+ */
+export async function withMaintenanceAudit(
+  actorId: string,
+  action: string,
+  details: any,
+  writes: (tx: Prisma.TransactionClient) => Promise<void>,
+): Promise<void> {
+  await prisma.$transaction(async (tx) => {
+    await writes(tx);
+    await tx.operationlog.create({
+      data: {
+        id: genAuditId(),
+        userId: actorId,
+        action,
+        resource: action.split(":")[0] || "system",
+        details: details ?? undefined,
+        ipAddress: null,
+      },
+    });
+  });
+}
+
+/**
+ * 仅写入维护模式（落库，不更新内存缓存），供事务内使用。
+ */
+export async function setMaintenanceModeTx(
+  tx: Prisma.TransactionClient,
+  enabled: boolean,
+): Promise<void> {
+  await tx.systemconfig.upsert({
+    where: { key: "maintenance_mode" },
+    create: { key: "maintenance_mode", value: enabled ? "true" : "false" },
+    update: { value: enabled ? "true" : "false" },
+  });
+}
+
+/**
+ * 供 check-maintenance 路由使用的同步检查
+ * （从 maintenance/route.ts 移入：Next.js 路由文件只允许导出 HTTP handler）
+ */
+export async function isInMaintenance(): Promise<{ inMaintenance: boolean; message?: string }> {
+  const inMaintenance = await isMaintenanceMode();
+  if (!inMaintenance) return { inMaintenance: false };
+  return { inMaintenance: true, message: await getMaintenanceMessage() };
+}

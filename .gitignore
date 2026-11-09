@@ -31,6 +31,7 @@ pnpm-debug.log*
 
 # 本地工具 / IDE 数据（保留在本地，不入库）
 .codebuddy/
+.zcode/
 *.tsbuildinfo
 
 # 临时调试产物

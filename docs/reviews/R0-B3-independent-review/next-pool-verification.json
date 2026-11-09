@@ -1,0 +1,433 @@
+{
+  "capturedAt": "2026-11-06T15:43:12.352Z",
+  "originalPlanIssue": "F06 enterprise pool recycle, not a new seat requirement",
+  "observations": [
+    {
+      "scenario": "source_grant_not_debited_OFFLINE_RECHARGE",
+      "actor": "owner",
+      "response": {
+        "walletBalance": 100,
+        "poolBalance": 0
+      },
+      "poolSnapshot": "0",
+      "wallets": {
+        "owner": "100"
+      },
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": {
+        "id": "c526e6f5-2b15-4d13-a752-3db01f80f1b4",
+        "scope": "WALLET",
+        "userId": "owner",
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "MANUAL",
+        "sourceId": "RECYCLE:w1:1793979791781",
+        "status": "ACTIVE",
+        "operatorId": null,
+        "title": "企业池回收 100 算力点至个人钱包",
+        "remark": "从企业空间「fixture」回收",
+        "updatedAt": "2026-11-06T15:43:11.798Z"
+      },
+      "grantRemainingSum": "200",
+      "writes": [
+        {
+          "kind": "TX",
+          "model": "workspacequota",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "model": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "model": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        }
+      ],
+      "ledgerCount": 2
+    },
+    {
+      "scenario": "source_grant_not_debited_GIFT_BONUS",
+      "actor": "owner",
+      "response": {
+        "walletBalance": 100,
+        "poolBalance": 0
+      },
+      "poolSnapshot": "0",
+      "wallets": {
+        "owner": "100"
+      },
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "GIFT_BONUS",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": {
+        "id": "36f1e231-06e8-42a9-b3b4-d2548d7262c1",
+        "scope": "WALLET",
+        "userId": "owner",
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "MANUAL",
+        "sourceId": "RECYCLE:w1:1793979791930",
+        "status": "ACTIVE",
+        "operatorId": null,
+        "title": "企业池回收 100 算力点至个人钱包",
+        "remark": "从企业空间「fixture」回收",
+        "updatedAt": "2026-11-06T15:43:11.930Z"
+      },
+      "grantRemainingSum": "200",
+      "writes": [
+        {
+          "kind": "TX",
+          "model": "workspacequota",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "model": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "model": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        }
+      ],
+      "ledgerCount": 2
+    },
+    {
+      "scenario": "actual_route_OWNER",
+      "actor": "owner",
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "message": "已成功回收 100 算力点至您的个人钱包",
+          "recycledPoints": 100,
+          "walletBalance": 100,
+          "poolBalance": 0
+        }
+      },
+      "poolSnapshot": "0",
+      "wallets": {
+        "owner": "100"
+      },
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": {
+        "id": "98a0dc03-d6ce-4307-aae5-1d97526d5f63",
+        "scope": "WALLET",
+        "userId": "owner",
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "MANUAL",
+        "sourceId": "RECYCLE:w1:1793979792035",
+        "status": "ACTIVE",
+        "operatorId": "owner",
+        "title": "企业池回收 100 算力点至个人钱包",
+        "remark": "从企业空间「fixture」回收",
+        "updatedAt": "2026-11-06T15:43:12.035Z"
+      },
+      "grantRemainingSum": "200",
+      "writes": [
+        {
+          "kind": "TX",
+          "model": "workspacequota",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "model": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "model": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        }
+      ],
+      "ledgerCount": 2
+    },
+    {
+      "scenario": "actual_route_ADMIN",
+      "actor": "staff",
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "message": "已成功回收 100 算力点至您的个人钱包",
+          "recycledPoints": 100,
+          "walletBalance": 100,
+          "poolBalance": 0
+        }
+      },
+      "poolSnapshot": "0",
+      "wallets": {
+        "staff": "100"
+      },
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": {
+        "id": "fabd0798-063d-48b1-9831-a6cf8b5f743a",
+        "scope": "WALLET",
+        "userId": "staff",
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "MANUAL",
+        "sourceId": "RECYCLE:w1:1793979792101",
+        "status": "ACTIVE",
+        "operatorId": "staff",
+        "title": "企业池回收 100 算力点至个人钱包",
+        "remark": "从企业空间「fixture」回收",
+        "updatedAt": "2026-11-06T15:43:12.101Z"
+      },
+      "grantRemainingSum": "200",
+      "writes": [
+        {
+          "kind": "TX",
+          "model": "workspacequota",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "model": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "model": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        }
+      ],
+      "ledgerCount": 2
+    },
+    {
+      "scenario": "actual_route_PLATFORM_ADMIN",
+      "actor": "platform-admin",
+      "response": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "message": "已成功将 100 算力点从「fixture」回收至所有者个人钱包",
+          "recycledPoints": 100,
+          "ownerId": "owner",
+          "walletBalance": 100,
+          "poolBalance": 0
+        }
+      },
+      "poolSnapshot": "0",
+      "wallets": {
+        "owner": "100"
+      },
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": {
+        "id": "5a51382b-7d2e-4f30-8c37-32fa9d207080",
+        "scope": "WALLET",
+        "userId": "owner",
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "MANUAL",
+        "sourceId": "RECYCLE:w1:1793979792167",
+        "status": "ACTIVE",
+        "operatorId": "platform-admin",
+        "title": "企业池回收 100 算力点至个人钱包",
+        "remark": "从企业空间「fixture」回收",
+        "updatedAt": "2026-11-06T15:43:12.167Z"
+      },
+      "grantRemainingSum": "200",
+      "writes": [
+        {
+          "kind": "TX",
+          "model": "workspacequota",
+          "method": "update"
+        },
+        {
+          "kind": "TX",
+          "model": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "model": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "model": "pointledger",
+          "method": "create"
+        }
+      ],
+      "ledgerCount": 2
+    }
+  ],
+  "controls": [
+    {
+      "scenario": "existing_auth_gate_{\"role\":\"MEMBER\"}",
+      "actor": "staff",
+      "response": {
+        "status": 403
+      },
+      "poolSnapshot": "100",
+      "wallets": {},
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": null,
+      "grantRemainingSum": "100",
+      "writes": [],
+      "ledgerCount": 0
+    },
+    {
+      "scenario": "existing_auth_gate_{\"role\":\"ADMIN\",\"member\":false}",
+      "actor": "staff",
+      "response": {
+        "status": 403
+      },
+      "poolSnapshot": "100",
+      "wallets": {},
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": null,
+      "grantRemainingSum": "100",
+      "writes": [],
+      "ledgerCount": 0
+    },
+    {
+      "scenario": "existing_auth_gate_{\"authenticated\":false}",
+      "actor": "owner",
+      "response": {
+        "status": 401
+      },
+      "poolSnapshot": "100",
+      "wallets": {},
+      "originalGrant": {
+        "id": "source",
+        "scope": "WORKSPACE",
+        "workspaceId": "w1",
+        "points": "100",
+        "remaining": "100",
+        "status": "ACTIVE",
+        "sourceType": "OFFLINE_RECHARGE",
+        "expiresAt": "2030-01-01T00:00:00.000Z"
+      },
+      "destinationGrant": null,
+      "grantRemainingSum": "100",
+      "writes": [],
+      "ledgerCount": 0
+    }
+  ],
+  "isolation": "Actual full credit-service module, workspace/admin recycle POST handlers and read-only guard. All persistence, identity/membership IO, audit and notifications local stubs. Serial tx with rollback; no real business data or costs.",
+  "limits": "Proves source/destination accounting inconsistency in controlled data and route role decisions with identity IO fixtures. Does not prove production balances, historical losses, cash withdrawability or all paths of double spending. No enterprise asset-to-person policy invented.",
+  "sha256": {
+    "src/lib/workspace-readonly-guard.ts": "0e48b9f58526f70468ae6dcfba66f076741b7d3931b6ddc9e5fa812f04a34190",
+    "src/lib/credit-service.ts": "57bc72b9815ebe89f33b0878d50894e5a193b9c42d07f5b8b0a80eb689a4a024",
+    "src/app/api/workspace/quota/recycle/route.ts": "8fc5d6cdf237e6dea9792f143a1aef51dcde72214775cb83170b0499f2483c4e",
+    "src/app/api/admin/workspaces/recycle/route.ts": "5bad6f3d7cbd4f61463317e8ea2f93447a3a633579783562eb70b43ce9e1bbc8",
+    "src/components/EnterprisePoolManager.tsx": "46fc1467f36080a88c17ad3912fb6d8cd145f04762004920b68d064f954115ca",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "d26e8422fbd116296d275518479b6c2e54033a7b87f07157bf28181483d21002",
+    "src/components/workspace/RechargeModal.tsx": "9113f78cbd44ec880211d71f776dc74ae947c4f1ceec2075e63f6b78133ab722",
+    "docs/product-business-review-2026-11-05/RESTRUCTURING-PROPOSAL.md": "cdbe807f79bbebecc41bb1533d222edb9221515dd68745896bf9747fbcacf22c"
+  }
+}

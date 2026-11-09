@@ -4,11 +4,7 @@ import { validateUser } from "@/lib/auth";
 import { resolveDefaultDeployment, resolveDeploymentForWorkspace } from "@/lib/model-registry";
 import { extractRequiredCapabilities } from "@/lib/component-contract/capabilities";
 import { pointsToYuan, YUAN_PER_POINT } from "@/lib/point-rate";
-import {
-  estimatePoints,
-  splitTokenEstimate,
-  resolvePricingSource,
-} from "@/lib/billing/pricing-center";
+import { resolvePricingSource } from "@/lib/billing/pricing-center";
 import {
   loadBillingConfig,
   isComponentSettlementEnabled,
@@ -116,76 +112,27 @@ export async function GET(request: NextRequest) {
     // 模型裁决：与真实执行同口径（默认模型能力门禁；同时决定计费走哪条轨道）
     const requestedDeploymentId = (searchParams.get("deploymentId") || "").trim();
     const plan = (!requestedDeploymentId || requestedDeploymentId === "auto")
-      ? await resolveDefaultDeployment({ workspaceId, requiredCapabilities, userId: auth.user.id })
+      ? await resolveDefaultDeployment({
+          workspaceId,
+          requiredCapabilities,
+          userId: auth.user.id,
+          readOnlyResolution: true, // [R0-I2] 默认/auto 分支同样由服务端强制只读（客户端不可关闭）
+        })
       : await resolveDeploymentForWorkspace({
           workspaceId,
           targetDeploymentId: requestedDeploymentId,
           requiredCapabilities,
           userId: auth.user.id,
+          readOnlyResolution: true, // [R0-I1 I-GET-DDL] 用户读请求：解析严格只读（缺列诚实拒绝，不热补表）
         });
 
     const config = await loadBillingConfig();
     const pricingSource = resolvePricingSource(plan.deploymentId);
 
-    // ============ 轨道一：用户自带模型（BYOK）＝官方单价 × Token 用量 × (1 + 服务费率) ============
+    // ============ [R0-I / 原方案 F12] 轨道一：用户自带模型（BYOK）→ 收费口径未确认，安全暂停 ============
     if (pricingSource === "USER_BYOK") {
-      // Token 用量优先级：调用方显式 → 校准表 → 合同 billingPolicy.estimatedTokens → 目录估算值
-      let estimateSource: string;
-      let split: { inputTokens: number; outputTokens: number };
-      const rawIn = searchParams.get("inputTokens");
-      const rawOut = searchParams.get("outputTokens");
-      if (rawIn !== null || rawOut !== null) {
-        split = {
-          inputTokens: Math.max(0, Math.floor(Number(rawIn) || 0)),
-          outputTokens: Math.max(0, Math.floor(Number(rawOut) || 0)),
-        };
-        estimateSource = "CALLER_PROVIDED";
-      } else {
-        const calibRow = await prisma.systemconfig.findUnique({
-          where: { key: "billing_usage_calibration" },
-          select: { value: true },
-        });
-        let calibration: Record<string, { in?: number; out?: number }> = {};
-        if (calibRow?.value) {
-          try {
-            const parsed = JSON.parse(calibRow.value);
-            if (parsed && typeof parsed === "object") calibration = parsed;
-          } catch {
-            calibration = {};
-          }
-        }
-        const cal = calibration[comp.id];
-        if (cal && Number.isFinite(Number(cal.in)) && Number.isFinite(Number(cal.out))) {
-          split = {
-            inputTokens: Math.max(0, Math.floor(Number(cal.in))),
-            outputTokens: Math.max(0, Math.floor(Number(cal.out))),
-          };
-          estimateSource = "USAGE_CALIBRATION";
-        } else if (contractEstimatedTokens !== null) {
-          split = splitTokenEstimate({
-            estimatedTotalTokens: contractEstimatedTokens,
-            maxOutputTokens,
-          });
-          estimateSource = "CONTRACT_ESTIMATED_TOKENS";
-        } else {
-          split = splitTokenEstimate({
-            estimatedTotalTokens: fixedPoints,
-            maxOutputTokens,
-          });
-          estimateSource = "CATALOG_ESTIMATED_TOKENS";
-        }
-      }
-
-      // 算账核心换算：内部已含 ×(1 + byokServiceRateBps/10000 服务费) 与单次保底，不套平台加价系数 k
-      const result = await estimatePoints({
-        modelDeploymentId: plan.deploymentId,
-        inputTokens: split.inputTokens,
-        outputTokens: split.outputTokens,
-        pricingSource,
-        estimateSource,
-      });
-      const serviceRateText = `${Math.round(config.byokServiceRateBps / 100)}%`;
-      const blocked = result.points === null || result.points <= 0;
+      // 不估价、不返回可扣点报价：points/yuan 恒为 null，blocked/canExecute 如实标记；
+      // 与 Studio 执行准入（BYOK_BILLING_POLICY_UNCONFIRMED）同一暂停事实。
       return NextResponse.json({
         success: true,
         data: {
@@ -199,18 +146,17 @@ export async function GET(request: NextRequest) {
             upstreamModelId: plan.upstreamModelId,
             defaultSource: plan.defaultSource,
           },
-          tokens: {
-            input: split.inputTokens,
-            output: split.outputTokens,
-            total: split.inputTokens + split.outputTokens,
-            basis: estimateSource,
-          },
-          points: blocked ? null : result.points,
-          yuan: blocked ? null : pointsToYuan(result.points!),
-          basis: result.basis,
-          blockedReason: result.blockedReason ?? null,
-          explanation: `自带模型（BYOK）：按你登记的厂商官方单价 × 实际 Token 用量折算，另收平台服务费 ${serviceRateText}；1 算力点 = ${YUAN_PER_POINT} 元。`,
-          snapshot: result.snapshot,
+          blocked: true,
+          canExecute: false,
+          code: "BYOK_BILLING_POLICY_UNCONFIRMED",
+          message: "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次不产生可扣点报价，未扣点、未调用模型；您的模型配置与绑定已保留。",
+          tokens: { basis: "PAUSED" },
+          points: null,
+          yuan: null,
+          basis: null,
+          blockedReason: "BYOK_BILLING_POLICY_UNCONFIRMED",
+          explanation: "自带模型（BYOK）任务调用暂停：平台收费口径待确认，本次不提供可扣点报价，未扣点、未调用模型。",
+          snapshot: null,
           settlement: null,
           pendingRegistration: null,
         },

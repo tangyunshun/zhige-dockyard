@@ -1732,7 +1732,7 @@ export default function WorkspacePostsPermissionsTab({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                    {newPosDesc || "专注于高频算法策略与金融工程风控建模的专业岗位"}
+                    {newPosDesc || "（请填写岗位职责描述，将展示在提报预览中）"}
                   </p>
                 </div>
               </div>

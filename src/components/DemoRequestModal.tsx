@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "@/components/Toast";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { X, CheckCircle2, Zap, Building2, User, Mail, Phone, MessageSquare } from "lucide-react";
 
 interface DemoRequestModalProps {
@@ -12,6 +13,7 @@ interface DemoRequestModalProps {
 
 export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalProps) {
   const toast = useToast();
+  useEscapeKey(true, onClose);
   const [isVisible, setIsVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -77,6 +79,12 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
     }
     
     // 只有企业用户强制校验公司名称
+    // KN-UI：电话格式校验（选填但填了必须合法；自查清单指令一）
+    const trimmedPhone = formData.phone?.trim();
+    if (trimmedPhone && !/^[\d\-+() ]{7,20}$/.test(trimmedPhone)) {
+      toast.error("联系电话格式不正确");
+      return null;
+    }
     if (userType === "enterprise" && !formData.company.trim()) {
       newErrors.company = "请填写公司名称";
       isValid = false;
@@ -156,7 +164,7 @@ export default function DemoRequestModal({ isOpen, onClose }: DemoRequestModalPr
       {/* 遮罩 */}
       <div
         className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity duration-300"
-        onClick={onClose}
+        onClick={() => !submitting && onClose()}
       />
 
       {/* 弹窗主体 */}

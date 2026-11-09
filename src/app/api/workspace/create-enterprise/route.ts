@@ -5,7 +5,7 @@ import { validateUser } from "@/lib/auth";
 import { TEAM_SIZE_OPTIONS } from "@/lib/membership";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes } from "@/constants/workspace-plans";
-import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { verifyEnterprisePlanForCreation } from "@/lib/workspace-plan-service";
 import { mergeLimits } from "@/lib/limit-utils";
 import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-models";
 import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
@@ -100,28 +100,29 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 获取计划配置（取自共享套餐模块，与空间套餐升级保持同一数据源）
+    // [R0-A] 企业空间创建：对目标套餐进行严格核验，仅允许真实配置一致且价格均为 0 的免费基础档直接创建。
+    // 付费档（价格 > 0）需先完成在线购买流程，本次拒绝直接开通；配置缺失/停用/非在线/价格非法一律拒绝，
+    // 且不得回退到代码常量后继续创建。
     const planUpper = (plan || "STANDARD").toString().toUpperCase();
-    const planConfig = await getWorkspacePlanByKey(planUpper);
-
-    // 套餐可用性校验：已停用 / 仅限线下定制（不可在线售卖）的套餐不得用于创建空间，
-    // 与升级链路 getWorkspacePlans({onlyActive, onlyPurchasable}) 保持同一口径，防止绕过
-    const planRow = await prisma.workspaceplan
-      .findUnique({
-        where: { key: planUpper },
-        select: { name: true, isActive: true, purchasable: true },
-      })
-      .catch(() => null);
-    if (planRow && (!planRow.isActive || !planRow.purchasable)) {
+    const planVerify = await verifyEnterprisePlanForCreation(planUpper);
+    if (planVerify.status === "REJECT") {
       return NextResponse.json(
-        {
-          message: planRow.isActive
-            ? `套餐「${planRow.name}」为线下定制套餐，不可在线创建空间，请更换套餐`
-            : `套餐「${planRow.name}」已停用，不可用于创建空间，请更换套餐`,
-        },
-        { status: 400 },
+        { error: planVerify.code, message: planVerify.message },
+        { status: planVerify.httpStatus },
       );
     }
+    if (planVerify.status === "PAID") {
+      return NextResponse.json(
+        {
+          error: "PAID_PLAN_REQUIRES_CHECKOUT",
+          message: "该套餐为付费套餐，需先完成在线购买流程，本次未创建空间、未产生扣款",
+          success: false,
+        },
+        { status: 402 },
+      );
+    }
+    // 免费基础档：使用真实配置继续原有免费创建逻辑（不回退常量）
+    const planConfig = planVerify.plan;
 
     const quotaConfig = {
       maxMembers: planConfig.maxMembers,

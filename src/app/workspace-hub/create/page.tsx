@@ -390,6 +390,7 @@ function CreateEnterpriseWorkspaceForm() {
           credentials: "include",
           body: JSON.stringify({
             name: formData.name.trim(),
+            plan: formData.spaceType,
             description: formData.description.trim() || null,
             teamSize: formData.teamSize,
             industry: formData.industry,
@@ -400,12 +401,12 @@ function CreateEnterpriseWorkspaceForm() {
         });
 
         const result = await res.json();
-        console.log("API Response:", result);
+        
 
         if (!res.ok) {
           const errorMsg = result.details
             ? `${result.error}: ${result.details}`
-            : result.error || "创建失败";
+            : result.message || result.error || "创建失败";
           console.error("Create failed:", errorMsg, result);
           throw new Error(errorMsg);
         }
@@ -992,6 +993,11 @@ function CreateEnterpriseWorkspaceForm() {
                             )}
                           </div>
                         )}
+                        {formData.spaceType !== "STANDARD" && (
+                          <p className="mt-2 pt-2 border-t border-amber-200 text-[#b45309] font-bold text-xs">
+                            ⚠️ 该空间类型暂未开放在线购买，目前仅「标准空间」可免费创建；选择其他类型将无法提交。
+                          </p>
+                        )}
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
                         不同空间类型对应不同的配额 and 权益，创建后可升级
@@ -1140,7 +1146,8 @@ function CreateEnterpriseWorkspaceForm() {
                         (mode === "create" && !formData.slug.trim()) ||
                         (mode === "create" && !formData.teamSize) ||
                         (mode === "create" && !formData.industry) ||
-                        !formData.contactEmail.trim()
+                        !formData.contactEmail.trim() ||
+                        (mode === "create" && formData.spaceType !== "STANDARD")
                       }
                       className="zg-btn zg-btn-primary h-[40px] px-6"
                     >

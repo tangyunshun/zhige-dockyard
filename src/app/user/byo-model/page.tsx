@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
 import { useToast } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
 import ModelPricingRules, { type PricingPeriodLike } from "@/components/ModelPricingRules";
 import {
@@ -261,11 +262,16 @@ export default function UserByoModelPage() {
     title: string;
     message: string;
     warnings?: string[];
+    requireText?: { expect: string; hint?: string };
     onConfirm: () => void | Promise<void>;
   }>({ isOpen: false, title: "", message: "", onConfirm: () => {} });
-
   // 从模型页 ?workspaceId= 进入时，自动预选该空间到分配面板
   const [prefillWorkspaceId, setPrefillWorkspaceId] = useState<string | null>(null);
+  // KN-UI：解除全部绑定确认（自查清单指令四）
+  const [unbindAllConfirmed, setUnbindAllConfirmed] = useState(false);
+  const [unbindAllConfirmOpen, setUnbindAllConfirmOpen] = useState(false);
+  // KN-UI：弹窗 Esc 关闭（自查清单指令九）——必须在相关 state 声明之后，避免 TDZ
+  useEscapeKey(!!assigningId && unbindAllConfirmOpen, () => setUnbindAllConfirmOpen(false));
   const [prefillName, setPrefillName] = useState<string>("");
   // 各空间「系统已分配模型」只读视图（按 workspaceId 索引）
   const [systemModelsByWs, setSystemModelsByWs] = useState<Record<string, SystemModel[]>>({});
@@ -565,6 +571,7 @@ export default function UserByoModelPage() {
       title: "删除模型库定义",
       message: `确认删除「${def.label}」？其绑定的所有空间将自动解除该自带模型并回落到空间/平台默认模型。`,
       warnings: ["删除后该定义不可恢复；已绑定空间的生效行会一并清除。"],
+      requireText: { expect: "DELETE", hint: "删除后定义与空间绑定一并清除，请输入「DELETE」以确认" },
       onConfirm: async () => {
         try {
           const res = await authFetch(`/api/user/byo-models/${def.id}`, { method: "DELETE" });
@@ -604,6 +611,24 @@ export default function UserByoModelPage() {
     const assignments = Object.keys(selectedWs)
       .filter((wsId) => selectedWs[wsId])
       .map((wsId) => ({ workspaceId: wsId, enabled: assignEnabled, shareWithMembers: assignShare }));
+    // KN-UI：清空全部勾选 = 解除该模型的所有空间绑定（不可逆），需「输入模型名称」强确认（自查清单指令四）
+    if (assignments.length === 0 && !unbindAllConfirmed) {
+      const def = defs.find((d) => d.id === assigningId);
+      setConfirmDialog({
+        isOpen: true,
+        title: "解除全部空间绑定",
+        message: `确认解除模型「${def?.label || ""}」在所有空间的绑定吗？解除后各空间将回落到平台/空间默认模型。`,
+        warnings: ["解除后相关空间的用户将无法继续使用该自带模型。"],
+        requireText: { expect: "DELETE", hint: "此操作不可恢复，请输入「DELETE」以确认解除全部绑定" },
+        onConfirm: async () => {
+          setUnbindAllConfirmed(true);
+          // 确认后自动重入保存流程（此时 assignments 仍为空 → 走解除分支）
+          await saveAssignments();
+          setUnbindAllConfirmed(false);
+        },
+      });
+      return;
+    }
     setSavingAssign(true);
     try {
       const res = await authFetch(`/api/user/byo-models/${assigningId}/assignments`, {
@@ -2193,8 +2218,9 @@ export default function UserByoModelPage() {
         isOpen={confirmDialog.isOpen}
         title={confirmDialog.title}
         message={confirmDialog.message}
+        requireText={confirmDialog.requireText}
         warnings={confirmDialog.warnings}
-        confirmText="确认删除"
+        confirmText="确认执行"
         type="danger"
         onConfirm={async () => {
           setConfirmDialog((prev) => ({ ...prev, isOpen: false }));

@@ -124,7 +124,7 @@ export async function GET(request: NextRequest) {
     const compNameMap = new Map(compRows.map((c: any) => [c.id, c.name]));
 
     // 「最近操作」动作标签同样必须从数据库审计字典翻译，绝不裸显英文动作键
-    const { actionDict } = await getAuditDictionariesFromDb();
+    const { actionDict, wordDict, resourceDict } = await getAuditDictionariesFromDb();
 
     const roleLabel: Record<string, string> = {
       OWNER: "空间所有者",
@@ -148,7 +148,7 @@ export async function GET(request: NextRequest) {
         }));
 
       const recentLog = l[0]
-        ? { action: l[0].action, actionZh: translateAction(l[0].action, actionDict).label, createdAt: l[0].createdAt }
+        ? { action: l[0].action, actionZh: translateAction(l[0].action, actionDict, wordDict, resourceDict).label, createdAt: l[0].createdAt }
         : null;
 
       const meta = spaceMetaMap.get(r.workspaceId);

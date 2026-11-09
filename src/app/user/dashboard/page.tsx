@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 
 interface UserDashboardData {
   userInfo: any;
@@ -43,6 +44,7 @@ interface UserDashboardData {
 export default function UserDashboardPage() {
   const [dashboardData, setDashboardData] = useState<UserDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [userRole, setUserRole] = useState<string>("");
   const [systemStatus, setSystemStatus] = useState<{
@@ -234,7 +236,7 @@ export default function UserDashboardPage() {
         recentActivities: activitiesData || [],
       });
     } catch (error) {
-      console.error("Load dashboard data error:", error);
+      setLoadError("工作台数据加载失败，请重试");
     } finally {
       setLoading(false);
       if (isManual) setRefreshing(false);
@@ -284,6 +286,9 @@ export default function UserDashboardPage() {
 
   return (
     <div className="space-y-4.5">
+      {loadError && (
+        <LoadErrorBanner message={loadError} onRetry={() => { setLoadError(null); loadDashboardData(); }} retrying={loading} />
+      )}
       {/* 顶部欢迎 Banner & 身份状态 */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-white via-blue-50/30 to-indigo-50/20 border border-slate-200/80 shadow-2xs p-4.5 backdrop-blur-xl">
         <div className="absolute right-0 top-0 w-80 h-full bg-radial from-[#3182ce]/10 to-transparent pointer-events-none"></div>

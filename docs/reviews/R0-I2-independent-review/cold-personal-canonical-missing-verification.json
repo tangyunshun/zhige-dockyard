@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-11-07T14:38:40.791Z",
+  "fixture": {
+    "mode": "personal-canonical-missing",
+    "query": "",
+    "defaultId": "dep-1",
+    "personal": true,
+    "pref": "byo:w1",
+    "fail": true,
+    "status": 503,
+    "exec": 0
+  },
+  "status": 503,
+  "code": "BYO_SHARE_COLUMN_NOT_READY",
+  "rawStatements": [
+    "QUERY SELECT `shareWithMembers` FROM `workspace_byo_model` LIMIT 1"
+  ],
+  "rawWriteAttempts": 0,
+  "regularWrites": [],
+  "limits": "One fresh isolated Vitest file per cold path; actual GET/registry/BYO helper, only Prisma/decryption IO faked. Current-version positive acceptance; all paths require zero writes."
+}

@@ -190,6 +190,8 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
   const [presetDays, setPresetDays] = useState<number>(0); // 0 为全部，7为7天，30为30天
   const [startDate, setStartDate] = useState<string>("");
   const [endDate, setEndDate] = useState<string>("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
 
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -263,8 +265,8 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
   };
 
   // 依据 action + details 智能生成完整且专业的人类可读中文摘要
-  const summarizeDetails = (action: string, details: any): string => {
-    if (!details || typeof details !== "object") return "执行通用空间协同操作";
+  const summarizeDetails = (action: string, details: any, fallbackLabel?: string): string => {
+    if (!details || typeof details !== "object") return fallbackLabel || "执行了一项空间操作";
     const d = details as any;
     const compId = d.componentId ? String(d.componentId).trim().toUpperCase() : "";
     const compName = compId ? (componentNameMap.get(compId) || `组件 ${compId}`) : "";
@@ -326,10 +328,13 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
       case "member:leave":
         return `成员退出团队工作空间`;
       case "KNOWLEDGE_PUBLISH":
+        return d.title ? `发布知识《${d.title}》` : "发布了一篇知识内容";
       case "KNOWLEDGE_SUBMIT":
+        return d.title ? `提交知识《${d.title}》审核` : "提交了一篇知识内容审核";
       case "KNOWLEDGE_APPROVE":
+        return d.title ? `审核通过知识《${d.title}》` : "审核通过了一篇知识内容";
       case "KNOWLEDGE_REJECT":
-        return d.title ? `沉淀与归档团队知识《${d.title}》` : "沉淀知识库规约项";
+        return d.title ? `驳回知识《${d.title}》` : "驳回了一篇知识内容";
       case "UPGRADE_PERSONAL_TO_ENTERPRISE":
       case "UPGRADE_WORKSPACE":
       case "UPGRADE_WORKSPACE_PLAN": {
@@ -338,7 +343,7 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
         return d.message || `个人空间成功升级为企业工作空间 · ${toPlan}${cycle ? `（${cycle}）` : ""}`;
       }
       default:
-        return d.message || "完成空间协同事务";
+        return d.message || fallbackLabel || "执行了一项空间操作";
     }
   };
 
@@ -383,7 +388,7 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
 
       // 3. 全局模糊文本关键字搜索
       if (q) {
-        const hay = `${actorName(log)} ${log.action} ${meta.label} ${meta.category} ${summarizeDetails(log.action, log.details)}`.toLowerCase();
+        const hay = `${actorName(log)} ${log.action} ${meta.label} ${meta.category} ${summarizeDetails(log.action, log.details, meta.label)}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
 
@@ -489,7 +494,7 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
               空间操作安全审计日志
             </h2>
             <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-[#3182ce] border border-blue-100">
-              全维应归档
+              全程留痕
             </span>
           </div>
           <p className="text-xs text-slate-500 font-medium">
@@ -660,6 +665,7 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
             <input
               type="date"
               value={startDate}
+              max={endDate || today}
               onChange={(e) => {
                 setStartDate(e.target.value);
                 setCurrentPage(1);
@@ -670,12 +676,15 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
             <input
               type="date"
               value={endDate}
+              min={startDate || undefined}
+              max={today}
               onChange={(e) => {
                 setEndDate(e.target.value);
                 setCurrentPage(1);
               }}
               className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:outline-none focus:border-[#3182ce]"
             />
+
           </div>
         )}
 
@@ -733,11 +742,11 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
                       </button>
                     </th>
                   )}
-                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[18%]" : "w-[20%]"}`}>操作人与角色</th>
-                  <th className={`py-3.5 px-3 ${isWorkspaceAdmin ? "w-[13%]" : "w-[15%]"}`}>模块分类</th>
-                  <th className={`py-3.5 px-3 ${isWorkspaceAdmin ? "w-[18%]" : "w-[20%]"}`}>行为类型</th>
-                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[30%]" : "w-[30%]"}`}>具体业务操作与详情成果</th>
-                  <th className={`py-3.5 px-4 ${isWorkspaceAdmin ? "w-[13%]" : "w-[15%]"} text-right`}>精准时间</th>
+                  <th className={`py-3.5 px-4`}>操作人与角色</th>
+                  <th className={`py-3.5 px-3 whitespace-nowrap`}>模块分类</th>
+                  <th className={`py-3.5 px-3`}>行为类型</th>
+                  <th className={`py-3.5 px-4`}>具体业务操作与详情成果</th>
+                  <th className={`py-3.5 px-4 whitespace-nowrap text-right`}>精准时间</th>
                   {isWorkspaceAdmin && (
                     <th className="py-3.5 px-3 w-[8%] text-center">操作</th>
                   )}
@@ -796,8 +805,8 @@ export default function LogsTab({ logs, workspaceId, isWorkspaceAdmin = false }:
 
                       {/* 具体业务操作与详情成果 - 换行防挤压保护 */}
                       <td className="py-3.5 px-4 text-slate-700 font-medium leading-relaxed break-words">
-                        <span className="line-clamp-2" title={summarizeDetails(log.action, log.details)}>
-                          {summarizeDetails(log.action, log.details)}
+                        <span className="line-clamp-2" title={summarizeDetails(log.action, log.details, resolveMeta(log.action, log).label)}>
+                          {summarizeDetails(log.action, log.details, resolveMeta(log.action, log).label)}
                         </span>
                       </td>
 

@@ -18,6 +18,9 @@ import {
   UserCheck,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatNumber } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { getAuthToken } from "@/utils/auth";
 
 interface DissolvePersonalWorkspaceModalProps {
@@ -38,6 +41,10 @@ export function DissolvePersonalWorkspaceModal({
   onPassed,
 }: DissolvePersonalWorkspaceModalProps) {
   const toast = useToast();
+  // KN-UI：高危清理动作「输入 DELETE」强确认（自查清单指令四）
+  const [cleanupConfirm, setCleanupConfirm] = useState<null | { action: string; label: string }>(null);
+  const [checkFailed, setCheckFailed] = useState(false);
+  useEscapeKey(!!cleanupConfirm, () => setCleanupConfirm(null));
   const [scanning, setScanning] = useState(true);
   const [scanStep, setScanStep] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
@@ -106,6 +113,22 @@ export function DissolvePersonalWorkspaceModal({
     action: "UNBIND_ASSETS" | "CANCEL_TASKS" | "CLEAR_ALL" | "UNBIND_SINGLE_ASSET" | "CANCEL_SINGLE_TASK",
     targetId?: string
   ) => {
+    // KN-UI：不可逆清理必须先过「输入 DELETE」强确认弹窗
+    const labelMap: Record<string, string> = {
+      CLEAR_ALL: "一键清空全部沙箱依赖",
+      UNBIND_ASSETS: "批量解绑所有个人组件",
+      CANCEL_TASKS: "批量清理所有效能任务",
+      UNBIND_SINGLE_ASSET: "解绑该组件",
+      CANCEL_SINGLE_TASK: "清理该任务",
+    };
+    setCleanupConfirm({ action, label: labelMap[action] || action });
+    return;
+  };
+
+  const executeCleanup = async (
+    action: "UNBIND_ASSETS" | "CANCEL_TASKS" | "CLEAR_ALL" | "UNBIND_SINGLE_ASSET" | "CANCEL_SINGLE_TASK",
+    targetId?: string
+  ) => {
     setCleaning(true);
     try {
       const payload: any = { workspaceId, action };
@@ -145,6 +168,11 @@ export function DissolvePersonalWorkspaceModal({
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
       <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+        {!scanning && checkFailed && (
+          <div className="px-6 pt-4">
+            <LoadErrorBanner message="合规盘点接口失败，无法获取真实依赖数据。请点击【重新检测】重试；在检测成功前请勿注销空间。" onRetry={() => { setCheckFailed(false); runPersonalCheck(); }} retrying={scanning} />
+          </div>
+        )}
         
         {/* Header 顶部标题栏：严格遵循知阁·舟坊知性蓝系统主色 */}
         <div className="px-6 py-4.5 bg-gradient-to-r from-[#2b6cb0] via-[#3182ce] to-[#2b6cb0] text-white flex items-center justify-between border-b border-blue-400/30 shrink-0 shadow-md">
@@ -592,6 +620,84 @@ export function DissolvePersonalWorkspaceModal({
           </div>
         </div>
 
+      </div>
+
+      {/* KN-UI：高危清理动作「输入 DELETE」强确认弹窗（自查清单指令四） */}
+      {cleanupConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md" onClick={() => !cleaning && setCleanupConfirm(null)}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="h-1 w-full bg-gradient-to-r from-rose-500 to-red-600" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-slate-900">确认执行「{cleanupConfirm.label}」？</h3>
+              </div>
+              <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                此操作将永久移除沙箱依赖数据，<strong className="text-rose-600">不可撤销</strong>。执行后请重新运行合规盘点扫描。
+              </p>
+              <CleanupConfirmInput
+                expect="DELETE"
+                onConfirmed={() => {
+                  const act = cleanupConfirm.action as "UNBIND_ASSETS" | "CANCEL_TASKS" | "CLEAR_ALL" | "UNBIND_SINGLE_ASSET" | "CANCEL_SINGLE_TASK";
+                  setCleanupConfirm(null);
+                  executeCleanup(act);
+                }}
+                onCancel={() => setCleanupConfirm(null)}
+                cleaning={cleaning}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// KN-UI：高危操作输入文字确认子组件（输入 DELETE 解锁；自查清单指令四）
+function CleanupConfirmInput({
+  expect,
+  onConfirmed,
+  onCancel,
+  cleaning,
+}: {
+  expect: string;
+  onConfirmed: () => void;
+  onCancel: () => void;
+  cleaning: boolean;
+}) {
+  const [val, setVal] = React.useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const locked = val.trim() !== expect;
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs font-bold text-slate-700">
+        请输入「<span className="font-mono text-rose-600">{expect}</span>」以确认执行
+        <span className="text-red-500 ml-0.5">*</span>
+      </label>
+      <input
+        type="text"
+        value={val}
+        onChange={(e) => { setVal(e.target.value); setErr(null); }}
+        maxLength={10}
+        autoFocus
+        placeholder={expect}
+        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-xs font-mono"
+      />
+      {err && <p className="text-xs text-red-600 font-medium">{err}</p>}
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button type="button" onClick={onCancel} disabled={cleaning} className="px-4 h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer disabled:opacity-50">
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (locked) { setErr(`请输入「${expect}」后才能执行`); return; } onConfirmed(); }}
+          disabled={cleaning}
+          className="px-5 h-9 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg cursor-pointer disabled:opacity-50"
+        >
+          {cleaning ? "执行中…" : "确认执行"}
+        </button>
       </div>
     </div>
   );

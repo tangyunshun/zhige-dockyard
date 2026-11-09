@@ -1,0 +1,41 @@
+{
+  "capturedAtReal": "2026-11-07T17:13:51.725393+08:00",
+  "purpose": "R0-I batch start baseline (before BYOK billing-policy pause)",
+  "files": {
+    "src/app/api/studio/handler.ts": {
+      "sha256": "743dc697123ed9ea775e486ae4d8bf69d6b307d356b0e82225cc14e093ca2c5c",
+      "bytes": 335927,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    },
+    "src/app/api/billing/estimate/route.ts": {
+      "sha256": "41530f585a9dfe6387c2f5115c50bc1ea734b0219a2bf5d08cbcc0e3b4fde4e8",
+      "bytes": 11802,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt"
+    },
+    "src/app/api/billing/byok-preview/route.ts": {
+      "sha256": "f5334ed86107863b5c60608ebca00fa21465a0a8b7cfb36c16e49f150d3b67ae",
+      "bytes": 3097,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__app__api__billing__byok-preview__route.ts.snapshot.txt"
+    },
+    "src/components/WorkspaceInternalLayoutV3.tsx": {
+      "sha256": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02",
+      "bytes": 468084,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__components__WorkspaceInternalLayoutV3.tsx.snapshot.txt"
+    },
+    "src/components/studio/WorkspaceModelPolicyTab.tsx": {
+      "sha256": "f4cfe128b4eb0c0cefcae0eef922e4631c35734c4caf8968461b9e60c074c8fb",
+      "bytes": 111356,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__components__studio__WorkspaceModelPolicyTab.tsx.snapshot.txt"
+    },
+    "src/app/admin/models/byok-service-rate.tsx": {
+      "sha256": "5f4736caa3e7186947173f7e63cd7b42cb6bcdcd76d665f0e0e3080d6b431a86",
+      "bytes": 7881,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__app__admin__models__byok-service-rate.tsx.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+      "sha256": "11313a7e78f125167172795b57334bfd817b220dc70fd078c06e3d48669333fb",
+      "bytes": 32724,
+      "snapshotCopy": "docs/reviews/R0-I-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt"
+    }
+  }
+}

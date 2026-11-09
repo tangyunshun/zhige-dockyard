@@ -1,20 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { estimatePoints } from "@/lib/billing/pricing-center";
 import { loadBillingConfig } from "@/lib/billing/billing-config";
-import { pointsToYuan } from "@/lib/point-rate";
 
 // 只读预览：随登记的官方单价与服务费费率实时变化
 export const dynamic = "force-dynamic";
 
-/** BYO 部署 ID 形如 `byo:{workspaceId}`（与 workspace-byo-model 的裁决口径一致） */
-const byoDeploymentId = (workspaceId: string) => `byo:${workspaceId}`;
-
 /**
- * GET：自带模型（BYOK）「按官方单价 + 服务费」口径的示例扣点预览。
- * 入参：workspaceId（必填）、inputTokens / outputTokens（可选，默认各 1 万 Token 作为示例用量）。
- * 仅空间成员可查；未登记官方单价时返回阻断提示，绝不猜测默认价。
+ * GET：自带模型（BYOK）扣点预览。
+ * [R0-I / 原方案 F12] BYOK 任务收费口径未确认 → 安全暂停：
+ * 不再提供「按官方单价 + 服务费」的可扣点报价，points/yuan 恒为 null，
+ * blocked/canExecute 如实标记，与 Studio 执行准入（BYOK_BILLING_POLICY_UNCONFIRMED）一致。
+ * 仅空间成员可查；GET 全程只读，不调用模型、不更新配置。
  */
 export async function GET(request: NextRequest) {
   try {
@@ -44,27 +41,25 @@ export async function GET(request: NextRequest) {
     const inputTokens = toInt(searchParams.get("inputTokens"), 10_000);
     const outputTokens = toInt(searchParams.get("outputTokens"), 10_000);
 
+    // [R0-I] 收费口径未确认：不调用估价、不返回可扣点报价（历史算法保留在纯函数内不代表当前可收费）
     const config = await loadBillingConfig();
-    const result = await estimatePoints({
-      modelDeploymentId: byoDeploymentId(workspaceId),
-      inputTokens,
-      outputTokens,
-      pricingSource: "USER_BYOK",
-      config,
-    });
 
     return NextResponse.json({
       success: true,
       data: {
         workspaceId,
         tokens: { input: inputTokens, output: outputTokens },
-        points: result.points,
-        yuan: result.points === null ? null : pointsToYuan(result.points),
-        basis: result.basis,
-        blockedReason: result.blockedReason,
-        // 服务费费率（基点）：1500 = 15%，来自 systemconfig，前端不做计算
+        blocked: true,
+        canExecute: false,
+        code: "BYOK_BILLING_POLICY_UNCONFIRMED",
+        message: "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次不产生可扣点报价，未扣点、未调用模型。",
+        points: null,
+        yuan: null,
+        basis: null,
+        blockedReason: "BYOK_BILLING_POLICY_UNCONFIRMED",
+        // 服务费费率（基点）：仅作为已存配置展示，不构成当前 Studio BYOK 任务收费生效
         byokServiceRateBps: config.byokServiceRateBps,
-        snapshot: result.snapshot,
+        snapshot: null,
       },
     });
   } catch (error) {

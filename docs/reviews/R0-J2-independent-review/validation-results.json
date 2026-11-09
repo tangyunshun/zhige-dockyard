@@ -1,0 +1,92 @@
+{
+  "reviewedAt": "2026-11-07T18:54:31.6729233Z",
+  "clientDate": "2026-11-08 Asia/Shanghai",
+  "verdict": "R0_J2_NOT_ACCEPTED",
+  "remainingGroups": [
+    "J-UPLOAD",
+    "J-RELEASE",
+    "J-CLEAR",
+    "J-KEYS"
+  ],
+  "frozenOriginalFixes": [
+    "J-PRIVATE",
+    "J-WRITE-BOUND",
+    "J-PARTIAL original filtering/HTTP errors",
+    "J-RECONCILE original three boundary cases"
+  ],
+  "relatedPendingWork": "Cleanup notification and net-state accounting remain parts of J-RELEASE/J-UPLOAD",
+  "version": {
+    "matchedEntries": 43,
+    "startCopies": 7,
+    "endHashes": 8,
+    "protectedFiles": 28,
+    "fileStoreUnchanged": true,
+    "missingDeclaredNew": [
+      "src/app/api/__tests__/r0j2-cold-quote.test.ts"
+    ],
+    "reference": "manifest-verification.json"
+  },
+  "checks": [
+    {
+      "kind": "formal targeted regression",
+      "files": 14,
+      "passed": 463,
+      "exitCode": 0,
+      "commandPrefix": ".\\node_modules\\.bin\\vitest.cmd run --no-color",
+      "fileDirectory": "src/app/api/__tests__/",
+      "fileList": [
+        "r0j2-storage-close.test.ts",
+        "r0j-storage.test.ts",
+        "r0h-cost-admission.test.ts",
+        "r0i2-cold-quote.test.ts",
+        "r0g-cron-subscription-expire.test.ts",
+        "r0f-maintenance-readonly.test.ts",
+        "r0e-production-mock.test.ts",
+        "r0d-refund-approval.test.ts",
+        "r0c-pool-recycle.test.ts",
+        "r0b-seat-addon.test.ts",
+        "r0a-business-boundary.test.ts",
+        "r0a2-real-combo.test.ts",
+        "r0a3-combo-regression.test.ts",
+        "r0a4-combo-regression.test.ts"
+      ]
+    },
+    {
+      "kind": "independent current-code verification",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-J2-independent-review/vitest.review.config.ts",
+      "files": 2,
+      "passed": 23,
+      "positiveAcceptances": 8,
+      "defectReproductions": 15,
+      "exitCode": 0,
+      "interpretation": "Reproduction PASS confirms current defect, not business acceptance"
+    },
+    {
+      "kind": "typecheck",
+      "command": ".\\node_modules\\.bin\\tsc.cmd --noEmit --incremental false -p tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "kind": "actual UI callbacks",
+      "command": "node docs/reviews/R0-J2-independent-review/verify-ui.cjs",
+      "scenarios": 12,
+      "accepted": 10,
+      "pendingCleanupNotificationReproductions": 2,
+      "backendCleanupResponses": "Actual batch handlers from this same verification",
+      "exitCode": 0,
+      "browserDOM": false
+    }
+  ],
+  "auditMutationScope": "New docs/reviews/R0-J2-independent-review only; no official source/test or old evidence writes",
+  "realDatabaseAccess": false,
+  "realCustomerStorageOrCloudAccess": false,
+  "realModelOrPaymentCalls": false,
+  "migrationsOrClientGenerationExecuted": false,
+  "limitations": [
+    "In-memory Prisma/fs/AWS transports; no real MySQL isolation or production state claim",
+    "Known-path containment reproduction is a helper contract test, not proof of public API exploit",
+    "No browser DOM verification"
+  ],
+  "nextPrompt": "IDE-R0-J3-PROMPT.md",
+  "nextGate": "Same original F13; no F14"
+}

@@ -126,7 +126,8 @@ export async function GET(
           outputTokens: Number(m.row.outputTokens || 0),
           cacheReadTokens: Number(m.row.cacheReadTokens || 0),
           cacheWriteTokens: Number(m.row.cacheWriteTokens || 0),
-          costMicros: m.row.costMicros != null ? Number(m.row.costMicros) : null,
+          // KN-SEC：底层模型成本仅空间 OWNER/ADMIN 与平台管理员可见（自查清单：敏感数据脱敏）
+          costMicros: canViewAll && m.row.costMicros != null ? Number(m.row.costMicros) : null,
           userPriceMicros: m.row.userPriceMicros != null ? Number(m.row.userPriceMicros) : null,
           ...m.meta,
         }));
@@ -225,6 +226,10 @@ export async function GET(
     }
 
     const items = Array.from(aggMap.values()).sort((a, b) => b.totalCalls - a.totalCalls);
+    // KN-SEC：底层模型成本仅空间 OWNER/ADMIN 与平台管理员可见；普通成员不下发（归零）
+    if (!canViewAll) {
+      for (const it of items) it.costMicros = 0;
+    }
 
     return NextResponse.json({
       success: true,

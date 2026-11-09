@@ -1,0 +1,365 @@
+{
+  "capturedAt": "2026-11-08T03:46:46.640Z",
+  "mode": "in-memory DB and fs; actual handlers/services; defect assertions characterize current behavior",
+  "observations": [
+    {
+      "name": "capacity-positive",
+      "deletion": 500,
+      "upload": 403,
+      "used": 30,
+      "files": 1
+    },
+    {
+      "name": "claim-failure-positive",
+      "status": 500,
+      "body": {
+        "success": false,
+        "code": "STORAGE_CLAIM_FAILED",
+        "error": "清理认领持久化失败，为保留恢复依据已中止删除（文件、记录与占用均未变更）。请稍后重试。",
+        "data": {
+          "id": "d1"
+        }
+      },
+      "used": 30,
+      "docs": 1,
+      "files": 1
+    },
+    {
+      "name": "concurrent-cancellation-defect",
+      "a": 500,
+      "b": 404,
+      "used": "30",
+      "docs": 0,
+      "files": 0,
+      "ops": [
+        {
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "CANCELLED",
+          "filePath": "w1/x.bin",
+          "bytes": 30,
+          "documentId": "d1",
+          "note": "并发删除已处理，本认领让位关闭（未重复释放）",
+          "updatedAt": "2026-11-08T03:46:46.559Z",
+          "id": "auto_9ixv38nzibj"
+        }
+      ],
+      "clearRetry": {
+        "success": true,
+        "message": "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配。",
+        "resetAt": "2026-11-08T03:46:46.603Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "claimFailureCount": 0
+        }
+      }
+    },
+    {
+      "name": "recovery-shared-defect",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。本次已恢复完成 1 条历史待清理认领。注意：2 个对象因共享引用保留（文件/记录/计量均保留）。",
+        "resetAt": "2026-11-08T03:46:46.608Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 2,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 1,
+          "pendingStill": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "docs": [
+        {
+          "id": "d1",
+          "workspaceId": "w1",
+          "title": "d1",
+          "status": "APPROVED",
+          "visibility": "PRIVATE",
+          "filePath": "assets/w1/x.bin",
+          "fileSize": 30,
+          "uploaderId": "u1",
+          "type": "doc"
+        },
+        {
+          "id": "d2",
+          "workspaceId": "w1",
+          "title": "d2",
+          "status": "APPROVED",
+          "visibility": "PRIVATE",
+          "filePath": "w1/x.bin",
+          "fileSize": 30,
+          "uploaderId": "u1",
+          "type": "doc"
+        }
+      ],
+      "files": 0,
+      "used": 0,
+      "ops": [
+        {
+          "id": "claim",
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "RELEASED",
+          "filePath": "w1/x.bin",
+          "documentId": "d1",
+          "bytes": 30,
+          "note": "物理对象已确认删除，占用已原子释放（终态）",
+          "updatedAt": "2026-11-08T03:46:46.606Z"
+        }
+      ]
+    },
+    {
+      "name": "recovery-error-hidden-defect",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配。",
+        "resetAt": "2026-11-08T03:46:46.612Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "used": 30,
+      "ops": [
+        {
+          "id": "claim",
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "PENDING_CLEANUP",
+          "filePath": "w1/x.bin",
+          "documentId": "d1",
+          "bytes": 30
+        }
+      ]
+    },
+    {
+      "name": "remove-retry-defect",
+      "first": 500,
+      "retry": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "assetId": "d1",
+          "notifiedCount": 0
+        }
+      },
+      "used": 30,
+      "ops": [
+        {
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "PENDING_CLEANUP",
+          "filePath": "w1/x.bin",
+          "bytes": 30,
+          "documentId": "d1",
+          "note": "清理认领（remove_asset）：物理删除未确认前占用保持计量",
+          "updatedAt": "2026-11-08T03:46:46.614Z",
+          "id": "auto_wpivns4m9n"
+        }
+      ]
+    },
+    {
+      "name": "upload-unknown-positive",
+      "status": 500,
+      "body": {
+        "success": false,
+        "code": "STORAGE_OP_PENDING",
+        "error": "上传失败且保存结果未知，已保留占用与可定位恢复信息（操作 ID: 8ad800be-335a-494f-989e-9880b068fe61，对象: assets/w1/f4a2ab84-4e0e-4136-80c6-25c97e946e49.bin），请勿重复上传。",
+        "storageOpId": "8ad800be-335a-494f-989e-9880b068fe61",
+        "filePath": "assets/w1/f4a2ab84-4e0e-4136-80c6-25c97e946e49.bin"
+      },
+      "op": {
+        "opId": "8ad800be-335a-494f-989e-9880b068fe61",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RESERVE",
+        "status": "PENDING_CLEANUP",
+        "bytes": 3,
+        "updatedAt": "2026-11-08T03:46:46.620Z",
+        "id": "auto_3ox85a3q7op",
+        "filePath": "assets/w1/f4a2ab84-4e0e-4136-80c6-25c97e946e49.bin",
+        "note": "保存结果未知且对象未确认清理: 保存响应丢失（注入：写入已产生对象）"
+      },
+      "used": 3,
+      "files": 1
+    },
+    {
+      "name": "upload-cleanup-positive",
+      "status": 500,
+      "op": {
+        "opId": "73b568a2-85bc-486f-83f5-b4428a9b81db",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RESERVE",
+        "status": "RELEASED",
+        "bytes": 3,
+        "updatedAt": "2026-11-08T03:46:46.624Z",
+        "id": "auto_zx7rxvtzu4",
+        "filePath": "assets/w1/d75c2d53-e5b4-4c2e-be9c-dbffb4a649d2.bin",
+        "note": "上传失败：对象已核实清理，预留原子释放（终态）"
+      },
+      "used": 0,
+      "files": 0
+    },
+    {
+      "name": "reserve-type-defect",
+      "result": {
+        "unlimited": false,
+        "deduped": true,
+        "opConflict": false
+      },
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "PENDING_CLEANUP",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30
+      },
+      "used": 30
+    },
+    {
+      "name": "claim-bytes-mismatch-defect",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "d1",
+          "status": "REMOVED",
+          "notifiedCount": 0,
+          "releasedBytes": 50
+        },
+        "message": "资料删除成功"
+      },
+      "used": 30,
+      "remainingPhysicalBytes": 50,
+      "ops": [
+        {
+          "id": "claim",
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "RELEASED",
+          "filePath": "w1/x.bin",
+          "documentId": "d1",
+          "bytes": 30,
+          "note": "物理对象已确认删除，占用已原子释放（终态）",
+          "updatedAt": "2026-11-08T03:46:46.627Z"
+        }
+      ]
+    },
+    {
+      "name": "unknown-size-defect",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "id": "d1",
+          "status": "REMOVED",
+          "notifiedCount": 0,
+          "releasedBytes": 0
+        },
+        "message": "资料删除成功"
+      },
+      "used": 30,
+      "files": 0,
+      "docs": 0,
+      "ops": [
+        {
+          "opId": "del-w1-w1/x.bin",
+          "workspaceId": "w1",
+          "userId": "u1",
+          "opType": "RELEASE",
+          "status": "RELEASED",
+          "filePath": "w1/x.bin",
+          "bytes": 0,
+          "documentId": "d1",
+          "note": "物理对象已确认删除，占用已原子释放（终态）",
+          "updatedAt": "2026-11-08T03:46:46.629Z",
+          "id": "auto_jyy0sau5e2k"
+        }
+      ]
+    },
+    {
+      "name": "reserve-p2002-type-defect",
+      "result": {
+        "unlimited": false,
+        "deduped": true,
+        "opConflict": false
+      },
+      "used": 0,
+      "op": {
+        "id": "other",
+        "opId": "race-type",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "PENDING_CLEANUP",
+        "bytes": 30,
+        "filePath": "w1/x.bin"
+      }
+    },
+    {
+      "name": "missing-column-defect",
+      "status": 500,
+      "body": {
+        "success": false,
+        "error": "The column storageoperation.filePath is missing"
+      },
+      "used": 0,
+      "files": 0
+    },
+    {
+      "name": "paths-positive",
+      "ambiguous": {
+        "ok": false,
+        "notExists": false,
+        "ambiguous": true,
+        "error": "同一对象键存在 2 个候选位置（w1/x.bin、assets/w1/x.bin），为避免误删已拒绝，请人工核实后处理"
+      },
+      "traversal": {
+        "ok": false,
+        "notExists": false,
+        "error": "对象键包含目录穿越段（w1/../../outside.txt），已拒绝"
+      },
+      "scope": {
+        "ok": false,
+        "notExists": false,
+        "error": "对象键不在授权空间内（w2 ≠ w1），已拒绝"
+      },
+      "files": 2
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+describe('Studio retained unknown work and actual expiry algorithm',()=>{
+ it('defect KR4: skipped immediate release stays ACTIVE and expiry frees unconfirmed work',async()=>{
+  seedQuota('w1',0n,1000n);const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner');a.__setParseAdmissionBackendForTest(a.createPrismaBackend());let fake:any,exitSeen=false;
+  r.__setParseRunnerHooks({terminateTimeoutMs:5,exitConfirmMs:5,workerFactory:()=>{fake=new EventEmitter();fake.on('exit',()=>exitSeen=true);fake.terminate=()=>new Promise(()=>{});queueMicrotask(()=>fake.emit('message',{envelope:'result',text:'Controlled text',usage:{}}));return fake;}});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action:'upload_doc',title:'test',visibility:'PRIVATE',workspaceId:'w1'},{name:'small.txt',type:'text/plain',content:'Controlled text'}),makeDeps());const body=await res.json();expect(res.status).toBe(503);expect(body.code).toBe('PARSE_STOP_UNCONFIRMED');
+  const lease=[...h.tables.parselease.values()][0];expect(lease.status).toBe('ACTIVE');expect(h.tables.parseadmissioncounter.get('platform').active).toBe(1);await a.sweepParseLeases(Date.now()+100000);expect(h.tables.parselease.get(lease.id).status).toBe('EXPIRED');expect(h.tables.parseadmissioncounter.get('platform').active).toBe(0);expect(exitSeen).toBe(false);
+  observations.push({name:'studio-unknown-active-expiry-releases',status:res.status,initialLeaseStatus:'ACTIVE',afterSweepStatus:'EXPIRED',remainingActive:0,exitEventSeen:false,workerMode:'Controlled EventEmitter; no real unbounded CPU task'});fake.emit('exit',0);
+ });
+});

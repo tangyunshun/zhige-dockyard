@@ -2,6 +2,16 @@ import { OfficeParser } from "officeparser";
 import * as chardet from "chardet";
 import * as iconv from "iconv-lite";
 import AdmZip from "adm-zip";
+import {
+  PARSE_CODES,
+  PARSE_LIMITS,
+  ParseResourceError,
+  RootBudget,
+  checkDeclaredInput,
+  checkRealInput,
+  type BudgetUsage,
+} from "./parse-policy";
+import { runIsolatedParse, type ParseTask } from "./parse-runner";
 
 /**
  * 通用文件文本提取器
@@ -25,6 +35,8 @@ const IMAGE_EXTENSIONS = new Set([
 ]);
 const ARCHIVE_EXTENSIONS = new Set([".zip", ".jar", ".apk"]);
 const OCR_TIMEOUT_MS = 60000;
+/** OCR 终止后等待 worker 确认停止的有限窗口：recognize 永不结算而 terminate 已结算时必须有限收口，不得无限等待 */
+const OCR_TERMINATE_GRACE_MS = Number(process.env.OCR_TERMINATE_GRACE_MS ?? 500);
 
 function getExtension(fileName: string): string {
   const lower = fileName.toLowerCase();
@@ -117,6 +129,65 @@ function stripXmlTags(xml: string): string {
 }
 
 /**
+ * XLSX 工作表还原（进程内降级版）：恢复共享字符串 + 数值 + 单元格顺序 + 工作表顺序，
+ * 避免把 xl/sharedStrings.xml 当整份表格正文而遗漏数值（如 42）。与 worker 版语义一致。
+ */
+function extractXlsxSheetsRaw(zip: AdmZip, names: string[]): string {
+  const decode = (name: string): string => {
+    try {
+      const data = zip.readFile(name);
+      if (!data) return "";
+      return iconv.decode(data, "utf-8");
+    } catch {
+      return "";
+    }
+  };
+  const shared: string[] = [];
+  const ss = names.find((n) => n === "xl/sharedStrings.xml" || n.endsWith("/sharedStrings.xml"));
+  if (ss) {
+    const xml = decode(ss);
+    const siRe = /<si>([\s\S]*?)<\/si>/g;
+    let m: RegExpExecArray | null;
+    while ((m = siRe.exec(xml))) shared.push(stripXmlTags(m[1]).replace(/\s+/g, " ").trim());
+  }
+  const sheetNames = names
+    .filter((n) => /(^|\/)xl\/worksheets\/sheet\d+\.xml$/.test(n))
+    .sort((a, b) => {
+      const na = parseInt((a.match(/sheet(\d+)\.xml$/) || [])[1] || "0", 10);
+      const nb = parseInt((b.match(/sheet(\d+)\.xml$/) || [])[1] || "0", 10);
+      return na - nb;
+    });
+  const chunks: string[] = [];
+  for (const sn of sheetNames) {
+    const xml = decode(sn);
+    if (!xml) continue;
+    const cellRe = /<c\s+([^>]*)>([\s\S]*?)<\/c>/g;
+    const vals: string[] = [];
+    let cm: RegExpExecArray | null;
+    while ((cm = cellRe.exec(xml))) {
+      const attrs = cm[1];
+      const inner = cm[2];
+      const tMatch = attrs.match(/\bt="([^"]*)"/);
+      const type = tMatch ? tMatch[1] : "";
+      const vMatch = inner.match(/<v>([\s\S]*?)<\/v>/);
+      const isMatch = inner.match(/<is>([\s\S]*?)<\/is>/);
+      if (type === "s") {
+        if (vMatch) {
+          const idx = parseInt(stripXmlTags(vMatch[1]).trim(), 10);
+          if (Number.isFinite(idx) && shared[idx] != null) vals.push(shared[idx]);
+        }
+      } else if (type === "inlineStr") {
+        if (isMatch) vals.push(stripXmlTags(isMatch[1]).replace(/\s+/g, " ").trim());
+      } else if (vMatch) {
+        vals.push(stripXmlTags(vMatch[1]).trim());
+      }
+    }
+    if (vals.length) chunks.push(vals.join(" "));
+  }
+  return chunks.join("\n").trim();
+}
+
+/**
  * 第 1.5 层：officeparser 未产出结果时，直接从 OOXML / ODF 包内读取正文 XML 并去标签。
  * 避免因单个解析器异常而退化成压缩包二进制乱码。
  */
@@ -141,13 +212,19 @@ function extractFromOoxmlManually(buffer: Buffer): string {
     const t = read(docXml);
     if (t) chunks.push(t);
   }
-  // Excel 共享字符串
-  names
-    .filter((n) => n === "xl/sharedStrings.xml" || n.endsWith("/sharedStrings.xml"))
-    .forEach((n) => {
-      const t = read(n);
-      if (t) chunks.push(t);
-    });
+  // Excel：必须还原工作表数值/共享字符串/顺序，不能只读 sharedStrings 而遗漏数值（如 42）
+  const xlsxSheets = names.filter((n) => /(^|\/)xl\/worksheets\/sheet\d+\.xml$/.test(n));
+  if (xlsxSheets.length) {
+    const sheetText = extractXlsxSheetsRaw(zip, names);
+    if (sheetText) chunks.push(sheetText);
+  } else {
+    names
+      .filter((n) => n === "xl/sharedStrings.xml" || n.endsWith("/sharedStrings.xml"))
+      .forEach((n) => {
+        const t = read(n);
+        if (t) chunks.push(t);
+      });
+  }
   // PowerPoint 幻灯片（按序号排序）
   names
     .filter((n) => /(^|\/)ppt\/slides\/slide\d+\.xml$/.test(n))
@@ -368,14 +445,17 @@ export type { OcrWorker };
 // 仅用于测试的可注入钩子：避免测试依赖真实 tesseract 二进制。生产代码不设置。
 let ocrWorkerFactoryOverride: (() => Promise<OcrWorker>) | null = null;
 let ocrTimeoutMsOverride: number | null = null;
+let ocrTerminateGraceMsOverride: number | null = null;
 
-/** 仅用于测试：注入 OCR worker 工厂 / 超时；传 null 恢复默认 */
+/** 仅用于测试：注入 OCR worker 工厂 / 超时 / 终止确认窗口；传 null 恢复默认 */
 export function __setOcrTestHooks(hooks: {
   factory?: (() => Promise<OcrWorker>) | null;
   timeoutMs?: number | null;
+  terminateGraceMs?: number | null;
 }): void {
   if (hooks.factory !== undefined) ocrWorkerFactoryOverride = hooks.factory;
   if (hooks.timeoutMs !== undefined) ocrTimeoutMsOverride = hooks.timeoutMs;
+  if (hooks.terminateGraceMs !== undefined) ocrTerminateGraceMsOverride = hooks.terminateGraceMs;
 }
 
 /**
@@ -383,29 +463,34 @@ export function __setOcrTestHooks(hooks: {
  * 支持 AbortSignal 取消：超时 / 调用方中止时立即 terminate worker，
  * 真正停止后台解析任务并释放资源（不仅仅是停止等待）。
  */
-async function extractFromImage(buffer: Buffer, signal?: AbortSignal): Promise<string> {
-  if (signal?.aborted) return "";
+async function extractFromImage(buffer: Buffer, signal?: AbortSignal): Promise<{ text: string; stopped: boolean }> {
+  if (signal?.aborted) return { text: "", stopped: true };
   // 测试钩子：仅用于「无文字图片」路径的确定性验证（真实路由 + 确定性 OCR 测试替身）。
   // 开启后不创建 OCR worker、不产生网络/环境噪声，直接视为无文本。禁止在生产开启。
-  if (process.env.TEXT_EXTRACT_TEST_OCR_EMPTY === "true") return "";
+  if (process.env.TEXT_EXTRACT_TEST_OCR_EMPTY === "true") return { text: "", stopped: true };
   let worker: OcrWorker | null = null;
+  let stopped = false; // 未确认已停止；确认终止后才置 true
+  let created = false; // worker 是否已被真实创建
   let cancelled = false;
 
-  // 标记取消并终止当前 worker；可重复调用，且能终止「稍后才创建」的 worker（避免 createWorker 未返回时超时的竞态泄漏）
-  const terminateWorker = async () => {
-    cancelled = true;
+  // 标记取消并终止当前 worker；能终止「稍后才创建」的 worker（避免 createWorker 未返回时超时的竞态泄漏）
+  // 返回是否真正终止了一个已存在的 worker；若 worker 尚未创建则无法在此刻确认停止（返回 false）
+  const doTerminate = async (): Promise<boolean> => {
     const w = worker;
     worker = null;
-    if (!w) return;
+    if (!w) return false;
     try {
       await w.terminate();
+      stopped = true;
+      return true;
     } catch {
-      // 忽略终止异常
+      stopped = false;
+      return false;
     }
   };
 
   if (signal) {
-    signal.addEventListener("abort", () => { void terminateWorker(); }, { once: true });
+    signal.addEventListener("abort", () => { void doTerminate(); }, { once: true });
   }
 
   const workerPromise = (async () => {
@@ -417,9 +502,10 @@ async function extractFromImage(buffer: Buffer, signal?: AbortSignal): Promise<s
           return (await createWorker("chi_sim+eng")) as unknown as OcrWorker;
         });
       worker = await createWorkerFn();
+      created = true;
       // createWorker 期间可能已超时/中止：此时必须终止刚创建的 worker，否则它会继续在后台运行
       if (cancelled || signal?.aborted) {
-        await terminateWorker();
+        await doTerminate();
         return "";
       }
       try {
@@ -436,10 +522,10 @@ async function extractFromImage(buffer: Buffer, signal?: AbortSignal): Promise<s
         }
         return text;
       } finally {
-        await terminateWorker();
+        await doTerminate();
       }
     } catch {
-      await terminateWorker();
+      await doTerminate();
       return "";
     }
   })();
@@ -448,12 +534,24 @@ async function extractFromImage(buffer: Buffer, signal?: AbortSignal): Promise<s
   const timeoutPromise = new Promise<string>((resolve) => {
     const timer = setTimeout(() => {
       // 超时：终止 OCR worker，停止后台解析后再结束等待
-      void terminateWorker().finally(() => resolve(""));
+      void doTerminate().finally(() => resolve(""));
     }, timeoutMs);
     workerPromise.finally(() => clearTimeout(timer)).catch(() => {});
   });
 
-  return Promise.race([workerPromise, timeoutPromise]);
+  const text = await Promise.race([workerPromise, timeoutPromise]);
+  // [KR4-b] 停止确认必须诚实：放弃时若 worker 尚未创建（created=false），无法确认其已停止，
+  // 立即据实返回「未确认」，不阻塞、不误报为已停止；迟到创建由 abort 监听终止。
+  // 已创建则等待终止流程跑完以确认停止，但等待必须有限：recognize 永不结算而 terminate 已结算时，
+  // 不得无限 await workerPromise（旧 node:test 实测 8000ms 超时）。用有限确认窗口收口，
+  // 窗口内 workerPromise 结算则据实返回 stopped；否则据实返回 false，由上游按 STOP_UNCONFIRMED 保护占用。
+  if (!created) return { text, stopped: false };
+  const graceMs = ocrTerminateGraceMsOverride ?? OCR_TERMINATE_GRACE_MS;
+  const confirmed = await Promise.race([
+    workerPromise.then(() => true).catch(() => false),
+    new Promise<boolean>((r) => setTimeout(() => r(false), graceMs)),
+  ]);
+  return { text, stopped: confirmed };
 }
 
 /** 第 4 层：文本类文件，自动识别编码后解码 */
@@ -535,10 +633,206 @@ export async function extractTextFromBuffer(
   return hasReadableText(raw) ? raw.trim() : "";
 }
 
+// ────────────────────────────── [R0-K] 统一有界解析入口 ──────────────────────────────
+
+/** 仅用于离线隔离测试：注入受控 worker 任务种类，验证真实终止/迟到文本/名额生命周期 */
+let boundaryTaskOverride: ParseTask["kind"] | null = null;
+export function __setParseBoundaryTestHooks(hooks: { taskKind?: ParseTask["kind"] | null }): void {
+  boundaryTaskOverride = hooks.taskKind ?? null;
+}
+
+export type ParseBoundaryOptions = {
+  /** 同一请求内多文件/嵌套解压共享的根预算；不传时由本函数建立 */
+  budget?: RootBudget;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+  /** 该入口既有更严格输入上限（字节），不静默放宽 */
+  maxInputBytes?: number;
+  /** 客户端声明长度（仅用于分配前预检，实际字节仍二次核验） */
+  declaredBytes?: number | null;
+  /** worker 实际退出（含迟到退出）后回调：用于停止证据成立后的幂等归还（不永久卡槽） */
+  onWorkerExited?: () => void | Promise<void>;
+};
+
+export type ParseBoundaryResult = {
+  text: string;
+  usage: BudgetUsage;
+  /** 纯图无文字/空文本：诚实反馈，由入口翻译为 PARSE_NO_TEXT */
+  noText: boolean;
+};
+
+/** 读取图片真实宽高（用于像素预算约束）。无法识别尺寸时 ok=false（调用方按字节上界兜底）。 */
+function readImageDimensions(buffer: Buffer): { ok: boolean; width: number; height: number } {
+  try {
+    const len = buffer.length;
+    // PNG：签名 89 50 4E 47；宽高在偏移 16/20（大端）
+    if (len >= 24 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) {
+      const width = buffer.readUInt32BE(16);
+      const height = buffer.readUInt32BE(20);
+      if (width > 0 && height > 0) return { ok: true, width, height };
+    }
+    // GIF：签名 GIF8；宽高在偏移 6/8（小端）
+    if (len >= 10 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+      const width = buffer.readUInt16LE(6);
+      const height = buffer.readUInt16LE(8);
+      if (width > 0 && height > 0) return { ok: true, width, height };
+    }
+    // BMP：签名 BM（42 4D）；宽高在偏移 18/22（小端，有符号）
+    if (len >= 26 && buffer[0] === 0x42 && buffer[1] === 0x4d) {
+      const width = buffer.readInt32LE(18);
+      const height = Math.abs(buffer.readInt32LE(22));
+      if (width > 0 && height > 0) return { ok: true, width, height };
+    }
+    // JPEG：签名 FF D8 FF；在标记段中找 SOF0..SOF15（不含 C4/C8/CC）获取宽高
+    if (len >= 4 && buffer[0] === 0xff && buffer[1] === 0xd8) {
+      let i = 2;
+      while (i + 9 < len) {
+        if (buffer[i] !== 0xff) break;
+        const marker = buffer[i + 1];
+        if (marker >= 0xc0 && marker <= 0xcf && marker !== 0xc4 && marker !== 0xc8 && marker !== 0xcc) {
+          const height = buffer.readUInt16BE(i + 5);
+          const width = buffer.readUInt16BE(i + 7);
+          if (width > 0 && height > 0) return { ok: true, width, height };
+        }
+        const segLen = buffer.readUInt16BE(i + 2);
+        i += 2 + segLen;
+      }
+    }
+    // WEBP：RIFF....WEBP；VP8/VP8L/VP8X 中读宽高
+    if (len >= 30 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP") {
+      const fmt = buffer.toString("ascii", 12, 16);
+      if (fmt === "VP8X" && len >= 30) {
+        const width = 1 + ((buffer[24] & 0xff) | ((buffer[25] & 0xff) << 8) | ((buffer[26] & 0xff) << 16));
+        const height = 1 + ((buffer[27] & 0xff) | ((buffer[28] & 0xff) << 8) | ((buffer[29] & 0xff) << 16));
+        if (width > 0 && height > 0) return { ok: true, width, height };
+      } else if (fmt === "VP8 " && len >= 26) {
+        const width = 1 + (((buffer[22] & 0xff) | ((buffer[23] & 0xff) << 8)) & 0x3fff);
+        const height = 1 + (((buffer[24] & 0xff) | ((buffer[25] & 0xff) << 8)) & 0x3fff);
+        if (width > 0 && height > 0) return { ok: true, width, height };
+      } else if (fmt === "VP8L" && len >= 25) {
+        const b0 = buffer[21] & 0xff, b1 = buffer[22] & 0xff, b2 = buffer[23] & 0xff, b3 = buffer[24] & 0xff;
+        const width = 1 + ((b1 & 0x3f) << 8 | b0);
+        const height = 1 + ((b3 & 0x0f) << 10 | b2 << 2 | (b1 & 0xc0) >> 6);
+        if (width > 0 && height > 0) return { ok: true, width, height };
+      }
+    }
+  } catch {
+    // 解析异常视为不可识别
+  }
+  return { ok: false, width: 0, height: 0 };
+}
+
 /**
- * 统一「可取消超时」入口：内部使用 AbortController，超时/外部中止时会真正取消底层解析
- * （如 terminate OCR worker），而非仅停止等待。
- * 文件任务与资料上传（upload_doc）共用此入口，避免各自实现 Promise.race。
+ * [R0-K K01/K02/K04] 所有实际入口共用的解析边界。
+ *
+ * - 认证/成员/私密归属由调用方在准入与 worker 启动之前完成。
+ * - 输入大小在分配前按声明预检、分配后按真实字节再次核验。
+ * - 非 OCR 重解析在真实隔离 worker 中执行；硬 deadline / 取消 / 崩溃 / 初始化失败
+ *   由 runner terminate 并等待 exit 确认，迟到文本不被接收。
+ * - OCR 沿用既有 terminate / 延迟创建保护；外层硬 deadline 通过 AbortSignal 触发
+ *   terminate（真停止后台工作），Promise.race 在此仅用于「收口等待」，不替代终止。
+ * - 输出、条目、解压、页/像素/表格等统一计入根预算；超限明确失败，不静默截断。
+ */
+export async function parseWithBoundary(
+  buffer: Buffer,
+  fileName: string,
+  mimeType: string,
+  options: ParseBoundaryOptions = {},
+): Promise<ParseBoundaryResult> {
+  const cap = options.maxInputBytes ?? PARSE_LIMITS.ROOT_MAX_INPUT_BYTES;
+  checkDeclaredInput(options.declaredBytes, cap);
+  checkRealInput(buffer, cap);
+  if (options.signal?.aborted) throw new ParseResourceError(PARSE_CODES.CANCELLED);
+
+  const budget = options.budget ?? new RootBudget({ deadlineMs: options.timeoutMs ?? PARSE_LIMITS.HARD_DEADLINE_MS });
+  budget.consume("inputBytes", buffer.length);
+  const deadlineMs = Math.max(1, Math.min(options.timeoutMs ?? PARSE_LIMITS.HARD_DEADLINE_MS, budget.snapshot().remainingMs || 1));
+
+  const controller = new AbortController();
+  const onExternalAbort = () => controller.abort();
+  if (options.signal) {
+    if (options.signal.aborted) controller.abort();
+    else options.signal.addEventListener("abort", onExternalAbort, { once: true });
+  }
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, deadlineMs);
+
+  try {
+    const ext = getExtension(fileName);
+    const kindMagic = detectByMagicBytes(buffer);
+    const isImage = IMAGE_EXTENSIONS.has(ext) || kindMagic === "image" || (mimeType || "").toLowerCase().startsWith("image/");
+
+    // 图片直接 OCR（保留既有 terminate 能力）；扫描件 PDF 在 worker 返回 needsOcr 后再走 OCR
+    let raw = "";
+    let needsOcr = isImage && ext !== ".svg";
+    let usage: BudgetUsage = {};
+
+    if (!isImage) {
+      const task: ParseTask = {
+        kind: boundaryTaskOverride ?? "parse",
+        buffer,
+        fileName,
+        mimeType,
+      };
+      // [R0-K K01.5] 不与「计时器 Promise」race：必须等 runner 确认 worker 退出后
+      // 才结束本次解析，否则响应先返回会让共享准入名额在后台工作仍活着时被腾出。
+      let run;
+      try {
+        run = await runIsolatedParse({ task, budget, deadlineMs, signal: controller.signal, onWorkerExited: options.onWorkerExited });
+      } catch (e) {
+        if (timedOut && !(e instanceof ParseResourceError && e.code === PARSE_CODES.STOP_UNCONFIRMED)) {
+          throw new ParseResourceError(PARSE_CODES.TIMEOUT);
+        }
+        throw e;
+      }
+      raw = String(run.text || "");
+      needsOcr = Boolean(run.needsOcr);
+      usage = run.usage;
+    }
+
+    if (isImage && ext !== ".svg") {
+      // [KR5-a] 图片进入 OCR 前执行真实尺寸/像素约束；约束不得留在图片永远不经过的 worker 分支。
+      // 像素上限超容即明确失败，不把尺寸检查留给后台 OCR（OCR 路径不回填像素预算）。
+      const dims = readImageDimensions(buffer);
+      const pixels = dims.ok ? dims.width * dims.height : Math.max(1, buffer.length);
+      budget.consume("imagePixels", pixels);
+    }
+
+    if (needsOcr) {
+      // [R0-K K01.4] 保留既有 OCR terminate / 延迟创建后终止 / 重复取消保护。
+      // 外层硬 deadline 通过同一 AbortSignal 触发 terminateWorker（真正停止后台工作），
+      // 等 OCR 结束后再按事实报告超时/取消；不用 Promise.race 假装中断。
+      const ocr = await extractFromImage(buffer, controller.signal);
+      // [KR4-b] 确认不能及时完成（OCR worker 未确认停止）时，用「停止未确认」保护占用，
+      // 不提前放槽、不返回空串成功；迟到创建/退出由上游隔离回收。
+      // 必须在回填输出预算之前判定：否则预算 deadline 超时会抢先抛出 TIMEOUT，掩盖本判定。
+      if (controller.signal.aborted && !ocr.stopped) {
+        throw new ParseResourceError(PARSE_CODES.STOP_UNCONFIRMED);
+      }
+      raw = String(ocr.text || "");
+      budget.consume("outputChars", raw.length);
+      usage = { ...usage, outputChars: (usage.outputChars ?? 0) + raw.length };
+    }
+
+    if (controller.signal.aborted) {
+      throw new ParseResourceError(timedOut ? PARSE_CODES.TIMEOUT : PARSE_CODES.CANCELLED);
+    }
+    const text = hasReadableText(raw) ? raw.trim() : "";
+    return { text, usage, noText: text.length === 0 };
+  } catch (e) {
+    if (e instanceof ParseResourceError) throw e;
+    // worker 未就绪/预算/失败等由 runner 抛稳定错误；其余真实解析异常不伪装成功
+    throw new ParseResourceError(PARSE_CODES.FAILED);
+  } finally {
+    clearTimeout(timer);
+    options.signal?.removeEventListener("abort", onExternalAbort);
+  }
+}
+
+/**
+ * 统一「可取消超时」兼容入口（handler 与既有调用方共用）。
+ * [R0-K] 语义变化：超时/取消/资源超限/真实解析失败不再吞成空字符串，而是抛
+ * ParseResourceError 稳定错误；「无文字/空文本」仍返回空串，由入口给出诚实反馈。
  */
 export async function extractTextFromBufferWithTimeout(
   buffer: Buffer,
@@ -546,23 +840,14 @@ export async function extractTextFromBufferWithTimeout(
   mimeType = "",
   timeoutMs: number = OCR_TIMEOUT_MS,
   externalSignal?: AbortSignal,
+  options: Pick<ParseBoundaryOptions, "budget" | "maxInputBytes" | "declaredBytes" | "onWorkerExited"> = {},
 ): Promise<string> {
-  const controller = new AbortController();
-  const onAbort = () => controller.abort();
-  const timer = setTimeout(onAbort, timeoutMs);
-  if (externalSignal) {
-    if (externalSignal.aborted) controller.abort();
-    else externalSignal.addEventListener("abort", onAbort, { once: true });
-  }
-  try {
-    return await extractTextFromBuffer(buffer, fileName, mimeType, 0, controller.signal);
-  } catch {
-    // 解析失败 / 超时 / 已中止：统一视为无文本
-    return "";
-  } finally {
-    clearTimeout(timer);
-    externalSignal?.removeEventListener("abort", onAbort);
-  }
+  const result = await parseWithBoundary(buffer, fileName, mimeType, {
+    timeoutMs,
+    signal: externalSignal,
+    ...options,
+  });
+  return result.text;
 }
 
 async function extractTextFromBufferRaw(
@@ -604,8 +889,8 @@ async function extractTextFromBufferRaw(
     // 扫描件 PDF：officeparser 拿不到文字层时回落 OCR
     if (magic === "pdf") {
       if (signal?.aborted) return "";
-      const ocrText = await extractFromImage(buffer, signal);
-      if (ocrText && ocrText.trim()) return ocrText.trim();
+      const ocr = await extractFromImage(buffer, signal);
+      if (ocr.text && ocr.text.trim()) return ocr.text.trim();
       // PDF 原始字节不是正文：OCR 亦无结果时必须判定为「无文本」，
       // 绝不能继续降级到「文本类文件 / 二进制兜底」而把 %PDF 二进制当内容返回。
       return "";
@@ -658,8 +943,8 @@ async function extractTextFromBufferRaw(
   if (isImage) {
     if (ext === ".svg") return "";
     if (signal?.aborted) return "";
-    const ocrText = await extractFromImage(buffer, signal);
-    return ocrText && ocrText.trim() ? ocrText.trim() : "";
+    const ocr = await extractFromImage(buffer, signal);
+    return ocr.text && ocr.text.trim() ? ocr.text.trim() : "";
   }
 
   // 4. 文本类文件（含各类代码/配置/标记语言）

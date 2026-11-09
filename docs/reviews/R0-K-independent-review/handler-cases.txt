@@ -1,0 +1,18 @@
+import {afterAll} from 'vitest';
+const observations:any[]=[];
+describe('R0-K actual Studio storage entry, real parser and denied shared admission',()=>{
+ it('defect K03/K04: actual upload_doc succeeds and starts worker despite admission being unavailable',async()=>{
+  seedQuota('w1',0n,1000n);let acquireCalls=0,workerStarts=0;
+  const {__setParseAdmissionBackendForTest}=await import('@/lib/parse-admission');
+  const {ParseResourceError,PARSE_CODES}=await import('@/lib/parse-policy');
+  __setParseAdmissionBackendForTest({acquire:async()=>{acquireCalls++;throw new ParseResourceError(PARSE_CODES.ADMISSION_NOT_READY);},release:async()=>true,quarantine:async()=>{},sweep:async()=>0});
+  const {__setParseRunnerHooks,__resetParseRunnerHooks}=await import('@/lib/parse-runner');const {Worker}=await import('node:worker_threads');
+  __setParseRunnerHooks({workerFactory:(file,opts)=>{workerStarts++;return new Worker(file,opts);}});
+  try{
+   const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action:'upload_doc',title:'offline admission check',visibility:'PRIVATE',workspaceId:'w1'},{name:'small.txt',type:'text/plain',content:'Controlled small text for offline upload check.'}),makeDeps());const body=await res.json();
+   expect(res.status).toBe(200);expect(acquireCalls).toBe(0);expect(workerStarts).toBe(1);expect(h.tables.document.size).toBe(1);
+   observations.push({name:'studio-upload-admission-bypass',status:res.status,acquireCalls,workerStarts,documents:h.tables.document.size,used:String(h.tables.workspacequota.get('q-w1').storageUsed),responseSuccess:body.success});
+  }finally{__resetParseRunnerHooks();__setParseAdmissionBackendForTest(null);}
+ });
+});
+afterAll(()=>require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'docs/reviews/R0-K-independent-review/handler-evidence.json'),JSON.stringify({capturedAt:new Date().toISOString(),mode:'actual Studio handler/storage service/parser/real local worker; Prisma, auth, disk, credit and external IO isolated; shared admission explicitly refuses',observations},null,2)));

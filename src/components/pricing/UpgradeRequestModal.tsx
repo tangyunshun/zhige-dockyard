@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { X, Loader2, AlertCircle } from "lucide-react";
+import { createPortal } from "react-dom";
+import { X, Loader2, AlertCircle, MessageSquare, ShieldCheck } from "lucide-react";
 import { useToast } from "@/components/Toast";
 
 interface UpgradeRequestModalProps {
@@ -53,6 +54,11 @@ export default function UpgradeRequestModal({
   const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // 客户端挂载标记（确保 createPortal 仅在浏览器端运行，与全站弹窗模式一致）
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // 每次打开弹窗时自动填充已有用户信息
   useEffect(() => {
@@ -243,41 +249,59 @@ export default function UpgradeRequestModal({
     }
   };
 
-  // 错误态输入框样式：红框 + 红色聚焦环；正常态沿用品牌蓝
+  // 错误态输入框样式：红框 + 红色聚焦环；正常态白底品牌蓝聚焦（表单区为浅灰底，输入框用白底突出）
   const inputCls = (hasError?: string) =>
-    `w-full h-10 px-3 border rounded-lg text-xs font-bold focus:outline-none focus:ring-1 transition-colors ${
+    `w-full h-10 px-3 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-300 focus:outline-none focus:ring-1 transition-colors ${
       hasError
         ? "border-red-300 focus:border-red-400 focus:ring-red-400 bg-red-50/30"
         : "border-slate-200 focus:border-[#3182ce] focus:ring-[#3182ce]"
     }`;
 
-  return (
+  // 通过 createPortal 挂载至 document.body：脱离定价页容器的层叠上下文（backdrop-filter/transform 等），
+  // 遮罩与弹窗覆盖整个页面（含左侧边栏），与全站弹窗行为一致
+  if (!open || !mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[1000] flex items-center justify-center p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
       <div className="bg-white rounded-2xl max-w-lg w-full max-h-[88vh] flex flex-col shadow-2xl text-left border border-slate-100 animate-in zoom-in-95 duration-200">
-        {/* 标题栏（固定） */}
-        <div className="flex justify-between items-center px-6 py-4 border-b shrink-0">
-          <h3 className="text-base font-black text-slate-800 flex items-center gap-1.5">
-            {planName === "CUSTOM" ? "定制方案咨询" : "申请升级方案"}：{planDisplayName}
-          </h3>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer transition-colors disabled:opacity-50"
-            aria-label="关闭"
-          >
-            <X className="w-4 h-4" />
-          </button>
+        {/* 标题栏（固定）：品牌色顶饰 + 图标徽章 + 主/副标题 */}
+        <div className="shrink-0 border-b border-slate-100">
+          <div className="h-1 bg-gradient-to-r from-[#2b6cb0] via-[#3182ce] to-[#90cdf4] rounded-t-2xl" />
+          <div className="flex justify-between items-start px-6 pt-4 pb-3.5">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#3182ce]/10 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-4 h-4 text-[#3182ce]" />
+              </div>
+              <div>
+                <h3 className="text-[15px] font-black text-slate-800 leading-tight">
+                  {planName === "CUSTOM" ? "定制方案咨询" : "申请升级方案"}
+                  <span className="ml-1.5 text-[#3182ce]">· {planDisplayName}</span>
+                </h3>
+                <p className="mt-1 text-[11px] font-medium text-slate-400">
+                  留下您的需求，客户经理将在 1-2 个工作日内与您联系
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-100 cursor-pointer transition-colors disabled:opacity-50"
+              aria-label="关闭"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* 表单主体（超出时内部滚动，不再被视口截断） */}
         <form onSubmit={handleSubmit} className="flex flex-col min-h-0 flex-1">
-          <div className="overflow-y-auto px-6 py-4 space-y-4">
+          <div className="overflow-y-auto px-6 py-5 space-y-4 bg-slate-50/60">
             <div>
               <label className="block text-xs font-bold text-slate-500 mb-1.5">
                 企业名称 <span className="text-red-500">*</span>
@@ -363,7 +387,7 @@ export default function UpgradeRequestModal({
                   <select
                     value={selectedWorkspaceId}
                     onChange={(e) => setSelectedWorkspaceId(e.target.value)}
-                    className="w-full h-10 px-3 bg-slate-50/50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none cursor-pointer"
+                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 focus:bg-white focus:border-[#3182ce] focus:ring-1 focus:ring-[#3182ce] outline-none cursor-pointer"
                   >
                     {workspaces.map((w) => (
                       <option key={w.id} value={w.id}>
@@ -393,7 +417,7 @@ export default function UpgradeRequestModal({
                 onChange={(e) => handleChange("requirements", e.target.value)}
                 onBlur={(e) => handleBlur("requirements", e.target.value)}
                 placeholder="如有特殊定制化功能或私有算力部署诉求，请在此备注说明"
-                className={`w-full h-24 p-3 border rounded-lg text-xs font-bold focus:outline-none focus:ring-1 resize-none transition-colors ${
+                className={`w-full h-24 p-3 bg-white border rounded-lg text-xs font-bold placeholder:text-slate-300 focus:outline-none focus:ring-1 resize-none transition-colors ${
                   fieldErrors.requirements
                     ? "border-red-300 focus:border-red-400 focus:ring-red-400 bg-red-50/30"
                     : "border-slate-200 focus:border-[#3182ce] focus:ring-[#3182ce]"
@@ -422,27 +446,34 @@ export default function UpgradeRequestModal({
             </div>
           </div>
 
-          {/* 底部操作栏（固定，不随内容滚动） */}
-          <div className="flex gap-2 justify-end px-6 py-3.5 border-t border-slate-100 bg-white rounded-b-2xl shrink-0">
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 text-xs font-bold rounded-lg cursor-pointer transition-colors"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-[#63b3ed] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow transition-all cursor-pointer flex items-center justify-center gap-1.5"
-            >
-              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-              <span>确认提交申请</span>
-            </button>
+          {/* 底部操作栏（固定，不随内容滚动）：左侧隐私提示 + 右侧操作按钮 */}
+          <div className="flex items-center justify-between gap-3 px-6 py-3.5 border-t border-slate-100 bg-white rounded-b-2xl shrink-0">
+            <p className="hidden sm:flex items-center gap-1 text-[10px] font-medium text-slate-400">
+              <ShieldCheck className="w-3 h-3 text-emerald-500 shrink-0" />
+              信息仅用于方案沟通，不会对外展示
+            </p>
+            <div className="flex gap-2 justify-end ml-auto">
+              <button
+                type="button"
+                disabled={submitting}
+                onClick={onClose}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-600 text-xs font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                取消
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="px-5 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] disabled:bg-[#63b3ed] text-white text-xs font-bold rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                <span>确认提交申请</span>
+              </button>
+            </div>
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

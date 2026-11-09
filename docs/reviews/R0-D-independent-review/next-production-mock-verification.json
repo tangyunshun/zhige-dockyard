@@ -1,0 +1,265 @@
+{
+  "capturedAt": "2026-11-06T16:58:01.406Z",
+  "originalIssue": "F08 explicit MOCK in production",
+  "observations": [
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": "mock"
+      },
+      "resolvedMode": "MOCK",
+      "charge": {
+        "mode": "MOCK",
+        "channel": "WECHAT_PAY",
+        "payUrl": "/user/pay/mock?orderNo=TR_fixture",
+        "gatewayPayload": null
+      },
+      "getStatus": 200,
+      "postStatus": 200,
+      "wallet": "100",
+      "grants": [
+        {
+          "id": "a9545999-5e6a-4cf4-a02a-c9e1236cccab",
+          "scope": "WALLET",
+          "userId": "u1",
+          "workspaceId": null,
+          "points": "100",
+          "remaining": "100",
+          "sourceType": "RECHARGE",
+          "sourceId": "TR_fixture",
+          "expiresAt": null,
+          "status": "ACTIVE",
+          "operatorId": null,
+          "title": "fixture recharge",
+          "remark": "模拟支付入账（非真实收款，仅用于流程联调）",
+          "updatedAt": "2026-11-06T16:58:00.793Z"
+        }
+      ],
+      "ledger": [
+        {
+          "id": "1b1e09b6-09b2-4556-a0f9-82069048d1d4",
+          "direction": "IN",
+          "type": "RECHARGE",
+          "scope": "WALLET",
+          "userId": "u1",
+          "userEmail": null,
+          "workspaceId": null,
+          "workspaceType": "PERSONAL",
+          "workspaceName": "fixture",
+          "operatorId": null,
+          "points": "100",
+          "balanceAfter": "100",
+          "amountCents": 1000,
+          "paymentMethod": "MOCK_WECHAT_PAY",
+          "orderNo": "TR_fixture",
+          "grantId": "a9545999-5e6a-4cf4-a02a-c9e1236cccab",
+          "componentId": null,
+          "componentName": null,
+          "taskId": null,
+          "title": "fixture recharge",
+          "remark": "模拟支付入账（非真实收款，仅用于流程联调）",
+          "idempotencyKey": "TR_fixture#1"
+        }
+      ],
+      "order": {
+        "id": "TR_fixture",
+        "userId": "u1",
+        "workspaceId": "personal",
+        "type": "TOKEN_RECHARGE",
+        "status": "SUCCESS",
+        "title": "fixture recharge",
+        "amount": 1000,
+        "channel": "WECHAT_PAY",
+        "expiresAt": "2026-11-06T17:58:00.372Z",
+        "metadata": {
+          "points": 100,
+          "paidAt": "2026-11-06T16:58:00.793Z",
+          "paymentMode": "MOCK",
+          "grantLedgerId": "1b1e09b6-09b2-4556-a0f9-82069048d1d4"
+        },
+        "updatedAt": "2026-11-06T16:58:00.793Z"
+      },
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "table": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "update"
+        }
+      ]
+    },
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": " MOCK "
+      },
+      "resolvedMode": "MOCK",
+      "charge": {
+        "mode": "MOCK",
+        "channel": "WECHAT_PAY",
+        "payUrl": "/user/pay/mock?orderNo=TR_fixture",
+        "gatewayPayload": null
+      },
+      "getStatus": 200,
+      "postStatus": 200,
+      "wallet": "100",
+      "grants": [
+        {
+          "id": "7349e721-6a05-4935-bb3d-a684787a25ae",
+          "scope": "WALLET",
+          "userId": "u1",
+          "workspaceId": null,
+          "points": "100",
+          "remaining": "100",
+          "sourceType": "RECHARGE",
+          "sourceId": "TR_fixture",
+          "expiresAt": null,
+          "status": "ACTIVE",
+          "operatorId": null,
+          "title": "fixture recharge",
+          "remark": "模拟支付入账（非真实收款，仅用于流程联调）",
+          "updatedAt": "2026-11-06T16:58:00.971Z"
+        }
+      ],
+      "ledger": [
+        {
+          "id": "008c531d-1b14-4f82-9c1e-5837f748d348",
+          "direction": "IN",
+          "type": "RECHARGE",
+          "scope": "WALLET",
+          "userId": "u1",
+          "userEmail": null,
+          "workspaceId": null,
+          "workspaceType": "PERSONAL",
+          "workspaceName": "fixture",
+          "operatorId": null,
+          "points": "100",
+          "balanceAfter": "100",
+          "amountCents": 1000,
+          "paymentMethod": "MOCK_WECHAT_PAY",
+          "orderNo": "TR_fixture",
+          "grantId": "7349e721-6a05-4935-bb3d-a684787a25ae",
+          "componentId": null,
+          "componentName": null,
+          "taskId": null,
+          "title": "fixture recharge",
+          "remark": "模拟支付入账（非真实收款，仅用于流程联调）",
+          "idempotencyKey": "TR_fixture#1"
+        }
+      ],
+      "order": {
+        "id": "TR_fixture",
+        "userId": "u1",
+        "workspaceId": "personal",
+        "type": "TOKEN_RECHARGE",
+        "status": "SUCCESS",
+        "title": "fixture recharge",
+        "amount": 1000,
+        "channel": "WECHAT_PAY",
+        "expiresAt": "2026-11-06T17:58:00.828Z",
+        "metadata": {
+          "points": 100,
+          "paidAt": "2026-11-06T16:58:00.972Z",
+          "paymentMode": "MOCK",
+          "grantLedgerId": "008c531d-1b14-4f82-9c1e-5837f748d348"
+        },
+        "updatedAt": "2026-11-06T16:58:00.972Z"
+      },
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "table": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "update"
+        }
+      ]
+    }
+  ],
+  "controls": [
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": "real"
+      },
+      "mode": "REAL",
+      "getStatus": 403,
+      "postStatus": 403,
+      "writes": []
+    },
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "production"
+      },
+      "mode": "REAL",
+      "getStatus": 403,
+      "postStatus": 403,
+      "writes": []
+    },
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "production",
+        "PAYMENT_MODE": "invalid"
+      },
+      "mode": "REAL",
+      "getStatus": 403,
+      "postStatus": 403,
+      "writes": []
+    },
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "development",
+        "PAYMENT_MODE": "mock"
+      },
+      "mode": "MOCK",
+      "postStatus": 200,
+      "wallet": "100"
+    },
+    {
+      "fixtureEnv": {
+        "NODE_ENV": "test"
+      },
+      "mode": "MOCK",
+      "postStatus": 200,
+      "wallet": "100"
+    }
+  ],
+  "isolation": "Actual gateway resolve/createCharge, actual mock GET/POST, actual grantPoints/getBalanceSummary and order-expiry. Complete closed IO and synthetic process.env; no .env/secret/DB/provider/payment/network read or call. Order is preseeded memory fixture, not created through actual create POST.",
+  "limits": "Proves behavior if production is explicitly configured mock; actual deployed environment is unknown. Does not prove online incident, real currency loss or model execution. Mode REAL controls have no credentials and make no provider request.",
+  "sha256": {
+    "src/lib/payment-gateway.ts": "56972d800e62068843c2c7086f48577a14157046f85da4b10fbf0586d5de79b2",
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/app/api/payments/mock/confirm/route.ts": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0",
+    "src/app/api/payments/create/route.ts": "eb338f49b2d8d07b43c710129d6074f6d2c060134f5c51aaf2049b3c09bec58f",
+    "src/app/api/workspace/seat-addon/route.ts": "0ab6a55c346664fec69a48a0b66fb92680d72acf91dadc2b71b7910c710cb263",
+    "docs/product-business-review-2026-11-05/RESTRUCTURING-PROPOSAL.md": "cdbe807f79bbebecc41bb1533d222edb9221515dd68745896bf9747fbcacf22c"
+  }
+}

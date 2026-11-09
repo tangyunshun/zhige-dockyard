@@ -1,0 +1,729 @@
+{
+  "capturedAt": "2026-11-06T14:04:42.346Z",
+  "controls": [
+    {
+      "scenario": "normal_duplicate_only_once",
+      "response": [
+        {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        {
+          "ok": true,
+          "status": "ALREADY_PROCESSED",
+          "seats": 2,
+          "workspaceId": "w1"
+        }
+      ],
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "failWorkspace_rollback",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单状态未确认变更（可凭订单号查询核实），可安全重试同一订单",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "failCommit_rollback",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单状态未确认变更（可凭订单号查询核实），可安全重试同一订单",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "fixed_stale_expiry_shared",
+      "response": {
+        "ok": true,
+        "status": "ALREADY_PROCESSED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T07:59:59.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Other admitted request commits after stale PENDING read"
+      ]
+    },
+    {
+      "scenario": "fixed_stale_expiry_real_wrapper",
+      "response": {
+        "ok": true,
+        "status": "ALREADY_PROCESSED",
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T07:59:59.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Other admitted request commits after stale PENDING read"
+      ]
+    },
+    {
+      "scenario": "fixed_stale_expiry_mock_route",
+      "response": {
+        "httpStatus": 200,
+        "body": {
+          "success": true,
+          "alreadyProcessed": true,
+          "seats": 2,
+          "message": "该订单此前已完成入账，未重复扣款。"
+        }
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T07:59:59.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Other admitted request commits after stale PENDING read"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "scenario": "order_deadline_passes_before_claim_shared",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "order_deadline_passes_before_claim_real_wrapper",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "order_deadline_passes_before_claim_mock_route",
+      "response": {
+        "httpStatus": 200,
+        "body": {
+          "success": true,
+          "alreadyProcessed": false,
+          "seats": 2,
+          "message": "模拟收款成功，已为空间增购 2 个席位（非真实扣款）"
+        }
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "plan_deadline_passes_advanceAtTransaction",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "plan_deadline_passes_advanceAtSeatWrite",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses plan deadline before conditional workspace write"
+      ]
+    }
+  ],
+  "actualCreateQueryFulfill": [
+    {
+      "cycle": "MONTH",
+      "httpStatus": 200,
+      "hasPayUrl": true,
+      "queriedCodeUrl": "weixin://isolated-fixture-no-payment",
+      "fulfillment": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "finalOrderStatus": "SUCCESS"
+    },
+    {
+      "cycle": null,
+      "httpStatus": 200,
+      "hasPayUrl": true,
+      "queriedCodeUrl": "weixin://isolated-fixture-no-payment",
+      "fulfillment": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单缺少计费周期（billingCycle），无法确定原报价，拒绝入账，请人工核查"
+      },
+      "finalOrderStatus": "PENDING"
+    },
+    {
+      "cycle": "",
+      "httpStatus": 200,
+      "hasPayUrl": true,
+      "queriedCodeUrl": "weixin://isolated-fixture-no-payment",
+      "fulfillment": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单缺少计费周期（billingCycle），无法确定原报价，拒绝入账，请人工核查"
+      },
+      "finalOrderStatus": "PENDING"
+    },
+    {
+      "cycle": "WEEK",
+      "httpStatus": 200,
+      "hasPayUrl": true,
+      "queriedCodeUrl": "weixin://isolated-fixture-no-payment",
+      "fulfillment": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "finalOrderStatus": "SUCCESS"
+    }
+  ],
+  "actualMockComponent": [
+    {
+      "initialStatus": "PENDING",
+      "duplicate": false,
+      "orderStatus": "PENDING",
+      "resultState": null,
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 等待支付  模拟支付成功 取消并返回",
+      "links": [],
+      "payButton": [
+        {
+          "disabled": false
+        }
+      ]
+    },
+    {
+      "initialStatus": "SUCCESS",
+      "duplicate": false,
+      "orderStatus": "SUCCESS",
+      "resultState": null,
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 已支付并入账  模拟支付成功 取消并返回",
+      "links": [],
+      "payButton": [
+        {
+          "disabled": true
+        }
+      ]
+    },
+    {
+      "initialStatus": "EXPIRED",
+      "duplicate": false,
+      "orderStatus": "EXPIRED",
+      "resultState": {
+        "message": "订单已超时关闭，未完成支付；如已付款请凭订单号联系客服核实，请勿重复支付",
+        "tone": "warning"
+      },
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 已超时关闭  订单已超时关闭，未完成支付；如已付款请凭订单号联系客服核实，请勿重复支付 查看账单记录 返回 取消并返回",
+      "links": [
+        {
+          "href": "/user/billing-center",
+          "label": "查看账单记录"
+        }
+      ],
+      "payButton": []
+    },
+    {
+      "initialStatus": "FAILED",
+      "duplicate": false,
+      "orderStatus": "FAILED",
+      "resultState": {
+        "message": "订单支付失败，未完成入账；如已扣款请凭订单号联系客服核实，请勿重复支付",
+        "tone": "error"
+      },
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 支付失败  订单支付失败，未完成入账；如已扣款请凭订单号联系客服核实，请勿重复支付 查看账单记录 返回 取消并返回",
+      "links": [
+        {
+          "href": "/user/billing-center",
+          "label": "查看账单记录"
+        }
+      ],
+      "payButton": []
+    },
+    {
+      "initialStatus": "REFUNDED",
+      "duplicate": false,
+      "orderStatus": "REFUNDED",
+      "resultState": {
+        "message": "订单已退款，对应权益未生效；如有疑问请凭订单号联系客服",
+        "tone": "error"
+      },
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 已退款  订单已退款，对应权益未生效；如有疑问请凭订单号联系客服 查看账单记录 返回 取消并返回",
+      "links": [
+        {
+          "href": "/user/billing-center",
+          "label": "查看账单记录"
+        }
+      ],
+      "payButton": []
+    },
+    {
+      "initialStatus": "UNKNOWN",
+      "duplicate": false,
+      "orderStatus": "UNKNOWN",
+      "resultState": {
+        "message": "订单状态未知，请刷新页面或凭订单号联系客服核实，请勿重复支付",
+        "tone": "neutral"
+      },
+      "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 状态未知（UNKNOWN）  订单状态未知，请刷新页面或凭订单号联系客服核实，请勿重复支付 查看账单记录 返回 取消并返回",
+      "links": [
+        {
+          "href": "/user/billing-center",
+          "label": "查看账单记录"
+        }
+      ],
+      "payButton": []
+    }
+  ],
+  "duplicateMockComponent": {
+    "initialStatus": "PENDING",
+    "duplicate": true,
+    "orderStatus": "SUCCESS",
+    "resultState": {
+      "message": "该订单此前已完成入账，未重复扣款。",
+      "tone": "neutral"
+    },
+    "text": " 【模拟支付】当前平台尚未接入真实支付渠道 本页不会产生任何真实扣款，仅用于把充值流程跑通。凭证到位后将切换为微信/支付宝真实收款。 收款方 知阁·舟坊 · 席位增购 ¥ 26.00 增购  2  个团队席位 商品： 席位订单 订单号： SA_fixture 支付方式： 微信支付 （模拟） 状态： 已支付并入账  该订单此前已完成入账，未重复扣款。 查看账单记录 返回 取消并返回",
+    "links": [
+      {
+        "href": "/user/billing-center",
+        "label": "查看账单记录"
+      }
+    ],
+    "payButton": []
+  },
+  "actualQrComponent": [
+    {
+      "status": "PENDING",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00   正在等待支付结果确认…  本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    },
+    {
+      "status": "SUCCESS",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00  支付成功，已为空间增购 2 个席位 返回空间工作台 查看算力账单 本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    },
+    {
+      "status": "EXPIRED",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00  订单已超时关闭 未完成支付；如已付款请凭订单号联系客服核实，请勿重复支付 返回收银台 本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    },
+    {
+      "status": "FAILED",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00  订单支付失败 未完成入账；如已扣款请凭订单号联系客服核实，请勿重复支付 返回收银台 本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    },
+    {
+      "status": "REFUNDED",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00  订单已退款 对应权益未生效；如有疑问请凭订单号联系客服 返回收银台 本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    },
+    {
+      "status": "UNKNOWN",
+      "text": " 微信扫码支付 请使用微信「扫一扫」识别下方二维码完成支付 席位订单 ¥ 26.00  状态未知（UNKNOWN） 订单状态未知，请刷新页面或凭订单号联系客服核实，请勿重复支付 返回收银台 本页二维码由微信支付官方下单接口生成（code_url），支付结果以微信支付服务器的异步通知为准； 平台在收到验签通过的通知后才按订单类型入账（席位/算力/套餐以订单为准）。"
+    }
+  ],
+  "baseline": [
+    {
+      "file": "src/lib/payment/seat-addon-fulfill.ts",
+      "actualSha256": "e949ced3379cfa9c050ac0545df2094e52a4923f51a4a372bccb8ecb647d563a",
+      "expectedSha256": "e949ced3379cfa9c050ac0545df2094e52a4923f51a4a372bccb8ecb647d563a"
+    },
+    {
+      "file": "src/lib/payment/fulfill.ts",
+      "actualSha256": "58954e4f150f23e4d947337a3eac1e3ab113c541d91dc936fdd631aca7ed5eac",
+      "expectedSha256": "58954e4f150f23e4d947337a3eac1e3ab113c541d91dc936fdd631aca7ed5eac"
+    },
+    {
+      "file": "src/app/api/payments/mock/confirm/route.ts",
+      "actualSha256": "cf65c1ad5368571a8a760744e9c8760914e134f411705b55328a8857b515db9b",
+      "expectedSha256": "cf65c1ad5368571a8a760744e9c8760914e134f411705b55328a8857b515db9b"
+    },
+    {
+      "file": "src/app/api/workspace/seat-addon/route.ts",
+      "actualSha256": "71edf94bdedc196b60a7b137caff90cf1dd8885636488b13e0ca4dcfee2d8b49",
+      "expectedSha256": "71edf94bdedc196b60a7b137caff90cf1dd8885636488b13e0ca4dcfee2d8b49"
+    },
+    {
+      "file": "src/app/api/payments/order/route.ts",
+      "actualSha256": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+      "expectedSha256": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693"
+    },
+    {
+      "file": "src/app/user/pay/mock/page.tsx",
+      "actualSha256": "5ce7f505fecd19fdca7bcd8c5a270dc9387a30f0be9e7f7985ace41f33ad0fba",
+      "expectedSha256": "5ce7f505fecd19fdca7bcd8c5a270dc9387a30f0be9e7f7985ace41f33ad0fba"
+    },
+    {
+      "file": "src/app/user/pay/qr/page.tsx",
+      "actualSha256": "83902de5ba3e6d691551cb0b19571f13fcaca7d517e73969f41a2095d961c807",
+      "expectedSha256": "83902de5ba3e6d691551cb0b19571f13fcaca7d517e73969f41a2095d961c807"
+    },
+    {
+      "file": "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "actualSha256": "0dce1878a794c127ad242d0631e76f5460f56eef888a23658c1260bab1e319ac",
+      "expectedSha256": "0dce1878a794c127ad242d0631e76f5460f56eef888a23658c1260bab1e319ac"
+    }
+  ],
+  "isolation": "Actual production services, order-expiry helper, read-only guard, POST/GET routes, display helper and both cashier components. Closed dependency allowlist; all DB/auth/payment/fetch/hooks/JSX IO stubbed. No business data or payments.",
+  "limits": "Clock advancement is deterministic simulated wait, not a real MySQL race. Memory txs are serialized; no proof of row locks or DB isolation. Component invocation is not browser/DOM verification. No current production data queried.",
+  "sha256": {
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/payment/seat-addon-fulfill.ts": "fe8650986e2bdd607f7445cf842cacb95ee841d37344e7cbb97e49179e89a4fa",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/app/api/payments/mock/confirm/route.ts": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0",
+    "src/lib/workspace-readonly-guard.ts": "0e48b9f58526f70468ae6dcfba66f076741b7d3931b6ddc9e5fa812f04a34190",
+    "src/app/api/workspace/seat-addon/route.ts": "4483ec5f18ed94fdd4454948b27b59f39e3e1f048a3721a10743b25722edd20f",
+    "src/app/api/payments/order/route.ts": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+    "src/lib/payment-cashier-display.ts": "644fe0cdd9ed6cdc9e9ff6f72e6398895d1dae2dd3eb3806964a4be23e6e4407",
+    "src/app/user/pay/mock/page.tsx": "421add33211421022d493cde5c9331e805eab8265704d2525930159d3d3daeb4",
+    "src/app/user/pay/qr/page.tsx": "12663337c65beb3affed3e835e472d9603e1e4df34ede0e143501c255ed26aa0",
+    "src/app/api/__tests__/r0b-seat-addon.test.ts": "102a5598b610eeb5441d9e01160ae0d5b1936b491ef029ae6fdd497b31f005eb",
+    "src/app/api/__tests__/r0a-business-boundary.test.ts": "b727cdcbb4d4479267a2c477ce1baea57ce7808367e5be80d2d5a7fbcf27951d",
+    "src/app/api/__tests__/r0a2-real-combo.test.ts": "47d4ea0c556462716ea2606636e9f1adc4de3013fb01f62c1d82f19632a22d00",
+    "src/app/api/__tests__/r0a3-combo-regression.test.ts": "c2524f5f7a37d8be2987739477cc47834262b47f89eaf9b4a707e363238eafbb",
+    "src/app/api/__tests__/r0a4-combo-regression.test.ts": "a0dce63c667f734a6af592394b1de8d731de3d180d361b8761c556eb7447691d",
+    "docs/reviews/R0-B1-fix-snapshot/manifest.json": "96a4117c16af70937f03a169d9288847b1f23e95f80ee0b426c70bea9d1a324d",
+    "docs/reviews/R0-B1-fix-report.md": "13fbac79c2cf4864c94f25b845b0652f02e6f5d9650d795bf0211fef01399bac"
+  }
+}

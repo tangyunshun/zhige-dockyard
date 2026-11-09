@@ -1885,108 +1885,29 @@ export async function grantNewUserGift(params: {
 }
 
 /**
- * 企业共享池回收至个人钱包（单事务原子记账，供空间内回收与平台后台代回收共用）。
- * 要求：目标 workspace 必须为 ENTERPRISE；userId 为接收钱包的所有者。
- * 记账：企业池递减 + 个人钱包递增 + 新建 WALLET 分桶（保证点数可正常花费）+ 双向流水。
+ * [R0-C / 原方案 F06 止损] 企业共享池 → 个人钱包转移暂停错误码与用户文案。
+ * 供两个 POST 入口稳定识别，避免被通用 catch 包装成 500；不新增配置开关或绕过入口。
  */
-export async function recycleEnterprisePool(params: {
+export const ENTERPRISE_POOL_RECYCLE_DISABLED = "ENTERPRISE_POOL_RECYCLE_DISABLED";
+export const ENTERPRISE_POOL_RECYCLE_MESSAGE =
+  "企业额度转入个人钱包暂不可用，原余额保留在企业空间";
+
+/**
+ * 企业共享池回收至个人钱包 —— **已暂停**（原方案 F06 风险关闭）。
+ *
+ * 原有实现只递减企业池快照、给个人钱包新建 WALLET 分桶，却不扣减 WORKSPACE 来源桶，
+ * 且新桶丢失付费/赠送来源与期限；企业资产转个人亦无已批准的归属政策。
+ * 因此在任何事务、查询或业务写入之前统一拒绝：不扣企业池、不加钱包、不建分桶/流水/账单。
+ * 直接导入本函数调用同样拒绝；恢复须先批准来源守恒方案与资产归属政策，另行实现。
+ *
+ * 本函数只处理「企业共享池 → 个人钱包」。成员独立余额 → 企业共享池走 transferPoints
+ * 的 MEMBER_TO_POOL 方向，不受影响。
+ */
+export async function recycleEnterprisePool(_params: {
   workspaceId: string;
   userId: string;
   points: number;
   operatorId?: string | null;
 }): Promise<{ walletBalance: number; poolBalance: number }> {
-  const amount = Math.floor(Number(params.points));
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error("INVALID_AMOUNT");
-
-  return prisma.$transaction(async (tx) => {
-    const ws = await tx.workspace.findUnique({
-      where: { id: params.workspaceId },
-      select: { id: true, name: true, type: true },
-    });
-    if (ws?.type !== "ENTERPRISE") throw new Error("NOT_ENTERPRISE");
-
-    const quota = await tx.workspacequota.findUnique({
-      where: { workspaceId: params.workspaceId },
-      select: { tokenBalance: true },
-    });
-    const current = Number(quota?.tokenBalance ?? 0);
-    if (current === -1) throw new Error("UNLIMITED");
-    if (current < amount) throw new Error("INSUFFICIENT");
-
-    // 1. 企业共享池递减
-    await tx.workspacequota.update({
-      where: { workspaceId: params.workspaceId },
-      data: { tokenBalance: { decrement: BigInt(amount) }, updatedAt: new Date() },
-    });
-
-    // 2. 个人钱包递增（不存在则创建）
-    const wallet = await tx.userwallet.upsert({
-      where: { userId: params.userId },
-      create: {
-        id: crypto.randomUUID(),
-        userId: params.userId,
-        balance: BigInt(amount),
-        updatedAt: new Date(),
-      },
-      update: { balance: { increment: BigInt(amount) }, updatedAt: new Date() },
-    });
-
-    // 3. 个人钱包侧新建 WALLET 分桶，确保回收点数可正常花费
-    const grant = await tx.pointgrant.create({
-      data: {
-        id: crypto.randomUUID(),
-        scope: "WALLET",
-        userId: params.userId,
-        points: BigInt(amount),
-        remaining: BigInt(amount),
-        sourceType: "MANUAL",
-        sourceId: `RECYCLE:${params.workspaceId}:${Date.now()}`,
-        status: "ACTIVE",
-        operatorId: params.operatorId ?? null,
-        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
-        remark: `从企业空间「${ws.name || params.workspaceId}」回收`,
-        updatedAt: new Date(),
-      },
-    });
-
-    // 4. 双向流水记账（OUT 企业池 / IN 个人钱包）
-    await tx.pointledger.create({
-      data: {
-        id: crypto.randomUUID(),
-        direction: "OUT",
-        type: "MANUAL_ADJUST",
-        scope: "WORKSPACE",
-        userId: params.userId,
-        workspaceId: params.workspaceId,
-        workspaceType: ws.type,
-        workspaceName: ws.name,
-        operatorId: params.operatorId ?? null,
-        points: BigInt(amount),
-        balanceAfter: BigInt(current - amount),
-        grantId: null,
-        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
-        remark: `从企业空间「${ws.name || params.workspaceId}」回收至个人钱包`,
-      },
-    });
-    await tx.pointledger.create({
-      data: {
-        id: crypto.randomUUID(),
-        direction: "IN",
-        type: "MANUAL_ADJUST",
-        scope: "WALLET",
-        userId: params.userId,
-        workspaceId: null,
-        workspaceType: null,
-        workspaceName: null,
-        operatorId: params.operatorId ?? null,
-        points: BigInt(amount),
-        balanceAfter: wallet.balance,
-        grantId: grant.id,
-        title: `企业池回收 ${amount.toLocaleString()} 算力点至个人钱包`,
-        remark: `来自企业空间「${ws.name || params.workspaceId}」`,
-      },
-    });
-
-    return { walletBalance: Number(wallet.balance), poolBalance: current - amount };
-  });
+  throw new Error(ENTERPRISE_POOL_RECYCLE_DISABLED);
 }

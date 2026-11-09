@@ -1074,6 +1074,8 @@ export async function resolveDefaultDeployment(params: {
   /** 合同声明的抽象能力要求（如 TEXT_GENERATION / VISION / STRUCTURED_OUTPUT / LONG_CONTEXT） */
   requiredCapabilities?: string[];
   userId?: string;
+  /** [R0-I2] 只读解析（用户读请求如报价）：默认命中 BYO 时热补列改 SELECT 探针，绝不 DDL/DML */
+  readOnlyResolution?: boolean;
 }): Promise<DefaultDeploymentPlan> {
   // 空能力集合不得通过默认模型门禁：合同必须显式声明所需能力（来自 executionPlan.steps[].requiredCapabilities），
   // 否则在门禁入口即拒绝执行，稳定错误码 MODEL_CAPABILITY_NOT_DECLARED；不参与后续部署解析（失败前置）。
@@ -1130,7 +1132,9 @@ export async function resolveDefaultDeployment(params: {
 
   // 分支 0：解析目标指向自建模型（byo:xxx）——个人偏好或空间默认显式指向 BYO 时
   if (chosenId === `byo:${params.workspaceId}`) {
-    const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps, params.userId);
+    const byoPlan = await tryResolveWorkspaceByoDefault(params.workspaceId, requiredCaps, params.userId, {
+      readOnly: params.readOnlyResolution === true,
+    });
     if (byoPlan) return { ...byoPlan, defaultSource: "WORKSPACE_BYO" };
     // 个人 BYO 偏好不可用时回落到空间默认；空间默认本身即 BYO 不可用则明确报错
     if (memberPrefId && memberPrefId === chosenId && spaceDefaultId && spaceDefaultId !== chosenId) {
@@ -1361,6 +1365,8 @@ export async function resolveDeploymentForWorkspace(params: {
   targetDeploymentId: string;
   requiredCapabilities?: string[];
   userId?: string;
+  /** [R0-I1 I-GET-DDL] 只读解析（用户读请求如报价）：BYO 热补列改为 SELECT 探针，绝不 DDL/DML */
+  readOnlyResolution?: boolean;
 }): Promise<DefaultDeploymentPlan> {
   const target = (params.targetDeploymentId || "").trim();
   if (!target) {
@@ -1407,7 +1413,7 @@ export async function resolveDeploymentForWorkspace(params: {
 
   // 分支 1：指定自带模型（byo 或 byo:xxx）
   if (target.toLowerCase() === "byo" || target.toLowerCase().startsWith("byo:")) {
-    await ensureByoShareWithMembersColumn();
+    await ensureByoShareWithMembersColumn({ readOnly: params.readOnlyResolution === true });
     const byoRow = await prisma.workspace_byo_model.findUnique({ where: { workspaceId: params.workspaceId } });
     if (!byoRow) {
       throw new ContractValidationError(

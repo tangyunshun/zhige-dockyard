@@ -1,0 +1,138 @@
+// Previous defects are now positive acceptance checks. Additional bounded cases identify current behavior.
+import {afterAll} from 'vitest';
+const observations:any[]=[];
+function observe(name:string,facts:any){observations.push({name,...facts});}
+function doc(id='d1',key='w1/x.bin',bytes:number|null=30){const row={id,workspaceId:'w1',title:id,status:'APPROVED',visibility:'PRIVATE',filePath:key,fileSize:bytes,uploaderId:'u1',type:'doc'};h.tables.document.set(id,row);return row;}
+function abs(key='w1/x.bin'){return require('node:path').join(process.cwd(),'uploads','assets',key);}
+function removeReq(id='d1'){return new NextRequest('http://localhost/api/studio',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer test-token'},body:JSON.stringify({action:'remove_asset',workspaceId:'w1',assetId:id,reasonCode:'VIOLATION'})});}
+function clearReq(){return new NextRequest('http://localhost/api/workspace/clear-data',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer test-token'},body:JSON.stringify({workspaceId:'w1',confirmText:'确认删除'})});}
+function pending(key='w1/x.bin',bytes=30,extra:any={}){const opId='del-w1-'+key;h.tables.storageoperation.set('claim',{id:'claim',opId,workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:key,documentId:'d1',bytes,...extra});return opId;}
+function latch(){let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return {promise,resolve};}
+describe('R0-J5 independent original-scope verification',()=>{
+ it('positive J3-01: clear recovery preserves shared aliases',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','assets/w1/x.bin');doc('d2');pending();memFiles.set(abs(),Buffer.alloc(30));
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.document.size).toBe(2);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(body.message).not.toContain('纯净出厂状态');
+  observe('clear-shared-positive',{status:res.status,body,docs:2,files:1,used:30});
+ });
+ it('positive J3-02: two remove requests interleave without cancelling winner',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));
+  const enterA=latch(),enterB=latch(),allowA=latch(),allowB=latch(),row=latch(),finish=latch();let calls=0;
+  h.beforeUnlink=async()=>{calls++;if(calls===1){enterA.resolve();await allowA.promise;}else if(calls===2){enterB.resolve();await allowB.promise;}};
+  h.afterDocDelete=async({count}:any)=>{if(count===1){row.resolve();await finish.promise;}};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const a=runStudioPost(removeReq(),makeDeps());await enterA.promise;const b=runStudioPost(removeReq(),makeDeps());await enterB.promise;
+  allowA.resolve();await row.promise;allowB.resolve();const rb=await b;expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');finish.resolve();const ra=await a;
+  expect([ra.status,rb.status]).toEqual([200,404]);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);expect([...h.tables.storageoperation.values()][0].status).toBe('RELEASED');
+  observe('remove-remove-concurrency-positive',{a:ra.status,b:rb.status,used:0,docs:h.tables.document.size,files:memFiles.size});
+ });
+ it('positive J3-03: single removal blocks null and pending size conflict before deletion',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',null);memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const r1=await runStudioPost(removeReq(),makeDeps());expect(r1.status).toBe(500);expect(memFiles.size).toBe(1);
+  h.tables.document.get('d1').fileSize=50;pending();const r2=await runStudioPost(removeReq(),makeDeps());expect(r2.status).toBe(500);expect(h.tables.document.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  observe('single-size-protection-positive',{nullStatus:r1.status,conflictStatus:r2.status,used:30,docs:1,files:1});
+ });
+ it('positive J3-04: repeated recovery commit failures stay pending, then finish once',async()=>{
+  seedQuota('w1',30n,30n);pending();h.setCommitFailures(2);const {POST}=await import('@/app/api/workspace/clear-data/route');const bodies:any[]=[];
+  for(let i=0;i<2;i++){const r=await POST(clearReq());const b=await r.json();bodies.push(b);expect(b.storage.pendingStill).toBe(1);expect(b.message).not.toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);}
+  const success=await POST(clearReq());const body=await success.json();expect(body.storage.pendingRecovered).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('recovery-commit-positive',{failures:bodies,success:body,used:0});
+ });
+ it('positive J3-05: real deletion commit failure recovers on same request without clearing other documents',async()=>{
+  seedQuota('w1',50n,50n);doc();doc('other','w1/other.bin',20);memFiles.set(abs(),Buffer.alloc(30));memFiles.set(abs('w1/other.bin'),Buffer.alloc(20));h.setCommitFailures(1);
+  const {runStudioPost}=await import('@/app/api/studio/handler');const first=await runStudioPost(removeReq(),makeDeps());expect(first.status).toBe(500);
+  const retry=await runStudioPost(removeReq(),makeDeps());const body=await retry.json();expect(body.data.pendingCleared).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);expect(h.tables.document.has('other')).toBe(true);expect(memFiles.has(abs('w1/other.bin'))).toBe(true);
+  const again=await runStudioPost(removeReq(),makeDeps());expect(again.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);
+  observe('same-delete-retry-positive',{first:first.status,retry:retry.status,body,again:again.status,used:20,otherPreserved:true});
+ });
+ it('positive J3-06: actual P2002 branch rejects RELEASE and ordinary valid RESERVE replays',async()=>{
+  seedQuota('w1',30n,-1n);let injected=false;let creates=0;
+  h.beforeOpCreate=async(data:any)=>{creates++;if(!injected&&data.opType==='RESERVE'){injected=true;h.tables.storageoperation.set('race',{id:'race',opId:data.opId,workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',bytes:30,filePath:'w1/x.bin'});}};
+  const {reserveStorageBytes}=await import('@/lib/storage-quota');await expect(reserveStorageBytes('w1',30,'type-race','u1')).rejects.toMatchObject({status:409,code:'STORAGE_OP_CONFLICT'});expect(creates).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  h.beforeOpCreate=null;await reserveStorageBytes('w1',10,'valid','u1');const replay=await reserveStorageBytes('w1',10,'valid','u1');expect(replay.deduped).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(40n);
+  observe('type-and-unique-race-positive',{P2002Triggered:injected,creates,used:40,replay});
+ });
+ for(const action of ['upload_doc','upload_knowledge_attachment'])it('positive J3-07: missing column returns stable 503 before upload '+action,async()=>{
+  seedQuota('w1',0n,30n);doc('kn-1',null as any,null);h.tables.document.get('kn-1').type='knowledge';h.beforeOpRead=async()=>{const e:any=new Error('The column is missing');e.code='P2022';throw e;};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action,workspaceId:'w1',knowledgeId:'kn-1',title:'x',visibility:'PRIVATE'},{name:'x.pdf',type:'application/pdf',content:'123'}),makeDeps());const body=await res.json();
+  expect(res.status).toBe(503);expect(body.code).toBe('STORAGE_OP_UNAVAILABLE');expect(memFiles.size).toBe(0);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('missing-column-upload-positive-'+action,{status:res.status,body,used:0,files:0});
+ });
+ it('positive repaired J3-01/J3-05: single deletion recovery deletes object referenced by another document',async()=>{
+  seedQuota('w1',30n,30n);doc('remaining','assets/w1/x.bin');pending();memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());const body=await res.json();
+  expect(res.status).toBe(200);expect(body.data.pendingCleared).toBe(false);expect(h.tables.document.has('remaining')).toBe(true);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  observe('single-recovery-shared-repaired',{status:res.status,body,docs:[...h.tables.document.values()],files:1,used:30});
+ });
+ it('R0-J5 positive repaired J3-05 case 1',async()=>{
+  h.tables.workspace.get('w1').type='ENTERPRISE';h.tables.workspacemember.set('wm2',{id:'wm2',workspaceId:'w1',userId:'u2',role:'MEMBER'});
+  seedQuota('w1',30n,30n);doc();h.tables.document.get('d1').uploaderId='u2';memFiles.set(abs(),Buffer.alloc(30));pending('w1/x.bin',30,{userId:'u2'});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const live=await runStudioPost(removeReq(),makeDeps());expect(live.status).toBe(403);
+  h.tables.document.delete('d1');const recovery=await runStudioPost(removeReq(),makeDeps());const body=await recovery.json();expect(recovery.status).toBe(403);expect(body.data?.pendingCleared).not.toBe(true);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);const asU2=makeDeps();asU2.getUserId=vi.fn(async()=> 'u2');const ownerRetry=await runStudioPost(removeReq(),asU2);expect(ownerRetry.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('private-recovery-authority-repaired',{normal:live.status,recovery:recovery.status,body,op:[...h.tables.storageoperation.values()][0],used:0,files:0});
+ });
+ it('R0-J5 positive repaired J3-03 case 2',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',null);memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.message).not.toContain('纯净出厂状态');expect(h.tables.document.size).toBe(1);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(h.tables.storageoperation.size).toBe(0);
+  observe('clear-unknown-size-repaired',{status:res.status,body,used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-03 case 3',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',50);pending();memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.document.size).toBe(1);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(body.storage.failedCount).toBe(1);
+  observe('clear-blocked-ignored-repaired',{status:res.status,body,used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-03 case 4',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',50);pending('w1/x.bin',30,{status:'CANCELLED'});memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());expect(res.status).toBe(500);expect(memFiles.size).toBe(1);expect(h.tables.document.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect([...h.tables.storageoperation.values()][0].status).toBe('CANCELLED');
+  observe('cancelled-size-conflict-repaired',{status:res.status,body:await res.json(),used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-02 case 5',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));const enterA=latch(),enterB=latch(),allowA=latch(),allowB=latch(),row=latch(),finish=latch();let calls=0;
+  h.beforeUnlink=async()=>{calls++;if(calls===1){enterA.resolve();await allowA.promise;}else if(calls===2){enterB.resolve();await allowB.promise;}};
+  h.afterDocDelete=async({count}:any)=>{if(count===1){row.resolve();await finish.promise;}};
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const {runStudioPost}=await import('@/app/api/studio/handler');const a=POST(clearReq());await enterA.promise;const b=runStudioPost(removeReq(),makeDeps());await enterB.promise;
+  allowB.resolve();await row.promise;allowA.resolve();const ra=await a;const ba=await ra.json();expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');finish.resolve();const rb=await b;
+  expect(rb.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);expect(memFiles.size).toBe(0);expect(h.tables.document.size).toBe(0);expect(ba.message).not.toContain('纯净出厂状态');
+  observe('clear-remove-concurrency-repaired',{clear:ra.status,clearBody:ba,remove:rb.status,used:0,docs:0,files:0,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-02 case 6',async()=>{
+  seedQuota('w1',30n,30n);const opId=pending();const {finalizeObjectCleanup}=await import('@/lib/storage-quota');const first=await finalizeObjectCleanup('w1',opId,30);const replay=await finalizeObjectCleanup('w1',opId,30);
+  expect(first.finalized).toBe(true);expect(replay.drift).toBe(false);expect(replay.alreadyReleased).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('released-replay-repaired',{first,replay,used:0,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-04 case 7',async()=>{
+  seedQuota('w1',0n,30n);h.beforeOpMany=async()=>{throw new Error('query failed, count unknown');};const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.storageoperation.size).toBe(0);expect(body.storage.pendingStill).toBe(0);expect(body.storage.pendingCount).toBe(null);expect(body.storage.recoveryCheckFailed).toBe(true);expect(body.message).not.toContain('1 条历史待清理认领仍未完成');
+  observe('unknown-count-repaired',{status:res.status,body,actualPendingInFixture:0});
+ });
+ for(const code of ['P2021','P2022'])it('R0-J5 positive repaired J3-07 case 8'+code+' escapes stable schema error mapping',async()=>{
+  seedQuota('w1',30n,30n);pending();memFiles.set(abs(),Buffer.alloc(30));h.beforeOpFirst=async()=>{const e:any=new Error('missing schema column/table');e.code=code;throw e;};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());const body=await res.json();expect(res.status).toBe(503);expect(body.code).toBe(code==='P2021'?'STORAGE_QUOTA_NOT_READY':'STORAGE_OP_UNAVAILABLE');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(memFiles.size).toBe(1);
+  observe('missing-schema-recovery-repaired-'+code,{status:res.status,body,used:30,files:1});
+ });
+ it('positive: physical failure retains quota; path ambiguity and cross-scope requests remain refused',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));h.unlinkFail.add(abs());const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());expect(res.status).toBe(500);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  h.unlinkFail.clear();memFiles.set(abs('assets/w1/x.bin'),Buffer.alloc(30));const fs=await import('@/lib/file-store');const ambiguous=await fs.deleteAssetFile('w1/x.bin','w1');expect(ambiguous.ambiguous).toBe(true);expect(memFiles.size).toBe(2);expect(()=>fs.resolveAssetAbsolute('w1/../../outside.txt')).toThrow();const cross=await fs.deleteAssetFile('w2/x.bin','w1');expect(cross.ok).toBe(false);
+  observe('capacity-paths-positive',{status:res.status,used:30,ambiguous,cross,files:2});
+ });
+});
+afterAll(()=>require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'docs/reviews/R0-J5-independent-review/handler-verification.json'),JSON.stringify({capturedAt:new Date().toISOString(),mode:'actual current handlers/services; memory Prisma/fs; explicit IO and post-delete barriers; no live database/cloud/model/fees',observations},(_k,v)=>typeof v==='bigint'?v.toString():v,2)));
+
+describe('Original F13 same-object concurrency and pending accounting boundaries',()=>{
+ it('characterization: two actual deletion recovery requests read PENDING; second reports drift after first commits RELEASED',async()=>{
+  seedQuota('w1',30n,30n);pending();memFiles.set(abs(),Buffer.alloc(30));const firstReached=latch(),bothRead=latch(),finishSecond=latch();let arrivals=0;
+  h.setRawGate(async(sql:string)=>{if(sql.includes('storageUsed` = `storageUsed` -')){arrivals++;if(arrivals===1){firstReached.resolve();await bothRead.promise;}else if(arrivals===2){bothRead.resolve();await finishSecond.promise;}}});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const a=runStudioPost(removeReq(),makeDeps());await firstReached.promise;const b=runStudioPost(removeReq(),makeDeps());const ra=await a;const ba=await ra.json();finishSecond.resolve();const rb=await b;const bb=await rb.json();
+  expect(ra.status).toBe(200);expect(ba.data.pendingCleared).toBe(true);expect(rb.status).toBe(500);expect(bb.code).toBe('STORAGE_RELEASE_DRIFT');expect([...h.tables.storageoperation.values()][0].status).toBe('RELEASED');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('overlapping-finalizers-characterization',{a:{status:ra.status,body:ba},b:{status:rb.status,body:bb},used:0,op:[...h.tables.storageoperation.values()][0],limits:'Actual requests both read old PENDING; final database writes are serialized by the barrier, no concurrent rollback is simulated.'});
+ });
+ it('characterization: shared pending claim is retained but structured pendingCount says known zero',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','assets/w1/x.bin');doc('d2');pending();memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect([...h.tables.storageoperation.values()].filter((o:any)=>o.status==='PENDING_CLEANUP').length).toBe(1);
+  observe('shared-pending-count-characterization',{status:res.status,body,actualPendingClaims:1,used:30});
+ });
+ it('characterization: real unresolved usage drift also returns known zero pendingCount',async()=>{
+  seedQuota('w1',10n,30n);pending();const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.driftSkipped).toBe(1);expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(10n);
+  observe('drift-pending-count-characterization',{status:res.status,body,actualPendingClaims:1,used:10});
+ });
+});

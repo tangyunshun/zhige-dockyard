@@ -11,6 +11,8 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
+import { maskEmail } from "@/utils/format";
 import {
   Users,
   Crown,
@@ -54,6 +56,7 @@ export default function TeamManagementPage() {
   const toastCtx = useToast();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [overviews, setOverviews] = useState<WsOverview[]>([]);
   const [expandedWsId, setExpandedWsId] = useState<string>("");
@@ -69,6 +72,7 @@ export default function TeamManagementPage() {
       const data = await res.json();
       if (!res.ok) {
         toastCtx.error(data.error || "获取工作空间失败");
+  setLoadError(null);
         setOverviews([]);
         return;
       }

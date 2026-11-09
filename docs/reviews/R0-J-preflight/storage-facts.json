@@ -1,0 +1,63 @@
+{
+  "checkedAt": "2026-11-07T15:14:41.458Z",
+  "observations": [
+    {
+      "case": "missing quota",
+      "admitted": true
+    },
+    {
+      "case": "zero limit",
+      "admitted": true
+    },
+    {
+      "case": "invalid negative limit",
+      "admitted": true
+    },
+    {
+      "case": "existing explicit -1",
+      "admitted": true,
+      "control": true
+    },
+    {
+      "case": "concurrent upload",
+      "limit": "100",
+      "actual": "120",
+      "expectedMaximum": "100"
+    },
+    {
+      "case": "concurrent delete",
+      "initial": "100",
+      "deltas": [
+        "30",
+        "40"
+      ],
+      "actual": "60",
+      "expected": "30"
+    },
+    {
+      "case": "upload accounting failed",
+      "rejected": false,
+      "usage": "0"
+    },
+    {
+      "case": "delete accounting failed",
+      "rejected": false,
+      "usage": "100"
+    },
+    {
+      "case": "BigInt precision",
+      "used": "9007199254740993",
+      "limit": "9007199254740994",
+      "incoming": 2,
+      "admitted": true
+    },
+    {
+      "case": "local path and silent delete",
+      "filePath": "assets/w1/14ecc79f-8ebd-4bcb-83b0-6a6f2059fe16.txt",
+      "actualPath": "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\assets\\w1\\14ecc79f-8ebd-4bcb-83b0-6a6f2059fe16.txt",
+      "readPath": "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\w1\\14ecc79f-8ebd-4bcb-83b0-6a6f2059fe16.txt",
+      "remainingFiles": 1
+    }
+  ],
+  "limits": "Actual quota helper and local file-store logic with in-memory Prisma/fs IO. Passing reproductions prove existing problems, not a repaired system. No real database, disk uploads or object storage."
+}

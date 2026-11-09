@@ -1,0 +1,437 @@
+/**
+ * R0-F 修复验证：原方案 F09 公开维护查询只读、维护变更授权与审计。
+ *
+ * 隔离策略（仅替换持久化 / 身份权限 / 审计持久化 IO，执行真实 route + 真实 maintenance.ts 帮助函数）：
+ * - @/lib/prisma 换成内存模型，支持 $transaction（含快照回滚）与故障注入；
+ * - @/lib/security 的 requirePlatformPermission 换成内存权限模型，严格复刻「多键 OR、超管放行」语义；
+ *   双权限 AND 由路由分别两次调用实现（不交给 helper 当 AND）。
+ * 不 mock resolvePaymentMode 式绕过：本批直接验证真实裁决与真实路由。
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
+import * as route from "@/app/api/system/maintenance/route";
+import { setMaintenanceCache } from "@/lib/maintenance";
+
+const h = vi.hoisted(() => {
+  const store = {
+    systemconfig: new Map<string, { key: string; value: string }>(),
+    user: new Map<string, any>(),
+    operationlog: [] as any[],
+  };
+  const fault = { audit: false, config: false };
+  const permState = {
+    users: new Map<string, { id: string; name: string; role: string }>(),
+    grants: new Map<string, Set<string>>(),
+    superadmins: new Set<string>(),
+  };
+  return { store, fault, permState };
+});
+
+function makePrisma(s: typeof h.store, f: typeof h.fault) {
+  const clone = () => ({
+    systemconfig: new Map([...s.systemconfig].map(([k, v]) => [k, { ...v }])),
+    user: new Map([...s.user].map(([k, v]) => [k, { ...v }])),
+    operationlog: [...s.operationlog],
+  });
+  const applyWhere = (where: any) => {
+    const row = s.systemconfig.get(where.key);
+    return row ? { ...row } : null;
+  };
+  const writeCfg = (where: any, create: any, update: any) => {
+    if (f.config) throw new Error("simulated config write failure");
+    const value = (update ?? create).value;
+    const row = { key: where.key, value };
+    s.systemconfig.set(where.key, row);
+    return row;
+  };
+  const matchUser = (u: any, where: any) => {
+    const roleOk = !where.role?.notIn || !where.role.notIn.includes(u.role);
+    const tokenOk = where.sessionToken?.not === null ? u.sessionToken !== null : true;
+    return roleOk && tokenOk;
+  };
+  const base = {
+    systemconfig: {
+      findUnique: async ({ where }: any) => applyWhere(where),
+      upsert: async ({ where, create, update }: any) => writeCfg(where, create, update),
+      update: async ({ where, data }: any) => {
+        const row = s.systemconfig.get(where.key);
+        if (row) row.value = data.value;
+        return row;
+      },
+    },
+    user: {
+      findUnique: async ({ where }: any) => (s.user.get(where.id) ? { ...s.user.get(where.id) } : null),
+      updateMany: async ({ where, data }: any) => {
+        let count = 0;
+        for (const u of s.user.values()) {
+          if (matchUser(u, where)) {
+            Object.assign(u, data);
+            count++;
+          }
+        }
+        return { count };
+      },
+    },
+    operationlog: {
+      create: async ({ data }: any) => {
+        if (f.audit) throw new Error("simulated audit failure");
+        s.operationlog.push(data);
+        return data;
+      },
+    },
+  };
+  return {
+    ...base,
+    $transaction: async (fn: any) => {
+      const snap = clone();
+      const tx = {
+        systemconfig: {
+          findUnique: async ({ where }: any) => applyWhere(where),
+          upsert: async ({ where, create, update }: any) => writeCfg(where, create, update),
+          update: async ({ where, data }: any) => {
+            const row = s.systemconfig.get(where.key);
+            if (row) row.value = data.value;
+            return row;
+          },
+        },
+        user: {
+          updateMany: async ({ where, data }: any) => {
+            let count = 0;
+            for (const u of s.user.values()) {
+              if (matchUser(u, where)) {
+                Object.assign(u, data);
+                count++;
+              }
+            }
+            return { count };
+          },
+        },
+        operationlog: {
+          create: async ({ data }: any) => {
+            if (f.audit) throw new Error("simulated audit failure");
+            s.operationlog.push(data);
+            return data;
+          },
+        },
+      };
+      try {
+        return await fn(tx);
+      } catch (e) {
+        // 事务回滚：恢复快照，绝不保留未提交的配置/会话/审计
+        s.systemconfig = snap.systemconfig;
+        s.user = snap.user;
+        s.operationlog = snap.operationlog;
+        throw e;
+      }
+    },
+  };
+}
+
+vi.mock("@/lib/prisma", () => ({ prisma: makePrisma(h.store, h.fault) }));
+
+vi.mock("@/lib/security", () => ({
+  requirePlatformPermission: async (request: any, ...keys: string[]) => {
+    const authHeader = request?.headers?.get?.("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : authHeader;
+    const u = h.permState.users.get(token);
+    if (!u) {
+      return {
+        authorized: false,
+        errorResponse: new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+          status: 401,
+          headers: { "Content-Type": "application/json" },
+        }),
+      };
+    }
+    if (h.permState.superadmins.has(u.id)) return { authorized: true, user: u };
+    const granted = h.permState.grants.get(u.id) || new Set<string>();
+    // 多键 OR 语义（复刻 requirePlatformPermission 真实行为）
+    if (keys.some((k) => granted.has(k))) return { authorized: true, user: u };
+    return {
+      authorized: false,
+      errorResponse: new Response(JSON.stringify({ error: "FORBIDDEN", required: keys }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    };
+  },
+  writeAuditLog: async () => {},
+}));
+
+// ---- 种子数据 ----
+function seed() {
+  h.store.systemconfig.clear();
+  h.store.user.clear();
+  h.store.operationlog.length = 0;
+  h.fault.audit = false;
+  h.fault.config = false;
+  h.permState.users.clear();
+  h.permState.grants.clear();
+  h.permState.superadmins.clear();
+
+  h.store.systemconfig.set("maintenance_mode", { key: "maintenance_mode", value: "true" });
+  h.store.systemconfig.set("maintenance_message", { key: "maintenance_message", value: "维护中" });
+  h.store.systemconfig.set("maintenance_estimated", { key: "maintenance_estimated", value: "30" });
+  h.store.systemconfig.set("system_version", { key: "system_version", value: "v1.0.0" });
+  h.store.systemconfig.set("SYSTEM_RELEASE_NOTES_V1", {
+    key: "SYSTEM_RELEASE_NOTES_V1",
+    value: JSON.stringify([
+      { id: "fixture-release", version: "v1.2.0", title: "正式发布", isPublished: true },
+      { id: "rel-20260908-01", version: "v0.0.0", title: "历史遗留假数据", isPublished: true },
+    ]),
+  });
+  h.store.systemconfig.set("SYSTEM_MAINTENANCE_SCHEDULES_V1", {
+    key: "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+    value: JSON.stringify([
+      { id: "fixture-schedule", title: "排期", status: "SCHEDULED" },
+      { id: "maint-20260920-01", title: "历史遗留假数据", status: "SCHEDULED" },
+    ]),
+  });
+  h.store.systemconfig.set("SYSTEM_UPDATE_SETTINGS_V1", {
+    key: "SYSTEM_UPDATE_SETTINGS_V1",
+    value: JSON.stringify({ popupTitle: "公告" }),
+  });
+
+  // 用户：1 普通用户（有会话）、若干管理员权限组合
+  h.store.user.set("u_normal", {
+    id: "u_normal",
+    name: "普通用户",
+    role: "MEMBER",
+    sessionToken: "tok-normal",
+    sessionExpiresAt: new Date().toISOString(),
+    refreshToken: "r-normal",
+  });
+
+  const mkUser = (id: string, name: string, role: string, grants: string[]) => {
+    h.permState.users.set(id, { id, name, role });
+    h.permState.grants.set(id, new Set(grants));
+  };
+  mkUser("u_toggle", "开关管理员", "PLATFORM_ADMIN", ["system:maintenance_toggle"]);
+  mkUser("u_publish", "发布管理员", "PLATFORM_ADMIN", ["maintenance:publish"]);
+  mkUser("u_both", "双权限管理员", "PLATFORM_ADMIN", ["system:maintenance_toggle", "maintenance:publish"]);
+  mkUser("u_read", "只读管理员", "PLATFORM_ADMIN", ["maintenance:read"]);
+  // 普通登录用户也属于权限模型中的已认证用户，但无任何维护权限
+  mkUser("u_normal", "普通用户", "MEMBER", []);
+  mkUser("u_super", "超级管理员", "SUPER_ADMIN", []);
+  // 超管按现有权威 helper 规则放行，不走 grant 匹配
+  h.permState.superadmins.add("u_super");
+
+  setMaintenanceCache(true);
+}
+
+function makeReq(method: string, opts: { query?: string; token?: string; body?: any } = {}) {
+  const url = `http://localhost/api/system/maintenance${opts.query ?? ""}`;
+  const headers: any = {};
+  if (opts.token) headers.authorization = `Bearer ${opts.token}`;
+  if (method === "POST" || method === "DELETE") headers["Content-Type"] = "application/json";
+  const init: any = { method, headers };
+  if (opts.body !== undefined) init.body = JSON.stringify(opts.body);
+  return new NextRequest(url, init);
+}
+
+const callGET = async (query = "", token?: string) => {
+  const res = (await route.GET(makeReq("GET", { query, token }))) as Response;
+  return { status: res.status, body: await res.json() };
+};
+const callPOST = async (body: any, token?: string) => {
+  const res = (await route.POST(makeReq("POST", { token, body }))) as Response;
+  return { status: res.status, body: await res.json() };
+};
+const callDELETE = async (token?: string) => {
+  const res = (await route.DELETE(makeReq("DELETE", { token }))) as Response;
+  return { status: res.status, body: await res.json() };
+};
+
+const cfg = (key: string) => h.store.systemconfig.get(key)?.value;
+const auditCount = () => h.store.operationlog.length;
+
+beforeEach(seed);
+
+describe("F01 公开 GET 全程只读（含 emergency_disable / 重复参数）", () => {
+  it("匿名带 emergency_disable → 400，不关闭维护、零写、不清会话", async () => {
+    const before = cfg("maintenance_mode");
+    const r = await callGET("?action=emergency_disable");
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("MAINTENANCE_DISABLE_REQUIRES_AUTH");
+    expect(cfg("maintenance_mode")).toBe(before); // 未改变
+    expect(auditCount()).toBe(0);
+    expect(h.store.user.get("u_normal")!.sessionToken).toBe("tok-normal");
+  });
+
+  it("普通匿名 GET 正常 → 200，零写", async () => {
+    const r = await callGET("");
+    expect(r.status).toBe(200);
+    expect(auditCount()).toBe(0);
+    expect(cfg("maintenance_mode")).toBe("true");
+  });
+
+  it("重复 / t 参数 GET → 200，零写", async () => {
+    const r = await callGET("?t=1&t=2&cache=123");
+    expect(r.status).toBe(200);
+    expect(auditCount()).toBe(0);
+  });
+
+  it("已登录管理员 GET → 200，零写", async () => {
+    const r = await callGET("", "u_toggle");
+    expect(r.status).toBe(200);
+    expect(auditCount()).toBe(0);
+  });
+});
+
+describe("F02 旧 ID 命中 / 空配置 / 读取失败路径零清洗写", () => {
+  it("旧 ID 记录仅在内存过滤，DB 原记录字节不变", async () => {
+    const r = await callGET("");
+    expect(r.status).toBe(200);
+    // 响应不含历史遗留假数据
+    const ids = (r.body.releases || []).map((x: any) => x.id);
+    expect(ids).toContain("fixture-release");
+    expect(ids).not.toContain("rel-20260908-01");
+    const schedIds = (r.body.schedules || []).map((x: any) => x.id);
+    expect(schedIds).not.toContain("maint-20260920-01");
+    // DB 原始值仍含假数据（未回写清洗）
+    const rawReleases = JSON.parse(cfg("SYSTEM_RELEASE_NOTES_V1")!);
+    expect(rawReleases.some((x: any) => x.id === "rel-20260908-01")).toBe(true);
+    expect(auditCount()).toBe(0);
+  });
+});
+
+describe("F03 未登录 / 普通 / 只读管理员写操作被拒，零写", () => {
+  it("未登录 POST/DELETE → 401，零写", async () => {
+    expect((await callPOST({ enabled: false })).status).toBe(401);
+    expect((await callDELETE()).status).toBe(401);
+    expect(auditCount()).toBe(0);
+    expect(cfg("maintenance_mode")).toBe("true");
+  });
+
+  it("普通登录用户 POST/DELETE → 403，零写", async () => {
+    expect((await callPOST({ enabled: false }, "u_normal")).status).toBe(403);
+    expect((await callDELETE("u_normal")).status).toBe(403);
+    expect(auditCount()).toBe(0);
+  });
+
+  it("只读管理员（maintenance:read）POST → 403，零写", async () => {
+    expect((await callPOST({ enabled: false }, "u_read")).status).toBe(403);
+    expect(auditCount()).toBe(0);
+    expect(cfg("maintenance_mode")).toBe("true");
+  });
+});
+
+describe("F04 动作权限精确 / 双权限 AND / 未知 action", () => {
+  it("仅 toggle 权限：可开关、不可发布", async () => {
+    expect((await callPOST({ enabled: false }, "u_toggle")).status).toBe(200);
+    expect(cfg("maintenance_mode")).toBe("false");
+    expect(auditCount()).toBe(1);
+    // 重新开启以便后续断言
+    await callPOST({ enabled: true }, "u_toggle");
+    expect((await callPOST({ action: "create_schedule", schedule: { title: "X", startTime: "2026-01-01 10:00" } }, "u_toggle")).status).toBe(403);
+  });
+
+  it("仅 publish 权限：可发布、不可基础开关、不可 sync 越权", async () => {
+    expect((await callPOST({ action: "create_release", release: { version: "v2.0.0", title: "T" } }, "u_publish")).status).toBe(200);
+    expect((await callPOST({ enabled: true }, "u_publish")).status).toBe(403);
+    // 计划同步模式需双权限，单 publish 应被拒（OR 不能当 AND）
+    const sync = await callPOST(
+      { action: "update_schedule", schedule: { id: "fixture-schedule", status: "IN_PROGRESS" }, syncMaintenanceMode: true },
+      "u_publish",
+    );
+    expect(sync.status).toBe(403);
+    expect(cfg("maintenance_mode")).toBe("true");
+  });
+
+  it("双权限管理员：计划同步模式可改维护状态", async () => {
+    const r = await callPOST(
+      {
+        action: "update_schedule",
+        schedule: { id: "fixture-schedule", title: "排期", startTime: "2026-02-01 02:00", status: "IN_PROGRESS" },
+        syncMaintenanceMode: true,
+      },
+      "u_both",
+    );
+    expect(r.status).toBe(200);
+    expect(cfg("maintenance_mode")).toBe("true");
+    expect(auditCount()).toBe(1);
+  });
+
+  it("未知 action → 400，零写", async () => {
+    const r = await callPOST({ action: "hacked_payload" }, "u_super");
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("UNKNOWN_ACTION");
+    expect(auditCount()).toBe(0);
+  });
+});
+
+describe("F05 合法管理流程保持 + GET 仍可读", () => {
+  it("超管开启维护（含 message/分钟 + 清会话）→ 200，配置/审计/缓存一致", async () => {
+    const r = await callPOST({ enabled: true, message: "系统升级中", estimatedMinutes: "45" }, "u_super");
+    expect(r.status).toBe(200);
+    expect(r.body.maintenanceMode).toBe(true);
+    expect(r.body.maintenanceMessage).toBe("系统升级中");
+    expect(r.body.estimatedMinutes).toBe("45");
+    expect(cfg("maintenance_mode")).toBe("true");
+    expect(cfg("maintenance_message")).toBe("系统升级中");
+    expect(cfg("maintenance_estimated")).toBe("45");
+    expect(auditCount()).toBe(1);
+    // 普通用户会话被清
+    expect(h.store.user.get("u_normal")!.sessionToken).toBeNull();
+  });
+
+  it("开启后 GET 仍可读且反映新状态", async () => {
+    await callPOST({ enabled: true, message: "系统升级中" }, "u_super");
+    const r = await callGET("");
+    expect(r.status).toBe(200);
+    expect(r.body.maintenanceMode).toBe(true);
+    expect(r.body.maintenanceMessage).toBe("系统升级中");
+  });
+
+  it("超管发布公告/计划/设置 → 200 且持久化", async () => {
+    const rel = await callPOST({ action: "create_release", release: { version: "v3.0.0", title: "新功能" } }, "u_super");
+    expect(rel.status).toBe(200);
+    expect((rel.body.releases || []).some((x: any) => x.version === "v3.0.0")).toBe(true);
+    const sched = await callPOST(
+      { action: "create_schedule", schedule: { title: "例行维护", startTime: "2026-02-01 02:00" } },
+      "u_super",
+    );
+    expect(sched.status).toBe(200);
+    expect((sched.body.schedules || []).some((x: any) => x.title === "例行维护")).toBe(true);
+    const set = await callPOST({ action: "save_update_settings", settings: { popupTitle: "新版公告" } }, "u_super");
+    expect(set.status).toBe(200);
+  });
+
+  it("超管 DELETE 解除维护 → 200，maintenance_mode=false", async () => {
+    const r = await callDELETE("u_super");
+    expect(r.status).toBe(200);
+    expect(cfg("maintenance_mode")).toBe("false");
+    expect(auditCount()).toBeGreaterThan(0);
+  });
+});
+
+describe("F06 配置/审计/提交故障注入 → 不假成功、事务回滚", () => {
+  it("审计写失败：配置变更整体回滚，maintenance_mode 不变、无审计、会话不残留", async () => {
+    h.fault.audit = true;
+    const r = await callPOST({ enabled: false }, "u_super");
+    expect(r.status).toBe(500);
+    // 回滚：配置未变、审计未落、普通用户会话未清
+    expect(cfg("maintenance_mode")).toBe("true");
+    expect(auditCount()).toBe(0);
+    expect(h.store.user.get("u_normal")!.sessionToken).toBe("tok-normal");
+    h.fault.audit = false;
+  });
+
+  it("配置写失败：事务回滚，审计未落", async () => {
+    h.fault.config = true;
+    const r = await callPOST({ enabled: false }, "u_super");
+    expect(r.status).toBe(500);
+    expect(cfg("maintenance_mode")).toBe("true");
+    expect(auditCount()).toBe(0);
+    h.fault.config = false;
+  });
+});
+
+describe("F07 路由级契约（页面交互由 verify-r0f-pages.cjs 覆盖）", () => {
+  it("权限拒绝返回结构体含 error，而非 success", async () => {
+    const r = await callPOST({ enabled: false }, "u_normal");
+    expect(r.status).toBe(403);
+    expect(r.body.success).toBeUndefined();
+    expect(typeof r.body.error).toBe("string");
+  });
+});

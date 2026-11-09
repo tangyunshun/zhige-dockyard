@@ -1,0 +1,16 @@
+{
+  "capturedAtReal": "2026-11-07T14:37:04.675004+08:00",
+  "purpose": "R0-G1 batch start baseline (before null-binding and STANDARD-config fixes)",
+  "files": {
+    "src/app/api/cron/workspace-subscription-expire/route.ts": {
+      "sha256": "f8d44f6b37683302d131a2347910901f58e4801a8db3fd46ec8964ab6c295c45",
+      "bytes": 6804,
+      "snapshotCopy": "docs/reviews/R0-G1-fix-snapshot/frozen-source/src__app__api__cron__workspace-subscription-expire__route.ts.snapshot.txt"
+    },
+    "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts": {
+      "sha256": "3c2894385ec51e8c31f44ff63970099cd34dc77260f20808d476a1def7d97329",
+      "bytes": 23169,
+      "snapshotCopy": "docs/reviews/R0-G1-fix-snapshot/frozen-source/src__app__api____tests____r0g-cron-subscription-expire.test.ts.snapshot.txt"
+    }
+  }
+}

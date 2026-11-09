@@ -1,0 +1,129 @@
+{
+  "capturedAt": "2026-11-08T11:40:26.900Z",
+  "cases": 23,
+  "positive": 13,
+  "defectCharacterizations": 10,
+  "meaning": "Passing defect characterizations confirm unresolved defects; only positive cases are acceptance evidence.",
+  "sources": [
+    "independent-results.json handler only",
+    "admission-final-results.json current admission",
+    "parser-final-results.json current parser"
+  ],
+  "results": [
+    {
+      "file": "handler-review.test.ts",
+      "name": "Current actual Studio upload and F13 storage protocol positive: denied shared admission now rejects actual upload before worker/storage",
+      "status": "passed"
+    },
+    {
+      "file": "handler-review.test.ts",
+      "name": "Current actual Studio upload and F13 storage protocol defect KR4: actual upload releases shared slot on STOP_UNCONFIRMED",
+      "status": "passed"
+    },
+    {
+      "file": "handler-review.test.ts",
+      "name": "Current actual Studio upload and F13 storage protocol positive: admitted normal upload preserves real F13 accounting and output",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: concurrent sweep returns counters once and full weight",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: weighted release now returns two units, repeats return none",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: twelve completed expiry accounting cycles leave no units",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates positive: thrown counter fault rolls back expiry and retry recovers",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates defect KR2: zero-row counter update still commits RELEASED",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates defect KR2: return weight comes from caller instead of persisted lease",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates defect KR3: slow arrayBuffer outlives acquired lease and still starts after sweep",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Current actual Prisma algorithm with condition-aware rollback delegates defect KR4: actual late worker exit cannot recover quarantined occupancy",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: PNG pixel limit now rejects before OCR",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: DOCX text budget now rejects tiny inflated limit",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: 21-entry ZIP now explicitly fails",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures defect KR5: compressed table charges compressed bytes instead of actual expansion",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures defect KR5: HTML preview still bypasses ZIP inflation budget",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures defect KR5: TIFF uses file bytes as pixels and proceeds with over-limit dimensions",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures defect KR7: OOXML manual replacement silently drops numeric spreadsheet values",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: legacy doc expected text now restored through actual boundary",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: legacy ppt expected text now restored through actual boundary",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures defect KR4: OCR terminate acknowledgment still waits forever for pending recognize",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: cached xlsx content no longer bypasses rich preview",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "Current real parser and rich preview, tiny fixtures positive: cached docx content no longer bypasses rich preview",
+      "status": "passed"
+    }
+  ]
+}

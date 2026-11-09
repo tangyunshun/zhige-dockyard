@@ -35,7 +35,7 @@ interface TasksTabProps {
 
 // 标准化与格式化时间字符串 (彻底清除 2026-08-23T06:15:28.129Z 之后带 Z 的暴露，展现为标准 YYYY-MM-DD HH:mm:ss)
 function formatTaskTime(rawTime?: string): string {
-  if (!rawTime) return "近期创建";
+  if (!rawTime) return "-"; // KN-UI：空数据占位规范（自查清单指令五）
   try {
     const d = new Date(rawTime);
     if (isNaN(d.getTime())) return rawTime;
@@ -125,6 +125,8 @@ export default function TasksTab({
   const [dateFilter, setDateFilter] = useState("ALL"); // ALL, TODAY, WEEK, MONTH, CUSTOM
   const [customStartDate, setCustomStartDate] = useState("");
   const [customEndDate, setCustomEndDate] = useState("");
+  // 原生 min/max 置灰（禁未来 + 开始不得晚于结束），无需额外提示语
+  const todayStr = new Date().toISOString().slice(0, 10);
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
@@ -406,7 +408,8 @@ export default function TasksTab({
                 <span className="text-[11px] text-slate-500 font-bold">开始:</span>
                 <input 
                   type="date" 
-                  value={customStartDate} 
+                  value={customStartDate}
+                  max={customEndDate || todayStr}
                   onChange={(e) => setCustomStartDate(e.target.value)}
                   className="p-0.5 px-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#3182ce] bg-white text-slate-800"
                 />
@@ -415,9 +418,12 @@ export default function TasksTab({
                 <input 
                   type="date" 
                   value={customEndDate} 
+                  min={customStartDate || undefined}
+                  max={todayStr}
                   onChange={(e) => setCustomEndDate(e.target.value)}
                   className="p-0.5 px-1.5 border border-slate-200 rounded-lg text-xs font-mono font-bold focus:outline-none focus:border-[#3182ce] bg-white text-slate-800"
                 />
+
                 {(customStartDate || customEndDate) && (
                   <button 
                     type="button" 
@@ -567,7 +573,7 @@ export default function TasksTab({
 
                       {/* 算力消耗 */}
                       <td className="py-3.5 px-3 font-mono font-black text-slate-700">
-                        {task.pointsCost || 100} 算力点
+                        {task.pointsCost ? task.pointsCost.toLocaleString() + " 算力点" : "-"}
                       </td>
 
                       {/* 执行状态 */}

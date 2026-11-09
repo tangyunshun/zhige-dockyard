@@ -1,0 +1,94 @@
+{
+  "capturedAt": "2026-11-08T09:28:49.054Z",
+  "mode": "real current runner/boundary/route; local real workers or explicit controlled lifecycle/OCR doubles; small generated and repository test fixtures; no DB, network, customer files, live OCR or fee",
+  "observations": [
+    {
+      "name": "normal-worker-positive",
+      "stopped": true,
+      "textMatched": true
+    },
+    {
+      "name": "terminate-confirmation-unbounded",
+      "deadlineMs": 10,
+      "exitGraceMs": 5,
+      "elapsedMs": 100,
+      "settled": false,
+      "terminateCalls": 1
+    },
+    {
+      "name": "image-pixel-budget-bypass",
+      "declaredPixels": 10000,
+      "allowedPixels": 4,
+      "ocrStarts": 1,
+      "ocrStops": 1,
+      "meteredPixels": 0,
+      "textAccepted": true
+    },
+    {
+      "name": "ocr-initialization-releases-slot-early",
+      "status": 422,
+      "body": {
+        "success": false,
+        "code": "PARSE_NO_TEXT",
+        "error": "「tiny.png」中未检测到文字内容，请上传包含文字的图片，或直接在输入框中描述您的任务需求。"
+      },
+      "acquired": 1,
+      "released": 1,
+      "initializationStillOutstanding": true,
+      "terminatedAtResponse": 0
+    },
+    {
+      "name": "ooxml-inflation-budget-bypass",
+      "allowedInflatedBytes": 8,
+      "meteredInflatedBytes": 0,
+      "textAccepted": true
+    },
+    {
+      "name": "table-preview-inflation-budget-bypass",
+      "allowedInflatedBytes": 8,
+      "meteredInflatedBytes": 0,
+      "rows": 2
+    },
+    {
+      "name": "archive-silent-partial-success",
+      "entries": 21,
+      "returnedEntryMarkers": 20,
+      "missingLastEntry": true,
+      "success": true
+    },
+    {
+      "name": "legacy-boundary-doc",
+      "oldExpectedText": true,
+      "newExpectedText": false,
+      "newLength": 0,
+      "error": {
+        "code": "PARSE_FAILED",
+        "message": "文件解析失败，请下载原文件查看或稍后重试"
+      }
+    },
+    {
+      "name": "legacy-boundary-ppt",
+      "oldExpectedText": true,
+      "newExpectedText": false,
+      "newLength": 0,
+      "error": {
+        "code": "PARSE_FAILED",
+        "message": "文件解析失败，请下载原文件查看或稍后重试"
+      }
+    },
+    {
+      "name": "preview-content-format-regression-xlsx",
+      "status": 200,
+      "expectedPreviousType": "table",
+      "actualType": "text",
+      "cachedExtractedTextPresent": true
+    },
+    {
+      "name": "preview-content-format-regression-docx",
+      "status": 200,
+      "expectedPreviousType": "html",
+      "actualType": "text",
+      "cachedExtractedTextPresent": true
+    }
+  ]
+}

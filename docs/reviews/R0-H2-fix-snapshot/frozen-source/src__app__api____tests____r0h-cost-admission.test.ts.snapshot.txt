@@ -1,0 +1,734 @@
+/**
+ * R0-H/R0-H1 隔离回归：平台模型执行前成本准入止损（原方案 F11）+ 可信边界与模式隔离（H1）。
+ *
+ * 覆盖 IDE-R0-H-PROMPT.md L01—L08 与 IDE-R0-H1-PROMPT.md M01—M06：
+ *  - 纯准入函数 decidePlatformModelCostAdmission：阈值（M04 100/101/150/200/201 精确边界）、
+ *    未知与免费（M02）、UTF-8 字节上界（M01，字符粗估不再充当成本上界）、
+ *    未知费用规则/缓存类别拒绝（M02）、金额独立复算（M04）；
+ *  - 真实 runStudioPost：拒绝零副作用（L05）、最终请求一致（L03）、正常闭环与失败退款（L06）、
+ *    三分支模式隔离（M03：固定兼容受准入 / BYOK 不套固定预算 / 合成已启用结算不套固定预算）；
+ *  - 冻结边界源码级证据（L07）。
+ *
+ * 隔离说明：真实 runStudioPost + StudioExecutionDeps 注入（身份/合同/配额/扣点/退款全 fake 并计数）；
+ * @/lib/prisma 为通用内存表（条件真实求值、$transaction 事务内写前快照回滚、提交故障注入、写操作全记录）；
+ * 准入计算与业务流程不 mock；限频器（studio-rate-limit）属 IO 边界以 spy 替换为放行并计数；
+ * BYOK 估算（estimatePoints）为账务 IO 以 mock 替换并断言结果透传。内存模型不证明 MySQL 行锁/隔离级别。
+ */
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+// ══════════════ 内存 Prisma（通用表 + 条件求值 + 事务回滚/提交故障 + 写记录） ══════════════
+
+const h = vi.hoisted(() => {
+  const tables: Record<string, Map<string, any>> = {};
+  const writes: string[] = [];
+  const fault = { commit: false };
+  return { tables, writes, fault };
+});
+
+function getTable(name: string): Map<string, any> {
+  if (!h.tables[name]) h.tables[name] = new Map();
+  return h.tables[name];
+}
+
+function matchRow(row: any, where: any): boolean {
+  for (const [k, v] of Object.entries(where || {})) {
+    if (k.includes("_") && v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v)) {
+      for (const [k2, v2] of Object.entries(v)) {
+        if (row[k2] !== v2) return false;
+      }
+      continue;
+    }
+    if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v)) {
+      for (const [op, ov] of Object.entries(v)) {
+        const rv = row[k];
+        if (op === "not") {
+          if (rv === ov) return false;
+        } else if (op === "gt") {
+          if (!(rv > ov)) return false;
+        } else if (op === "lt") {
+          if (!(rv < ov)) return false;
+        } else if (op === "in") {
+          if (!Array.isArray(ov) || !ov.includes(rv)) return false;
+        } else {
+          return false; // 未实现操作符显式失败
+        }
+        continue;
+      }
+      continue;
+    }
+    const rv = row[k];
+    if (v instanceof Date || rv instanceof Date) {
+      const a = rv instanceof Date ? rv.getTime() : rv;
+      const b = v instanceof Date ? v.getTime() : v;
+      if (a !== b) return false;
+    } else if (rv !== v) return false;
+  }
+  return true;
+}
+
+function applyData(row: any, data: any): any {
+  const next = { ...row };
+  for (const [k, v] of Object.entries(data || {})) {
+    if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v) && "increment" in v) {
+      next[k] = Number(next[k] ?? 0) + Number((v as any).increment);
+    } else {
+      next[k] = v;
+    }
+  }
+  return next;
+}
+
+function selectFields(row: any, select: any) {
+  if (!row) return null;
+  if (!select) return { ...row };
+  const out: any = {};
+  for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+  return out;
+}
+
+function makePrisma() {
+  let txDepth = 0;
+  let txQueue: Promise<any> = Promise.resolve();
+  let currentUndo: (() => void)[] | null = null;
+  const record = (kind: string, model: string, method: string) => h.writes.push(`${kind} ${model}.${method}`);
+
+  const makeClient = (kind: "ROOT" | "TX") => {
+    const model = (name: string) => {
+      const rows = () => [...getTable(name).values()];
+      const findRow = (where: any) => rows().find((r) => matchRow(r, where)) ?? null;
+      const doWrite = (method: string, mutate: () => any): any => {
+        record(kind, name, method);
+        if (kind === "ROOT" && txDepth > 0) throw new Error("ROOT_WRITE_DURING_TX");
+        // [R0-H1 更正] 事务内写前采集快照（旧夹具写后采集，无法证明回滚）
+        const undo = kind === "TX" ? currentUndo : null;
+        const snapshotRows = undo ? new Map(getTable(name)) : null;
+        const result = mutate();
+        if (undo && snapshotRows) {
+          const snap = snapshotRows;
+          undo.push(() => {
+            h.tables[name] = snap;
+          });
+        }
+        return result;
+      };
+      return {
+        findUnique: async ({ where, select }: any) => selectFields(findRow(where) ?? (null as any), select),
+        findFirst: async ({ where, select }: any) => selectFields(findRow(where) ?? (null as any), select),
+        findMany: async ({ where, select }: any) =>
+          rows()
+            .filter((r) => matchRow(r, where))
+            .map((r) => selectFields(r, select)),
+        count: async ({ where }: any) => rows().filter((r) => matchRow(r, where)).length,
+        create: async ({ data }: any) =>
+          doWrite("create", () => {
+            const row = { ...data };
+            if (!row.id) row.id = `auto_${Math.random().toString(36).slice(2)}`;
+            getTable(name).set(row.id, row);
+            return { ...row };
+          }),
+        update: async ({ where, data }: any) =>
+          doWrite("update", () => {
+            const row = findRow(where);
+            if (!row) throw new Error(`P2025:${name}`);
+            const next = applyData(row, data);
+            getTable(name).set(row.id ?? where.id, next);
+            return { ...next };
+          }),
+        updateMany: async ({ where, data }: any) =>
+          doWrite("updateMany", () => {
+            let count = 0;
+            for (const row of rows()) {
+              if (matchRow(row, where)) {
+                getTable(name).set(row.id, applyData(row, data));
+                count++;
+              }
+            }
+            return { count };
+          }),
+        upsert: async ({ where, create, update }: any) =>
+          doWrite("upsert", () => {
+            const row = findRow(where);
+            if (row) {
+              const next = applyData(row, update);
+              getTable(name).set(row.id, next);
+              return { ...next };
+            }
+            const created = { ...create };
+            if (!created.id) created.id = `auto_${Math.random().toString(36).slice(2)}`;
+            getTable(name).set(created.id, created);
+            return { ...created };
+          }),
+      };
+    };
+    return new Proxy({}, { get: (_t, prop: string) => model(prop) });
+  };
+
+  const prismaProxy: any = new Proxy(
+    {},
+    {
+      get: (_t, prop: string) => {
+        if (prop === "$transaction") {
+          return (fn: any) => {
+            const run = async () => {
+              txDepth++;
+              const undo: (() => void)[] = [];
+              const saved = currentUndo;
+              currentUndo = undo;
+              try {
+                const r = await fn(makeClient("TX"));
+                if (h.fault.commit) {
+                  h.fault.commit = false;
+                  throw new Error("INJECTED_COMMIT_FAIL");
+                }
+                return r;
+              } catch (e) {
+                for (let i = undo.length - 1; i >= 0; i--) undo[i]();
+                throw e;
+              } finally {
+                currentUndo = saved;
+                txDepth--;
+              }
+            };
+            const p = txQueue.then(run, run);
+            txQueue = p.catch(() => {});
+            return p;
+          };
+        }
+        return (makeClient("ROOT") as any)[prop];
+      },
+    },
+  );
+  return prismaProxy;
+}
+
+vi.mock("@/lib/prisma", () => ({ prisma: makePrisma() }));
+// 限频/熔断为持久化 IO 边界：spy 放行并计数（准入计算与业务流程不 mock）
+const checkStudioExecutionAllowed = vi.fn(async () => ({ ok: true as const }));
+const recordStudioCircuitBreak = vi.fn(async () => {});
+vi.mock("@/lib/studio-rate-limit", () => ({
+  checkStudioExecutionAllowed,
+  recordStudioCircuitBreak,
+}));
+// BYOK 账务估算为账务 IO：mock 并断言结果透传（resolvePricingSource/splitTokenEstimate 用真实实现）
+const estimatePoints = vi.fn(async () => ({
+  basis: "CONVERTED_PRICE",
+  points: 7,
+  snapshot: { source: "BYOK_OFFICIAL", note: "fixture" },
+  blockedReason: null,
+}));
+vi.mock("@/lib/billing/pricing-center", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/billing/pricing-center")>();
+  return { ...actual, estimatePoints };
+});
+// BYOK 指定部署解析为注册表 IO：mock 为返回 fx 夹具计划（resolveDefaultDeployment 走 deps fake）
+const resolveDeploymentForWorkspace = vi.fn(async (args: any) => ({
+  source: "BYO" as const,
+  deploymentId: args?.targetDeploymentId ?? "byo:w1",
+  providerId: "prov-1",
+  modelId: "model-1",
+  upstreamModelId: "model-1",
+  protocol: "openai",
+  baseUrl: "http://fixture.invalid",
+  apiKey: "fixture-key",
+  contextLimit: 128000,
+  pricing: null as any, // 运行时从 fx.pricing 取（见下方实现）
+}));
+vi.mock("@/lib/model-registry", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/model-registry")>();
+  return {
+    ...actual,
+    resolveDeploymentForWorkspace: (...args: any[]) =>
+      resolveDeploymentForWorkspace(args[0]).then((plan: any) => ({ ...plan, pricing: fx.pricing })),
+  };
+});
+
+// ══════════════ 依赖注入与夹具 ══════════════
+
+import type { StudioExecutionDeps } from "@/app/api/studio/handler";
+
+const fx = {
+  consumeCalls: [] as any[],
+  refundCalls: [] as any[],
+  holdCalls: [] as any[],
+  releaseCalls: [] as any[],
+  completeCalls: [] as any[],
+  adapterExecuteCalls: [] as any[],
+  adapterBehavior: "ok" as "ok" | "throw",
+  pricing: null as any, // resolveDefaultDeployment 返回的 modelPlan.pricing
+  contract: null as any,
+};
+
+function baseContract() {
+  return {
+    componentId: "comp-1",
+    contractVersion: "v1",
+    input: { kind: "TEXT" },
+    output: { kind: "DOCUMENT", artifactMime: "text/markdown" },
+    requiredCapabilities: ["TEXT_GENERATION"],
+    executionPlan: {
+      steps: [{ promptTemplate: "你是一名专业分析师。请基于材料输出报告。{{COST_BASELINE}}", requiredCapabilities: ["TEXT_GENERATION"] }],
+    },
+  };
+}
+
+// 默认可信成本：VERIFIED + CNY + 两侧已登记（成本远低于 100 点预算 → 安全请求可执行）
+function trustedPricing(over: Record<string, unknown> = {}) {
+  return {
+    currency: "CNY",
+    priceStatus: "VERIFIED",
+    costInputMicrosPerMillion: 1000, // 1 微元/百万 Token → 极低
+    costOutputMicrosPerMillion: 1000,
+    markupRateBps: 0,
+    rules: null,
+    ...over,
+  };
+}
+
+function seed() {
+  h.tables.workspace = new Map([["w1", { id: "w1", type: "PERSONAL", ownerId: "u1", name: "个人空间", plan: "STANDARD" }]]);
+  h.tables.workspacemember = new Map();
+  h.tables.componentcatalog = new Map([
+    [
+      "comp-1",
+      {
+        id: "comp-1", name: "测试组件", category: "ANALYSIS", description: "",
+        contract: null, previewData: null, inputMode: "TEXT",
+        estimatedModelTokens: 100, estimatedInputTokens: 500, estimatedOutputTokens: 100,
+        activeContractId: "ct-1", detail: null, usageCount: 0,
+      },
+    ],
+  ]);
+  h.tables.componentusage = new Map();
+  h.tables.componenttask = new Map();
+  h.tables.tenant = new Map();
+  h.tables.pointledger = new Map();
+  h.tables.workspacequota = new Map([["q1", { id: "q1", workspaceId: "w1", tokenBalance: 10000, tokenUsed: 0 }]]);
+  h.tables.systemconfig = new Map();
+  h.tables.operationlog = new Map();
+  h.tables.pointgrant = new Map();
+  h.tables.user = new Map([["u1", { id: "u1", membershipLevel: "FREE" }]]);
+  h.tables.membershiplevel = new Map();
+  fx.consumeCalls = [];
+  fx.refundCalls = [];
+  fx.holdCalls = [];
+  fx.releaseCalls = [];
+  fx.completeCalls = [];
+  fx.adapterExecuteCalls = [];
+  fx.adapterBehavior = "ok";
+  fx.pricing = trustedPricing();
+  fx.contract = baseContract();
+  h.writes.length = 0;
+  h.fault.commit = false;
+  checkStudioExecutionAllowed.mockClear();
+  recordStudioCircuitBreak.mockClear();
+  estimatePoints.mockClear();
+  delete process.env.TEST_TOKEN_SETTLEMENT_ENABLED;
+}
+
+function makeDeps(): StudioExecutionDeps {
+  // 夹具只实现本批路径用到的依赖面；类型经 unknown 断言（不削弱生产类型）
+  return {
+    prisma: makePrisma() as any,
+    getUserId: vi.fn(async () => "u1"),
+    createModelAdapter: vi.fn(async (plan: any) => ({
+      providerId: plan.providerId ?? "prov-1",
+      modelId: plan.modelId ?? "model-1",
+      execute: vi.fn(async (args: any) => {
+        fx.adapterExecuteCalls.push(args);
+        if (fx.adapterBehavior === "throw") {
+          throw new Error("simulated model upstream failure");
+        }
+        return {
+          text: "# 分析报告\n\n这是真实的模型输出成果物内容。",
+          usage: { inputTokens: 10, outputTokens: 10, totalTokens: 20 },
+          latencyMs: 5,
+        } as any;
+      }),
+    })),
+    getActiveContractSnapshot: vi.fn(async () => ({
+      snapshot: { snapshotId: "snap-1", snapshotCreatedAt: new Date().toISOString(), contract: fx.contract },
+      contractId: "ct-1",
+      contractVersion: "v1",
+    })),
+    requireWorkspaceMembership: vi.fn(async () => true),
+    requireWorkspacePermission: vi.fn(async () => true),
+    getRestrictedComponentIds: vi.fn(async () => [] as string[]),
+    getOrCreateQuota: vi.fn(async () => ({ id: "q1", workspaceId: "w1", tokenBalance: BigInt(10000) })),
+    checkAndResetQuotaCycle: vi.fn(async () => {}),
+    resolveDefaultDeployment: vi.fn(async () => ({
+      deploymentId: "dep-1",
+      providerId: "prov-1",
+      modelId: "model-1",
+      contextLimit: 128000,
+      pricing: fx.pricing,
+    })),
+    touchComponentUsage: vi.fn(async () => {}),
+    writeAuditLog: vi.fn(async () => {}),
+    creditService: {
+      consumePoints: vi.fn(async (args: any) => {
+        fx.consumeCalls.push(args);
+        return {
+          consumed: args.points,
+          details: [],
+          ledgerIds: ["led-1"],
+          skipped: false,
+          unlimited: false,
+          balanceAfter: 10000 - args.points,
+          monthlyTokenUsedIncremented: args.points,
+        } as any;
+      }),
+      consumeAndCreateSettlementHold: vi.fn(async (args: any) => {
+        fx.holdCalls.push(args);
+        return {
+          consumeResult: {
+            consumed: args.points, details: [], ledgerIds: ["led-hold"], skipped: false,
+            unlimited: false, balanceAfter: 0, monthlyTokenUsedIncremented: 0,
+          },
+        } as any;
+      }),
+      refundConsumedPoints: vi.fn(async (args: any) => {
+        fx.refundCalls.push(args);
+        return { ok: true } as any;
+      }),
+    },
+    refundService: { enqueueRefundRecovery: vi.fn(async () => ({ ok: true })) },
+    settlementService: {
+      releaseSettlementHold: vi.fn(async () => {
+        fx.releaseCalls.push(1);
+        return { ok: true };
+      }),
+      completeSettlement: vi.fn(async () => {
+        fx.completeCalls.push(1);
+        return { ok: true };
+      }),
+      enqueueSettlementRecovery: vi.fn(async () => ({ ok: true })),
+    },
+  } as unknown as StudioExecutionDeps;
+}
+
+function makeReq(body: Record<string, unknown>) {
+  return new NextRequest("http://localhost/api/studio", {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: "Bearer test-token" },
+    body: JSON.stringify({ action: "simulate", workspaceId: "w1", componentId: "comp-1", inputMaterial: "这是一段正常的文本输入材料。", ...body }),
+  });
+}
+
+const call = async (body: Record<string, unknown> = {}, deps?: StudioExecutionDeps) => {
+  const { runStudioPost } = await import("@/app/api/studio/handler");
+  const res = await runStudioPost(makeReq(body), deps ?? makeDeps());
+  return { status: res.status, body: await (res as any).json() };
+};
+
+beforeEach(seed);
+
+// ══════════════ 纯准入函数（M01/M02/M04） ══════════════
+
+describe("R0-H1 纯准入函数：可信边界与金额（M01/M02/M04）", async () => {
+  const { decidePlatformModelCostAdmission: decide, PROTOCOL_FRAMING_TOKEN_ALLOWANCE: FRAMING } = await import(
+    "@/lib/model-cost-admission"
+  );
+  const { estimateCombinedTokenCount } = await import("@/lib/token-estimate");
+
+  // 独立复算（不调用被测函数）：输入上界 = UTF-8 字节数 + 协议封装余量（与文档化规则一致）
+  function independentCostPoints(
+    systemPrompt: string,
+    userPrompt: string,
+    maxOutputTokens: number,
+    costIn: number,
+    costOut: number,
+    markupBps: number,
+  ): { bound: number; points: number } {
+    const bound = new TextEncoder().encode(systemPrompt).length + new TextEncoder().encode(userPrompt).length + 128;
+    const costMicros = (BigInt(bound) * BigInt(costIn) + BigInt(maxOutputTokens) * BigInt(costOut) + BigInt(999999)) / BigInt(1000000);
+    const saleMicros = (costMicros * BigInt(10000 + markupBps) + BigInt(9999)) / BigInt(10000);
+    const points = (saleMicros + BigInt(9999)) / BigInt(10000);
+    return { bound, points: Number(points) };
+  }
+
+  it("M04：100 点预算的真实 100/101/150/200/201 边界（独立复算；修正旧用例参数错误）", () => {
+    // 输入上界精确 = 1,000,000 Token：systemPrompt 999,872 字节（ASCII）+ userPrompt 0 + 封装 128
+    const systemPrompt = "x".repeat(1_000_000 - 128);
+    const userPrompt = "";
+    // 1e6 Token × costIn 微元/百万 = costIn 微元 → 点数 = costIn / 10000
+    const cases: [number, boolean][] = [
+      [1_000_000, true], // 恰好 100 点 → 放行（等值）
+      [1_010_000, false], // 101 点
+      [1_500_000, false], // 150 点
+      [2_000_000, false], // 200 点
+      [2_010_000, false], // 201 点
+    ];
+    for (const [costIn, expectAllowed] of cases) {
+      const independent = independentCostPoints(systemPrompt, userPrompt, 0, costIn, 0, 0);
+      const expectedPoints = costIn / 10_000;
+      expect(independent.points, `case ${costIn}`).toBe(expectedPoints); // 独立复算吻合
+      const d = decide({
+        pricing: { currency: "CNY", priceStatus: "VERIFIED", costInputMicrosPerMillion: costIn, costOutputMicrosPerMillion: 0 },
+        systemPrompt,
+        userPrompt,
+        maxOutputTokens: 0,
+        budgetPoints: 100,
+        markupRateBps: 0,
+      });
+      expect(d.allowed, `case ${costIn}`).toBe(expectAllowed);
+      if (d.allowed) expect(d.inputTokenUpperBound).toBe(1_000_000);
+    }
+  });
+
+  it("M01：字节上界被采用——字符粗估能过而字节上界不过的请求被拒绝（独立对照）", () => {
+    // 1000 个非 CJK 字符（每个 2 UTF-8 字节）：字符粗估约数百 Token，字节上界约 2100+
+    const cjkFree = "Ж".repeat(1000);
+    const charEstimate = estimateCombinedTokenCount("提示词", cjkFree);
+    const bound = new TextEncoder().encode(cjkFree).length + 128;
+    expect(bound).toBeGreaterThan(charEstimate * 2); // 两者显著分离
+    const costIn = 500_000_000; // 字节上界折算 > 100 点；字符粗估折算 < 100 点
+    const viaChar = costPointsIf(charEstimate);
+    const viaBound = costPointsIf(bound);
+    expect(viaChar).toBeLessThan(100); // 旧口径（字符粗估）会放行
+    expect(viaBound).toBeGreaterThan(100); // 新口径（字节上界）必须拒绝
+    function costPointsIf(tokens: number): number {
+      return Number((BigInt(tokens) * BigInt(costIn) + BigInt(999999)) / BigInt(1000000) / BigInt(10000)) + 1;
+    }
+    const d = decide({
+      pricing: { currency: "CNY", priceStatus: "VERIFIED", costInputMicrosPerMillion: costIn, costOutputMicrosPerMillion: 0 },
+      systemPrompt: "提示词",
+      userPrompt: cjkFree,
+      maxOutputTokens: 0,
+      budgetPoints: 100,
+      markupRateBps: 0,
+    });
+    expect(d.allowed).toBe(false);
+    if (!d.allowed) expect(d.code).toBe("MODEL_COST_EXCEEDS_BUDGET");
+  });
+
+  it("M01：正常短材料 + 低单价 → 可靠边界下正常放行（不永久拒绝）", () => {
+    const d = decide({
+      pricing: { currency: "CNY", priceStatus: "VERIFIED", costInputMicrosPerMillion: 1000, costOutputMicrosPerMillion: 1000 },
+      systemPrompt: "你是一名专业分析师。",
+      userPrompt: "这是一段正常的文本输入材料。",
+      maxOutputTokens: 300,
+      budgetPoints: 100,
+      markupRateBps: 0,
+    });
+    expect(d.allowed).toBe(true);
+    if (d.allowed) expect(d.inputBoundSource).toBe("UTF8_BYTES_PLUS_FRAMING");
+  });
+
+  it("M02：未知费用规则 / 非零缓存类别 → 拒绝；空规则与明确免费对照放行", () => {
+    const base = { currency: "CNY", priceStatus: "VERIFIED", costInputMicrosPerMillion: 1000, costOutputMicrosPerMillion: 1000 };
+    // 未知规则拒绝
+    const r1 = decide({ pricing: { ...base, rules: { unknownSurcharge: { rate: "5%" } } }, systemPrompt: "s", userPrompt: "u", maxOutputTokens: 100, budgetPoints: 100, markupRateBps: 0 });
+    expect(r1.allowed).toBe(false);
+    if (!r1.allowed) expect(r1.code).toBe("MODEL_COST_NOT_TRUSTWORTHY");
+    // 非零缓存成本拒绝（本次是否命中缓存不可预知）
+    const r2 = decide({ pricing: { ...base, costCacheReadMicrosPerMillion: 500 }, systemPrompt: "s", userPrompt: "u", maxOutputTokens: 100, budgetPoints: 100, markupRateBps: 0 });
+    expect(r2.allowed).toBe(false);
+    // 空规则对象 / null rules → 不误拦
+    for (const rules of [null, {}]) {
+      const d = decide({ pricing: { ...base, rules }, systemPrompt: "s", userPrompt: "u", maxOutputTokens: 100, budgetPoints: 100, markupRateBps: 0 });
+      expect(d.allowed).toBe(true);
+    }
+    // 明确免费对照（FREE 与 VERIFIED+0/0）
+    for (const pricing of [
+      { currency: "CNY", priceStatus: "FREE", costInputMicrosPerMillion: 0, costOutputMicrosPerMillion: 0, rules: null },
+      { currency: "CNY", priceStatus: "VERIFIED", costInputMicrosPerMillion: 0, costOutputMicrosPerMillion: 0, rules: null },
+    ]) {
+      const d = decide({ pricing, systemPrompt: "s", userPrompt: "u", maxOutputTokens: 5000, budgetPoints: 100, markupRateBps: 0 });
+      expect(d.allowed).toBe(true);
+      if (d.allowed) expect(d.conservativeCostPoints).toBe(0);
+    }
+    // 基础价格校验保持：缺失/不可信状态/币种/单侧缺失仍拒绝
+    for (const pricing of [null, { ...base, priceStatus: "OBSERVED_ONLY" }, { ...base, currency: "USD" }, { ...base, costInputMicrosPerMillion: null }, { ...base, costOutputMicrosPerMillion: null }]) {
+      const d = decide({ pricing, systemPrompt: "s", userPrompt: "u", maxOutputTokens: 100, budgetPoints: 100, markupRateBps: 0 });
+      expect(d.allowed).toBe(false);
+      if (!d.allowed) expect(d.code).toBe("MODEL_COST_NOT_TRUSTWORTHY");
+    }
+  });
+});
+
+// ══════════════ 真实 handler（M01/M03/L03/L05/L06） ══════════════
+
+describe("R0-H1 真实 handler：固定兼容分支拒绝零副作用（M01/L05）", () => {
+  it("字节上界超预算（字符粗估会放行）→ 400 EXECUTION_COST_EXCEEDS_BUDGET，零副作用", async () => {
+    // 1000 个非 CJK 字符：字符粗估约数百 Token（<100 点），字节上界 >100 点 → 必须拒绝
+    fx.pricing = trustedPricing({ costInputMicrosPerMillion: 500_000_000, costOutputMicrosPerMillion: 0 });
+    const r = await call({ inputMaterial: "Ж".repeat(1000) });
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("MODEL_COST_EXCEEDS_BUDGET");
+    expect(fx.consumeCalls.length).toBe(0);
+    expect(fx.holdCalls.length).toBe(0);
+    expect(fx.adapterExecuteCalls.length).toBe(0);
+    expect(fx.refundCalls.length).toBe(0);
+    expect(h.tables.componenttask.size).toBe(0);
+    expect(h.tables.pointledger.size).toBe(0);
+  });
+
+  it("成本未知（pricing 缺失）/ 不可信状态 → 422 拒绝，零副作用", async () => {
+    fx.pricing = null;
+    const r = await call();
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe("MODEL_COST_NOT_TRUSTWORTHY");
+    expect(fx.consumeCalls.length).toBe(0);
+    expect(fx.adapterExecuteCalls.length).toBe(0);
+    expect(h.tables.componenttask.size).toBe(0);
+
+    fx.pricing = trustedPricing({ priceStatus: "OBSERVED_ONLY" });
+    const r2 = await call();
+    expect(r2.status).toBe(422);
+    expect(h.tables.componenttask.size).toBe(0);
+  });
+
+  it("未知费用规则 → 422 拒绝，零副作用（真实 handler 级证据）", async () => {
+    fx.pricing = trustedPricing({ rules: { unknownSurcharge: { rate: "5%" } } });
+    const r = await call();
+    expect(r.status).toBe(422);
+    expect(r.body.code).toBe("MODEL_COST_NOT_TRUSTWORTHY");
+    expect(fx.consumeCalls.length).toBe(0);
+    expect(fx.adapterExecuteCalls.length).toBe(0);
+    expect(h.tables.componenttask.size).toBe(0);
+  });
+
+  it("未授权 → 401；合同缺失 → 409（原门禁不被新逻辑绕过）", async () => {
+    const deps = makeDeps();
+    (deps.getUserId as any).mockResolvedValue(null);
+    const { runStudioPost } = await import("@/app/api/studio/handler");
+    const res = await runStudioPost(makeReq({}), deps);
+    expect(res.status).toBe(401);
+
+    fx.contract = null;
+    const { ComponentContractError } = await import("@/lib/component-contract/errors");
+    const deps2 = makeDeps();
+    (deps2.getActiveContractSnapshot as any).mockRejectedValue(
+      new ComponentContractError("NO_ACTIVE_CONTRACT", "无有效 PUBLISHED 激活合同"),
+    );
+    const res2 = await runStudioPost(makeReq({}), deps2);
+    expect(res2.status).toBe(409);
+    expect(fx.consumeCalls.length).toBe(0);
+    expect(h.tables.componenttask.size).toBe(0);
+  });
+});
+
+describe("R0-H1 真实 handler：三分支模式隔离（M03）", () => {
+  it("固定兼容分支：仍受新准入保护（超预算拒绝）", async () => {
+    fx.pricing = trustedPricing({ costInputMicrosPerMillion: 1_000_000_000_000, costOutputMicrosPerMillion: 0 });
+    const r = await call();
+    expect(r.status).toBe(400);
+    expect(r.body.code).toBe("MODEL_COST_EXCEEDS_BUDGET");
+    expect(fx.holdCalls.length).toBe(0);
+  });
+
+  it("BYOK 分支（CONVERTED_PRICE）：不套固定 rawCost 预算，按估算点数扣费", async () => {
+    // 高成本定价（若误入固定预算判断会拒绝）；BYOK 换算点数 7 < 100
+    fx.pricing = trustedPricing({ costInputMicrosPerMillion: 1_000_000_000_000, costOutputMicrosPerMillion: 0 });
+    estimatePoints.mockResolvedValue({
+      basis: "CONVERTED_PRICE",
+      points: 7,
+      snapshot: { source: "BYOK_OFFICIAL", note: "fixture" },
+      blockedReason: null,
+    } as any);
+    const r = await call({ deploymentId: "byo:w1" });
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(estimatePoints).toHaveBeenCalled();
+    expect(fx.consumeCalls.length).toBe(1);
+    expect(fx.consumeCalls[0].points).toBe(7); // 按换算点数扣，不被固定 100 预算拦截
+    expect(fx.adapterExecuteCalls.length).toBe(1);
+    const task = [...h.tables.componenttask.values()][0];
+    expect(task.status).toBe("SUCCESS");
+  });
+
+  it("合成已启用真实结算分支：不套固定 rawCost 预算，走押金 hold + execute（生产开关未动）", async () => {
+    process.env.TEST_TOKEN_SETTLEMENT_ENABLED = "true"; // 仅合成测试环境（NODE_ENV=test 下生效）
+    // 系统计费配置：全量模式（内存 systemconfig，不写真实配置）
+    h.tables.systemconfig.set("billing.settlementMode", {
+      key: "billing.settlementMode",
+      value: "ALL",
+    });
+    // 价格就绪夹具：VERIFIED 成本 + 加价口径（通过真实 evaluateSettlementReadiness）
+    fx.pricing = trustedPricing({
+      costInputMicrosPerMillion: 5_000_000_000, costOutputMicrosPerMillion: 0, // 折算远超 100 点
+      priceSource: "VERIFIED", // 结算就绪要求供应商价目表来源已确认（与 priceStatus 不同字段）
+    });
+    const r = await call();
+    // 结算分支响应 202（任务异步完成）或 200；关键是未被固定预算拒绝且走押金路径
+    expect([200, 202]).toContain(r.status);
+    expect(fx.holdCalls.length).toBe(1); // 走押金-结算
+    expect(fx.consumeCalls.length).toBe(0); // 不走固定扣点
+    expect(fx.adapterExecuteCalls.length).toBe(1); // 正常执行
+    // 若误入固定预算判断，此用例会在 execute 前被 MODEL_COST_EXCEEDS_BUDGET 拒绝
+    expect(fx.releaseCalls.length).toBe(0);
+  });
+});
+
+describe("R0-H 真实 handler：请求一致性与正常闭环（L03/L06 保持）", () => {
+  it("L03：准入与 adapter.execute 同一份最终请求（提示词已展开 COST_BASELINE、输出上限=目录×3）", async () => {
+    const r = await call();
+    expect(r.status).toBe(200);
+    expect(fx.adapterExecuteCalls.length).toBe(1);
+    const args = fx.adapterExecuteCalls[0];
+    expect(args.systemPrompt).not.toContain("{{COST_BASELINE}}");
+    expect(args.systemPrompt).toContain("你是一名专业分析师");
+    expect(args.systemPrompt).toContain("参考基准假设"); // renderCostBaselineText(null) 的回退文本
+    expect(args.userPrompt).toContain("这是一段正常的文本输入材料");
+    expect(args.maxOutputTokens).toBe(300); // 目录 100 × 3（与准入同一变量）
+  });
+
+  it("L06：安全请求真实扣点 100 + 任务 SUCCESS + 成果物落库", async () => {
+    const r = await call();
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(fx.consumeCalls.length).toBe(1);
+    expect(fx.consumeCalls[0].points).toBe(100); // 实际扣点 = 配置固定点数（不被上调）
+    expect(fx.holdCalls.length).toBe(0);
+    const task = [...h.tables.componenttask.values()][0];
+    expect(task.status).toBe("SUCCESS");
+    expect(task.result?.outputData).toBeTruthy();
+  });
+
+  it("L06：模型执行失败 → 原路退款（refundConsumedPoints 恰好一次），任务 FAILED", async () => {
+    fx.adapterBehavior = "throw";
+    const r = await call();
+    expect(r.status).toBe(502); // 模型上游失败 → 502（先原路退款再返回）
+    expect(r.body.code).toBe("MODEL_UPSTREAM_ERROR");
+    expect(fx.consumeCalls.length).toBe(1); // 已真实扣点
+    expect(fx.refundCalls.length).toBe(1); // 原路退款一次
+    const task = [...h.tables.componenttask.values()][0];
+    expect(task.status).toBe("FAILED");
+    expect(task.config.chargeAttempted).toBe(true);
+  });
+});
+
+// ══════════════ 冻结边界（L07/M03 源码级证据） ══════════════
+
+describe("R0-H1 L07：BYOK 与真实结算边界不被本批改动（源码级证据）", () => {
+  it("准入仅作用于「非 BYOK + 兼容口径 + 未启用结算」组合；原结算就绪门禁保持", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/app/api/studio/handler.ts", "utf-8");
+    // 模式隔离三条件同时出现
+    expect(src).toContain('resolvePricingSource(modelPlan.deploymentId) !== "USER_BYOK" &&');
+    expect(src).toContain('billingBasis === "ESTIMATED_COMPATIBILITY" &&');
+    expect(src).toContain("!settlementFeatureEnabled");
+    // 原结算就绪门禁未被删除（不靠删旧门禁制造通过）
+    expect(src).toContain("SETTLEMENT_NOT_READY");
+    expect(src).toContain("evaluateSettlementReadiness");
+    // BYOK 押金/换算路径与结算开关读取未删除
+    expect(src).toContain("consumeAndCreateSettlementHold");
+    expect(src).toContain("isTokenSettlementFeatureEnabled");
+    // 旧两倍容忍区已移除
+    expect(src).not.toContain("rawCost * 2");
+    // 可信边界来自字节上界（字符粗估不再传给准入）
+    const lib = fs.readFileSync("src/lib/model-cost-admission.ts", "utf-8");
+    expect(lib).toContain("UTF-8");
+    expect(lib).toContain("PROTOCOL_FRAMING_TOKEN_ALLOWANCE");
+    expect(lib).toContain("hasUnknownPricingRules");
+  });
+
+  it("页面执行失败路径：恢复忙碌状态并诚实展示错误（源码级证据，非浏览器验证；页面已独立核验）", async () => {
+    const fs = await import("node:fs");
+    const src = fs.readFileSync("src/components/WorkspaceInternalLayoutV3.tsx", "utf-8");
+    expect(src).toContain("throw new Error(data.error || data.message || \"任务执行失败，请稍后重试\")");
+    expect(src).toContain("setIsExecutingTask(false)");
+    expect(src).toContain("toast.error(error.message");
+  });
+});

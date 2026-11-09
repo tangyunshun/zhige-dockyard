@@ -1,0 +1,64 @@
+﻿{
+  "batch": "R0-J5",
+  "capturedAt": "2026-11-08T05:16:07.0035868Z",
+  "baseline": "R0-J4 independent review manifest-verification.json sha256 (all 5 existing files match exactly; no intermediate changes)",
+  "baselineSource": "docs/reviews/R0-J4-independent-review/manifest-verification.json",
+  "baselineCapturedAt": "2026-11-08T04:57:57.260Z",
+  "io": "no database / cloud / model / fee / disk access; all files read-only copies of workspace source",
+  "files": [
+    {
+      "path": "src/lib/storage-quota.ts",
+      "snapshot": "frozen-source/src__lib__storage-quota.ts.snapshot.txt",
+      "sha256": "222e56f4474b4688d85e5ad824f2320a49d4ef6f939c343518f686bf215fc10d",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "capturedAt": "2026-11-08T05:16:06.7682511Z"
+    },
+    {
+      "path": "src/app/api/studio/handler.ts",
+      "snapshot": "frozen-source/src__app__api__studio__handler.ts.snapshot.txt",
+      "sha256": "b74714f7fd1b99355b2fd0fa55f5a440a914f609d896d2067b3c6038952f8f36",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "capturedAt": "2026-11-08T05:16:06.8050047Z"
+    },
+    {
+      "path": "src/app/api/workspace/clear-data/route.ts",
+      "snapshot": "frozen-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt",
+      "sha256": "78e7775f6107d492974562aef524fcf087ff45bd351b349067e5293011ef7ffc",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "capturedAt": "2026-11-08T05:16:06.8125304Z"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "snapshot": "frozen-source/src__app__api____tests____r0j2-storage-close.test.ts.snapshot.txt",
+      "sha256": "82b92abaae2f6dc7df4135796c2ec21e824fbc964a206d8967d8c52089f7afea",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "capturedAt": "2026-11-08T05:16:06.8186223Z"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "snapshot": "frozen-source/src__app__api____tests____r0j4-storage-fixes.test.ts.snapshot.txt",
+      "sha256": "914825d751389cefd496f6765b8fe3b6e4fdd3ec944663acfd03ec70216e7c4f",
+      "status": "existing",
+      "matchesLastAudit": true,
+      "capturedAt": "2026-11-08T05:16:06.8260721Z"
+    },
+    {
+      "path": "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "snapshot": null,
+      "sha256": null,
+      "status": "new",
+      "note": "R0-J5 新增精确隔离测试；开工前不存在，无起点副本"
+    },
+    {
+      "path": "docs/reviews/R0-J5-fix-report.md",
+      "snapshot": null,
+      "sha256": null,
+      "status": "new",
+      "note": "R0-J5 交付报告；开工前不存在，无起点副本"
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "capturedAt": "2026-11-05T16:44:10.893Z",
+  "isolation": "Actual fulfillPaidOrder and actual mock POST. Both reads synchronized before serial in-memory transactions; no real DB, signature verification, money or external payment. REAL is a function-input fixture, not an actual paid transaction.",
+  "expectedSeats": 2,
+  "realService": {
+    "results": [
+      {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      }
+    ],
+    "extraSeats": 4,
+    "orderStatus": "SUCCESS",
+    "writes": [
+      "TX workspace.increment",
+      "ROOT billing.update",
+      "TX workspace.increment",
+      "ROOT billing.update"
+    ],
+    "sequentialRetry": "ALREADY_PROCESSED"
+  },
+  "mockRoute": {
+    "statusCodes": [
+      200,
+      200
+    ],
+    "extraSeats": 4,
+    "orderStatus": "SUCCESS",
+    "writes": [
+      "TX workspace.increment",
+      "ROOT billing.update",
+      "TX workspace.increment",
+      "ROOT billing.update"
+    ]
+  },
+  "limits": "Proves stale-read business logic admits duplicate grants even with serialized transaction callbacks. Does not prove production occurrence, actual MySQL locking/deadlocks or live payment configuration.",
+  "sha256": {
+    "src/lib/payment/fulfill.ts": "63371884f259e0eea85bd4552194dd04f9812c98235684c8de9dc257fd226ce0",
+    "src/app/api/payments/mock/confirm/route.ts": "7be08326998d6a043bb5a4d9281c2283169f85770bc95ceee4f3a2fd4d0693d8"
+  }
+}

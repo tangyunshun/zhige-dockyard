@@ -1,0 +1,26 @@
+{
+  "capturedAtReal": "2026-11-07T23:26:04.432776+08:00",
+  "purpose": "R0-J batch start baseline (before storage quota loop closure)",
+  "files": {
+    "src/lib/storage-quota.ts": {
+      "sha256Start": "40c67567fc8f263c2ca576f450ba02b01669b170f89855df0a45e4060ed89487",
+      "bytes": 3068,
+      "snapshotCopy": "docs/reviews/R0-J-fix-snapshot/frozen-source/src__lib__storage-quota.ts.snapshot.txt"
+    },
+    "src/lib/file-store.ts": {
+      "sha256Start": "644844f307db72dd07e08b458408ae0377c002aaa1643192b9b5559ee99b5c15",
+      "bytes": 6547,
+      "snapshotCopy": "docs/reviews/R0-J-fix-snapshot/frozen-source/src__lib__file-store.ts.snapshot.txt"
+    },
+    "src/app/api/studio/handler.ts": {
+      "sha256Start": "80fe316293fb007f858282bd7212aad5c881d3a31e4c0b42909b816060ed46d0",
+      "bytes": 336264,
+      "snapshotCopy": "docs/reviews/R0-J-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt"
+    },
+    "src/app/api/workspace/clear-data/route.ts": {
+      "sha256Start": "98cdf678ad9a571815aa5856815b85e137f005706aaf9b7a7130814a800471a8",
+      "bytes": 5369,
+      "snapshotCopy": "docs/reviews/R0-J-fix-snapshot/frozen-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt"
+    }
+  }
+}

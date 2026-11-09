@@ -358,7 +358,7 @@ export async function GET(request: NextRequest) {
     // 确保 /admin 弹窗与 /admin/system-status 页面展示的"系统综合健康度"严格一致
     const systemHealth = (await collectSystemHealthData()).healthScore;
 
-    const { actionDict, resourceDict } = await getAuditDictionariesFromDb();
+    const { actionDict, resourceDict, wordDict } = await getAuditDictionariesFromDb();
 
     // 真实财务与订单数据聚合（会员订单与账单流水）
     const [orderTotalCount, todayOrderCount, billingSum] = await Promise.all([
@@ -456,7 +456,7 @@ export async function GET(request: NextRequest) {
 
         // 平台最新敏感操作审计日志（映射自数据库 system_config 字典，IP标准化）
         recentAuditLogs: recentAuditLogs.map((log: any) => {
-          const actMeta = translateAction(log.action, actionDict);
+          const actMeta = translateAction(log.action, actionDict, wordDict, resourceDict);
           const resZh = translateResource(log.resource, resourceDict);
 
           return {

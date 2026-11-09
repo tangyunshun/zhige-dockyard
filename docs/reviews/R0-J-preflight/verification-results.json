@@ -1,0 +1,61 @@
+{
+  "capturedAt": "2026-11-07T16:28:48.203Z",
+  "scope": "Original F13 / R0-J current-code preflight only",
+  "sha256": {
+    "src/lib/storage-quota.ts": "898c6e174e3ece7ffcce11a5f6118fde4d540f562ddbdd3a4a61f88f3882657d",
+    "src/lib/file-store.ts": "a3d07e2a50b4116a1b57dff3a009fcf657a90c596d4614b4c444792b857547fd",
+    "src/app/api/studio/handler.ts": "ee4b5ee7f94873a11440b3138c78694168c7752bfe0f42cfaca211d25cee8a66",
+    "src/app/api/workspace/clear-data/route.ts": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d",
+    "src/components/WorkspaceInternalLayoutV3.tsx": "9af127d8f0ead2e6b51db32c4a48bd13427e7fa69aa78dc1fbe754b8d4cd3506",
+    "src/app/knowledge/page.tsx": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f",
+    "prisma/schema.prisma": "21cf68e19ecc886b06988a8e1c42c83fd0e7d3913741bfbe8be1270e7e4183f7",
+    "src/app/api/billing/estimate/route.ts": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+    "src/lib/model-registry.ts": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+    "src/lib/workspace-byo-model.ts": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+    "src/app/admin/models/byok-service-rate.tsx": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545"
+  },
+  "verification": {
+    "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-J-preflight/vitest.preflight.config.ts",
+    "exitCode": 0,
+    "tests": 10,
+    "defectReproductions": 9,
+    "positiveControls": 1,
+    "interpretation": "Existing problems reproduced; F13 is not repaired or accepted"
+  },
+  "precedingGate": {
+    "verdict": "R0-I2_ARCHIVE_ACCEPTED",
+    "evidence": "docs/reviews/R0-I2-archive-independent-review/verification-results.json"
+  },
+  "newArtifactsOnly": true,
+  "noBusinessCodeChanges": true,
+  "realDatabaseOrStorageIO": false,
+  "realModelOrPaymentCalls": false,
+  "limits": "Handler order/bypass findings are static inspection; quota and file-store helpers were executed with in-memory Prisma/fs. No live database/schema or physical user objects inspected.",
+  "correctionRecord": {
+    "appendedAtReal": "2026-11-08T02:45:00+08:00",
+    "appendedBy": "R0-J2 batch (per IDE-R0-J2-PROMPT.md §10: 追加更正记录，保留被覆盖版本，不倒填历史)",
+    "corrections": [
+      {
+        "issue": "R0-J1 修复清单曾声明新增 src/app/api/__tests__/r0j1-storage-ops.test.ts，该文件从未创建（独立复核 missingDeclaredNew 已确认）",
+        "correction": "如实更正交付状态：R0-J1 的 9 个新增用例实际落在 src/app/api/__tests__/r0j-storage.test.ts（同文件 26 既有 + 9 新增 = 35）；R0-J2 批次未为补名字创建无意义文件，正向验收落在 r0j2-storage-close.test.ts（21 用例）"
+      },
+      {
+        "issue": "本预检文件的 sha256 对应 R0-J 开工前状态（2026-11-07T16:28Z 采集）；R0-J1 报告 §一 的开始哈希（898c6e17 等与本预检一致）与结束哈希均为 R0-J1 各自批次事实，不得将本预检哈希当作 R0-J1/R0-J2 的结束状态引用",
+        "correction": "R0-J2 起止哈希以 docs/reviews/R0-J2-fix-snapshot/manifest.json 与 after-hashes.json 为准（clear-data 起止哈希不同：本批实际修改）"
+      },
+      {
+        "issue": "R0-J1 报告 §四 宣称 clear-data 已改，但其起止哈希相同（e4b3b2de→e4b3b2de，意外还原），与宣称不符",
+        "correction": "R0-J2 批次已实际重做并验收：clear-data 结束哈希 86377e12…，认领协议与部分失败明细见 R0-J2-fix-report.md §4"
+      }
+    ],
+    "preservedOriginalContent": "原 capturedAt/scope/sha256/verification 等字段一律未改动",
+    "clarifications": [
+      {
+        "appendedAtReal": "2026-11-08T11:45:00+08:00",
+        "appendedBy": "R0-J3 batch (per IDE-R0-J3-PROMPT.md §六)",
+        "issue": "本 correctionRecord 此前把 898c6e17 等哈希描述为「R0-J 开工前状态」——实际可核实版本来源：该批哈希是 R0-J 批次的结束态（= R0-J1 批次的开工态，R0-J1 修复报告 §一 的开始哈希与之完全一致）。R0-J 真正的开工前状态已无对应完整副本声明。",
+        "clarification": "版本来源以各批次 manifest.json + frozen-source 完整副本为唯一可核实依据：R0-J 结束态/R0-J1 开工态 = 898c6e17（本文件 sha256 段）；R0-J1 结束态/R0-J2 开工态 = de7f954a（R0-J2 manifest）；R0-J2 结束态/R0-J3 开工态 = bd674807（R0-J3 manifest）。本文件原字段与此前更正记录均未改动，本段为追加澄清。"
+      }
+    ]
+  }
+}

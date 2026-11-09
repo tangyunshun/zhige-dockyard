@@ -1,0 +1,105 @@
+{
+  "capturedAt": "2026-11-08T09:14:00.531Z",
+  "currentParserReplacesEarlierParserResults": true,
+  "sources": {
+    "handlerAndAdmission": "independent-results.json",
+    "parser": "parser-final-results.json"
+  },
+  "total": 18,
+  "passed": 18,
+  "positiveAcceptanceCases": 2,
+  "defectCharacterizations": 16,
+  "meaning": "Passing characterization tests CONFIRM current defects; they are not repaired acceptance cases.",
+  "cases": [
+    {
+      "file": "handler-review.test.ts",
+      "name": "R0-K actual Studio storage entry, real parser and denied shared admission defect K03/K04: actual upload_doc succeeds and starts worker despite admission being unavailable",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models positive: real backend enforces cap, atomic rollback and single release",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models defect K03: two sweepers return one expired lease twice and admit beyond true active cap",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models defect K03: expiry leaves work units occupied and eventually blocks an empty platform",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models defect K03: status commit followed by counter failure leaves unrecoverable active counter",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models defect K03: weighted lease release returns only one work unit",
+      "status": "passed"
+    },
+    {
+      "file": "admission-review.test.ts",
+      "name": "Production Prisma admission implementation with isolated condition-evaluating models defect K01/K03: slow form-data outlives lease; expired request starts worker after capacity was reallocated",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures positive: normal local worker returns text and confirms stopped",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K01: hanging terminate Promise prevents exit grace from ever starting",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K02: direct image boundary skips pixel limit before OCR starts",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K01: OCR creation remains outstanding when route returns and releases shared lease",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K02: successful OOXML parser bypasses tiny inflated-bytes budget",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K02: table preview also skips ZIP expansion budget",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K02: 21-file archive silently drops remaining entry and returns success",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K04: old raw parser succeeds but actual boundary fails legacy doc",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K04: old raw parser succeeds but actual boundary fails legacy ppt",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K04: xlsx with extracted content loses original rich preview output type",
+      "status": "passed"
+    },
+    {
+      "file": "parser-review.test.ts",
+      "name": "R0-K actual parser lifecycle and budgets, all small offline fixtures defect K04: docx with extracted content loses original rich preview output type",
+      "status": "passed"
+    }
+  ]
+}

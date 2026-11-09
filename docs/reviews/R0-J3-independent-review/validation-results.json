@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-11-08T03:50:58.883Z",
+  "batch": "R0-J3",
+  "verdict": "NOT_ACCEPTED; original F13 only; J-KEYS accepted; no F14",
+  "businessSourceEditsByReviewer": 0,
+  "sourceVersionStableThroughReview": true,
+  "formal": {
+    "files": [
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "src/app/api/__tests__/r0j-storage.test.ts",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts",
+      "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+      "src/app/api/__tests__/r0e-production-mock.test.ts",
+      "src/app/api/__tests__/r0d-refund-approval.test.ts",
+      "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+      "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "src/app/api/__tests__/r0a-business-boundary.test.ts",
+      "src/app/api/__tests__/r0a2-real-combo.test.ts",
+      "src/app/api/__tests__/r0a3-combo-regression.test.ts",
+      "src/app/api/__tests__/r0a4-combo-regression.test.ts"
+    ],
+    "passedFiles": 15,
+    "passedTests": 476,
+    "exitCode": 0,
+    "provenance": "independently executed in this review; exec session 23994; completed summary: 15 files, 476 passed, duration 21.33s"
+  },
+  "typescript": {
+    "command": "tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 0,
+    "provenance": "independently executed; exec session 15049"
+  },
+  "independent": {
+    "total": 14,
+    "positive": 5,
+    "defectCharacterizations": 9,
+    "exitCode": 0,
+    "warning": "Passing characterization tests reproduce defects; they are not repair acceptance."
+  },
+  "ui": {
+    "scenarios": 12,
+    "exitCode": 0,
+    "mode": "actual callback AST + synthetic fetch/state; independently executed copy of inspected author script; not browser E2E"
+  },
+  "manifest": {
+    "startCopies": 8,
+    "endHashes": 11,
+    "unchangedProtectedSources": 28
+  },
+  "findingIds": [
+    "J3-01",
+    "J3-02",
+    "J3-03",
+    "J3-04",
+    "J3-05",
+    "J3-06",
+    "J3-07"
+  ],
+  "limits": [
+    "No live DB, cloud filesystem, model, payment, migration or deployment",
+    "Fixtures do not prove actual MySQL transaction locking",
+    "Two read routes have end hashes but no J3 start full snapshot",
+    "No production-readiness or profitability conclusion"
+  ]
+}

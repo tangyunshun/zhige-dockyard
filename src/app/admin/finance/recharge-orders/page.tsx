@@ -187,7 +187,12 @@ export default function AdminRechargeOrdersPage() {
         setReviewNote("");
         await load();
       } else {
-        toast.error(json.error || "操作失败");
+        // [R0/F16 M03] 人工收款确认暂停：如实提示，不冒充操作成功
+        if (json.code === "RECHARGE_CONFIRM_PAID_PAUSED") {
+          toast.warning(json.error || "人工收款确认暂未开放，工单保留待处理");
+        } else {
+          toast.error(json.error || "操作失败");
+        }
       }
     } catch (e: any) {
       toast.error(e?.message || "操作失败，请重试");
@@ -391,17 +396,22 @@ export default function AdminRechargeOrdersPage() {
             )}
 
             {selected.status === "APPROVED" && (
-              <div className="shrink-0 flex justify-end">
-                <button
-                  onClick={() => {
-                    setPaidConfirmInput("");
-                    setShowPaidConfirm(true);
-                  }}
-                  disabled={actioning}
-                  className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black rounded-xl text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
-                >
-                  <Wallet className="w-4 h-4" /> 确认收款并自动入账
-                </button>
+              <div className="shrink-0 space-y-2">
+                <div className="text-[11px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
+                  人工收款确认暂未开放（缺少可核验收款来源），工单保留待处理；点击「确认收款」不会入账，也不会显示到账成功。
+                </div>
+                <div className="flex items-center gap-2 justify-end">
+                  <button
+                    onClick={() => {
+                      setPaidConfirmInput("");
+                      setShowPaidConfirm(true);
+                    }}
+                    disabled={actioning}
+                    className="px-5 py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black rounded-xl text-xs shadow-md flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                  >
+                    <Wallet className="w-4 h-4" /> 确认收款并自动入账
+                  </button>
+                </div>
               </div>
             )}
           </div>

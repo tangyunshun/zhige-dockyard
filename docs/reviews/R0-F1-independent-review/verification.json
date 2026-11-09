@@ -1,0 +1,4375 @@
+{
+  "capturedAt": "2026-11-07T05:38:10.410Z",
+  "verdict": "NOT ACCEPTED: one original F-AUDIT requirement remains: changed-content and no-change sync audit facts are inaccurate.",
+  "scopeControls": [
+    {
+      "name": "old_GET_attempts_root_write_blocked_by_fixture",
+      "status": 500,
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": null,
+      "query": "",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": null,
+      "query": "?t=1&t=2",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 400,
+      "token": null,
+      "query": "?action=emergency_disable",
+      "events": [],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "normal",
+      "query": "",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "normal",
+      "query": "?t=1&t=2",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 400,
+      "token": "normal",
+      "query": "?action=emergency_disable",
+      "events": [],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "read",
+      "query": "",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "read",
+      "query": "?t=1&t=2",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 400,
+      "token": "read",
+      "query": "?action=emergency_disable",
+      "events": [],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "super",
+      "query": "",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 200,
+      "token": "super",
+      "query": "?t=1&t=2",
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readonly",
+      "status": 400,
+      "token": "super",
+      "query": "?action=emergency_disable",
+      "events": [],
+      "auth": []
+    },
+    {
+      "name": "GET_empty",
+      "status": 200,
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "GET_readFailure",
+      "status": 200,
+      "events": [
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "system_version",
+          "write": false
+        }
+      ],
+      "auth": []
+    },
+    {
+      "name": "denied_toggle",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_schedule",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_schedule",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_schedule",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_release",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_release",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_release",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle_release_publish",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_save_update_settings",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_DELETE",
+      "status": 401,
+      "token": null,
+      "events": [],
+      "auth": [
+        {
+          "token": "",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_schedule",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_schedule",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_schedule",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_release",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_release",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_release",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle_release_publish",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_save_update_settings",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_DELETE",
+      "status": 403,
+      "token": "normal",
+      "events": [],
+      "auth": [
+        {
+          "token": "normal",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_schedule",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_schedule",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_schedule",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_release",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_release",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_release",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle_release_publish",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_save_update_settings",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_DELETE",
+      "status": 403,
+      "token": "roleOnly",
+      "events": [],
+      "auth": [
+        {
+          "token": "roleOnly",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_schedule",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_schedule",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_schedule",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_create_release",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_update_release",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_delete_release",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_toggle_release_publish",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_save_update_settings",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "denied_DELETE",
+      "status": 403,
+      "token": "read",
+      "events": [],
+      "auth": [
+        {
+          "token": "read",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle",
+      "status": 200,
+      "token": "toggle",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_estimated",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "user.updateMany",
+          "key": null,
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_schedule",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_schedule",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_schedule",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_release",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_release",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_release",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle_release_publish",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_save_update_settings",
+      "status": 403,
+      "token": "toggle",
+      "events": [],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_DELETE",
+      "status": 200,
+      "token": "toggle",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "toggle",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle",
+      "status": 403,
+      "token": "publish",
+      "events": [],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_schedule",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_schedule",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_schedule",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_release",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_release",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_release",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle_release_publish",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_save_update_settings",
+      "status": 200,
+      "token": "publish",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_DELETE",
+      "status": 403,
+      "token": "publish",
+      "events": [],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_estimated",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "user.updateMany",
+          "key": null,
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_schedule",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_schedule",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_schedule",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_release",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_release",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_release",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle_release_publish",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_save_update_settings",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_DELETE",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_estimated",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "user.updateMany",
+          "key": null,
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_schedule",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_schedule",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        },
+        {
+          "scope": "ROOT",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_schedule",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_create_release",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_update_release",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_delete_release",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_toggle_release_publish",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_save_update_settings",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_UPDATE_SETTINGS_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "action_matrix_DELETE",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_IN_PROGRESS",
+      "status": 403,
+      "token": "publish",
+      "events": [],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "publish",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_IN_PROGRESS",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "both",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_IN_PROGRESS",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_COMPLETED",
+      "status": 403,
+      "token": "publish",
+      "events": [],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "publish",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_COMPLETED",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "both",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_COMPLETED",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_CANCELLED",
+      "status": 403,
+      "token": "publish",
+      "events": [],
+      "auth": [
+        {
+          "token": "publish",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "publish",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_CANCELLED",
+      "status": 200,
+      "token": "both",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "both",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "both",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "sync_CANCELLED",
+      "status": 200,
+      "token": "super",
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "commit"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "maintenance:publish"
+          ]
+        },
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "unknown_action",
+      "status": 400,
+      "events": [],
+      "auth": []
+    },
+    {
+      "name": "fault_rollback",
+      "status": 500,
+      "fault": {
+        "configAt": 2
+      },
+      "cacheAfter": false,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "method": "rollback"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fault_rollback",
+      "status": 500,
+      "fault": {
+        "audit": true
+      },
+      "cacheAfter": false,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_estimated",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "user.updateMany",
+          "key": null,
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "rollback"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "fault_rollback",
+      "status": 500,
+      "fault": {
+        "commit": true
+      },
+      "cacheAfter": false,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_message",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_message",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_estimated",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_estimated",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "user.updateMany",
+          "key": null,
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "rollback"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "disable_commit_rollback_POST",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "rollback"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "disable_commit_rollback_DELETE",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "maintenance_mode",
+          "write": false
+        },
+        {
+          "scope": "TX",
+          "method": "upsert",
+          "key": "maintenance_mode",
+          "write": true
+        },
+        {
+          "scope": "TX",
+          "method": "operationlog.create",
+          "key": null,
+          "write": true
+        },
+        {
+          "method": "rollback"
+        }
+      ],
+      "auth": [
+        {
+          "token": "super",
+          "keys": [
+            "system:maintenance_toggle"
+          ]
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "name": "G01_settings_before_after",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"autoCheckUpdate\":true,\"notifyModalEnabled\":true,\"forceUpdate\":true,\"minSupportedVersion\":\"v1.0.0\",\"releaseChannel\":\"STABLE\",\"customDownloadUrl\":\"\",\"popupTitle\":\"new title\"}"
+      },
+      "audit": {
+        "id": "knid7e0c97eggr0hdmp9m",
+        "userId": "publish",
+        "action": "maintenance:update_settings",
+        "resource": "maintenance",
+        "details": {
+          "target": "SYSTEM_UPDATE_SETTINGS_V1",
+          "before": {
+            "forceUpdate": false,
+            "popupTitle": "old title"
+          },
+          "after": {
+            "forceUpdate": true,
+            "popupTitle": "new title"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.725Z"
+      }
+    },
+    {
+      "name": "G01_settings_repeat_no_change",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"autoCheckUpdate\":true,\"notifyModalEnabled\":true,\"forceUpdate\":true,\"minSupportedVersion\":\"v1.0.0\",\"releaseChannel\":\"STABLE\",\"customDownloadUrl\":\"\",\"popupTitle\":\"new title\"}"
+      },
+      "audit": {
+        "id": "oo8t8s9t325ka454nybf2",
+        "userId": "publish",
+        "action": "maintenance:update_settings",
+        "resource": "maintenance",
+        "details": {
+          "target": "SYSTEM_UPDATE_SETTINGS_V1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.725Z"
+      }
+    },
+    {
+      "name": "G01_version_only",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v3.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"autoCheckUpdate\":true,\"notifyModalEnabled\":true,\"forceUpdate\":false,\"minSupportedVersion\":\"v1.0.0\",\"releaseChannel\":\"STABLE\",\"customDownloadUrl\":\"\",\"popupTitle\":\"old title\"}"
+      },
+      "audit": {
+        "id": "52r4o5vfo74x06gz7t7zgc",
+        "userId": "publish",
+        "action": "maintenance:update_settings",
+        "resource": "maintenance",
+        "details": {
+          "systemVersion": "v3.0.0",
+          "target": [
+            "SYSTEM_UPDATE_SETTINGS_V1",
+            "system_version"
+          ],
+          "before": {
+            "systemVersion": "v1.0.0"
+          },
+          "after": {
+            "systemVersion": "v3.0.0"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.750Z"
+      }
+    },
+    {
+      "name": "G01_version_mixed",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v3.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"autoCheckUpdate\":true,\"notifyModalEnabled\":true,\"forceUpdate\":false,\"minSupportedVersion\":\"v1.0.0\",\"releaseChannel\":\"STABLE\",\"customDownloadUrl\":\"\",\"popupTitle\":\"mixed title\"}"
+      },
+      "audit": {
+        "id": "r8obw60nr2lyse0midw77i",
+        "userId": "publish",
+        "action": "maintenance:update_settings",
+        "resource": "maintenance",
+        "details": {
+          "systemVersion": "v3.0.0",
+          "target": [
+            "SYSTEM_UPDATE_SETTINGS_V1",
+            "system_version"
+          ],
+          "before": {
+            "popupTitle": "old title",
+            "systemVersion": "v1.0.0"
+          },
+          "after": {
+            "popupTitle": "mixed title",
+            "systemVersion": "v3.0.0"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.791Z"
+      }
+    },
+    {
+      "name": "G02_create_schedule",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"maint-1794029889814-309\",\"title\":\"New schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":false,\"startTime\":\"2026-12-03 00:00\",\"endTime\":\"待定\",\"manager\":\"publish\",\"scope\":\"全站系统服务\",\"description\":\"\",\"actualResult\":\"\"},{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "hshss8cq3ldtgbfveelcgg",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "create_schedule",
+          "syncMaintenanceMode": false,
+          "target": "maint-1794029889814-309",
+          "before": null,
+          "after": {
+            "title": "New schedule",
+            "type": "UPGRADE",
+            "status": "SCHEDULED",
+            "isDowntime": false,
+            "startTime": "2026-12-03 00:00",
+            "endTime": "待定"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.814Z"
+      }
+    },
+    {
+      "name": "G02_create_release",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"rel-1794029889842-985\",\"version\":\"v2.0.0\",\"title\":\"New release\",\"type\":\"FEATURE\",\"publishDate\":\"2026-11-07\",\"isPublished\":true,\"author\":\"publish\",\"items\":[\"New release\"]},{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "zhyweoihhxr48meps0erwy",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "create_release",
+          "target": "rel-1794029889842-985",
+          "before": null,
+          "after": {
+            "version": "v2.0.0",
+            "title": "New release",
+            "type": "FEATURE",
+            "isPublished": true,
+            "publishDate": "2026-11-07"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.842Z"
+      }
+    },
+    {
+      "name": "G03_disable_POST",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "q8ig38lwbmpe44wwp42snw",
+        "userId": "toggle",
+        "action": "system:maintenance_toggle",
+        "resource": "system",
+        "details": {
+          "enabled": false,
+          "hasMessage": false,
+          "target": "maintenance_mode",
+          "before": {
+            "maintenanceMode": true
+          },
+          "after": {
+            "maintenanceMode": false
+          },
+          "changed": true,
+          "sessionsCleared": 0
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.868Z"
+      }
+    },
+    {
+      "name": "G03_disable_DELETE",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "w89g8h9q37k56v32mkowiq",
+        "userId": "toggle",
+        "action": "system:maintenance_toggle",
+        "resource": "system",
+        "details": {
+          "action": "disable",
+          "target": "maintenance_mode",
+          "before": {
+            "maintenanceMode": true
+          },
+          "after": {
+            "maintenanceMode": false
+          },
+          "changed": true,
+          "via": "DELETE"
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.892Z"
+      }
+    },
+    {
+      "name": "G03_enable_with_explanation",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "true",
+        "maintenance_message": "new explanation",
+        "maintenance_estimated": "45",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"title\":\"Release\",\"version\":\"v1.1.0\",\"isPublished\":true},{\"id\":\"rel-20260908-01\",\"version\":\"v0\",\"isPublished\":true}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"startTime\":\"2026-12-01 00:00\",\"status\":\"SCHEDULED\"},{\"id\":\"maint-20260920-01\",\"title\":\"legacy\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "ptug2oi3lrmctbfi9f01f",
+        "userId": "toggle",
+        "action": "system:maintenance_toggle",
+        "resource": "system",
+        "details": {
+          "enabled": true,
+          "hasMessage": true,
+          "estimatedMinutes": 45,
+          "target": [
+            "maintenance_mode",
+            "maintenance_message",
+            "maintenance_estimated"
+          ],
+          "before": {
+            "maintenanceMode": false,
+            "maintenanceMessage": "old message",
+            "estimatedMinutes": "30"
+          },
+          "after": {
+            "maintenanceMode": true,
+            "maintenanceMessage": "new explanation",
+            "estimatedMinutes": "45"
+          },
+          "changed": true,
+          "sessionsCleared": 1
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.919Z"
+      }
+    },
+    {
+      "name": "G02_metadata_update_release",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Changed title\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "o56ymkh7tcscvin1txm9i",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_release",
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {
+            "title": "Release"
+          },
+          "after": {
+            "title": "Changed title"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.946Z"
+      }
+    },
+    {
+      "name": "G02_metadata_delete_release",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "tuqpbmmz4nndkl5vpglpt8",
+        "userId": "publish",
+        "action": "maintenance:release_delete",
+        "resource": "maintenance",
+        "details": {
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {
+            "version": "v1.1.0",
+            "title": "Release",
+            "type": "FEATURE",
+            "isPublished": true,
+            "publishDate": "2026-11-01"
+          },
+          "after": {
+            "deleted": true,
+            "remainingCount": 0
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:09.969Z"
+      }
+    },
+    {
+      "name": "G02_metadata_update_schedule",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Changed title\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "usc7kro8sdm0du869rl3l7f",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {
+            "title": "Schedule"
+          },
+          "after": {
+            "title": "Changed title"
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.010Z"
+      }
+    },
+    {
+      "name": "G02_metadata_delete_schedule",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "5orbw1c5jmy6qe61fjq8n",
+        "userId": "publish",
+        "action": "maintenance:schedule_delete",
+        "resource": "maintenance",
+        "details": {
+          "scheduleId": "s1",
+          "target": "s1",
+          "before": {
+            "title": "Schedule",
+            "type": "UPGRADE",
+            "status": "SCHEDULED",
+            "isDowntime": true,
+            "startTime": "2026-12-01 00:00",
+            "endTime": "待定"
+          },
+          "after": {
+            "deleted": true,
+            "remainingCount": 0
+          },
+          "changed": true
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.037Z"
+      }
+    },
+    {
+      "name": "G02_content_release_items",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Updated announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "4r91io2wcw6v9owv63x4xh",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_release",
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.085Z"
+      }
+    },
+    {
+      "name": "G02_content_release_author",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"New author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "mwypcgv0epepuhb2n2bip",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_release",
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.170Z"
+      }
+    },
+    {
+      "name": "G02_content_schedule_description",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"New description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "7nmjore446f3l5og6atkxx",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.209Z"
+      }
+    },
+    {
+      "name": "G02_content_schedule_scope",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"New scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "oe5s4tzf162ho6lrx02nt",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.234Z"
+      }
+    },
+    {
+      "name": "G02_content_schedule_actualResult",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"Work completed\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "evjfzavpd691yi7co6tx1b",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.257Z"
+      }
+    },
+    {
+      "name": "G02_content_schedule_manager",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "false",
+        "maintenance_message": "old message",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"SCHEDULED\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"New manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "80gaifcleedbh7fvhcrnlg",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.279Z"
+      }
+    },
+    {
+      "name": "G02_sync_repeat",
+      "status": 200,
+      "before": {
+        "maintenance_mode": "true",
+        "maintenance_message": "系统正在进行【Schedule】\n影响范围：Old scope\n详细说明：Old description",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"IN_PROGRESS\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "after": {
+        "maintenance_mode": "true",
+        "maintenance_message": "系统正在进行【Schedule】\n影响范围：Old scope\n详细说明：Old description",
+        "maintenance_estimated": "30",
+        "system_version": "v1.0.0",
+        "SYSTEM_RELEASE_NOTES_V1": "[{\"id\":\"r1\",\"version\":\"v1.1.0\",\"title\":\"Release\",\"type\":\"FEATURE\",\"isPublished\":true,\"publishDate\":\"2026-11-01\",\"author\":\"Old author\",\"items\":[\"Old announcement body\"]}]",
+        "SYSTEM_MAINTENANCE_SCHEDULES_V1": "[{\"id\":\"s1\",\"title\":\"Schedule\",\"type\":\"UPGRADE\",\"status\":\"IN_PROGRESS\",\"isDowntime\":true,\"startTime\":\"2026-12-01 00:00\",\"endTime\":\"待定\",\"manager\":\"Old manager\",\"scope\":\"Old scope\",\"description\":\"Old description\",\"actualResult\":\"\"}]",
+        "SYSTEM_UPDATE_SETTINGS_V1": "{\"popupTitle\":\"old title\",\"forceUpdate\":false}"
+      },
+      "audit": {
+        "id": "s3ycjdrnbmhc032cd9pyyg",
+        "userId": "both",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": true,
+          "target": [
+            "s1",
+            "maintenance_mode"
+          ],
+          "before": {},
+          "after": {},
+          "changed": true,
+          "maintenanceModeBefore": true,
+          "maintenanceModeAfter": true,
+          "maintenanceMessageWritten": "系统正在进行【Schedule】\n影响范围：Old scope\n详细说明：Old description"
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.315Z"
+      }
+    },
+    {
+      "name": "G04_strict_read_release_badJSON",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "method": "rollback"
+        }
+      ]
+    },
+    {
+      "name": "G04_strict_read_release_readFailure",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_RELEASE_NOTES_V1",
+          "write": false
+        },
+        {
+          "method": "rollback"
+        }
+      ]
+    },
+    {
+      "name": "G04_strict_read_schedule_badJSON",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "method": "rollback"
+        }
+      ]
+    },
+    {
+      "name": "G04_strict_read_schedule_readFailure",
+      "status": 500,
+      "events": [
+        {
+          "method": "begin"
+        },
+        {
+          "scope": "TX",
+          "method": "findUnique",
+          "key": "SYSTEM_MAINTENANCE_SCHEDULES_V1",
+          "write": false
+        },
+        {
+          "method": "rollback"
+        }
+      ]
+    }
+  ],
+  "findings": [
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "release",
+      "field": "items",
+      "oldValue": [
+        "Old announcement body"
+      ],
+      "actualNewValue": [
+        "Updated announcement body"
+      ],
+      "audit": {
+        "id": "4r91io2wcw6v9owv63x4xh",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_release",
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.085Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "release",
+      "field": "author",
+      "oldValue": "Old author",
+      "actualNewValue": "New author",
+      "audit": {
+        "id": "mwypcgv0epepuhb2n2bip",
+        "userId": "publish",
+        "action": "maintenance:release_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_release",
+          "releaseId": "r1",
+          "target": "r1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.170Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "schedule",
+      "field": "description",
+      "oldValue": "Old description",
+      "actualNewValue": "New description",
+      "audit": {
+        "id": "7nmjore446f3l5og6atkxx",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.209Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "schedule",
+      "field": "scope",
+      "oldValue": "Old scope",
+      "actualNewValue": "New scope",
+      "audit": {
+        "id": "oe5s4tzf162ho6lrx02nt",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.234Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "schedule",
+      "field": "actualResult",
+      "oldValue": "",
+      "actualNewValue": "Work completed",
+      "audit": {
+        "id": "evjfzavpd691yi7co6tx1b",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.257Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "changed_content_reported_unchanged",
+      "kind": "schedule",
+      "field": "manager",
+      "oldValue": "Old manager",
+      "actualNewValue": "New manager",
+      "audit": {
+        "id": "80gaifcleedbh7fvhcrnlg",
+        "userId": "publish",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": false,
+          "target": "s1",
+          "before": {},
+          "after": {},
+          "changed": false
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.279Z"
+      }
+    },
+    {
+      "id": "F-AUDIT-REMAINDER",
+      "severity": "P2",
+      "case": "identical_plan_and_mode_sync_reported_changed",
+      "configUnchanged": true,
+      "audit": {
+        "id": "s3ycjdrnbmhc032cd9pyyg",
+        "userId": "both",
+        "action": "maintenance:schedule_save",
+        "resource": "maintenance",
+        "details": {
+          "action": "update_schedule",
+          "scheduleId": "s1",
+          "syncMaintenanceMode": true,
+          "target": [
+            "s1",
+            "maintenance_mode"
+          ],
+          "before": {},
+          "after": {},
+          "changed": true,
+          "maintenanceModeBefore": true,
+          "maintenanceModeAfter": true,
+          "maintenanceMessageWritten": "系统正在进行【Schedule】\n影响范围：Old scope\n详细说明：Old description"
+        },
+        "ipAddress": null,
+        "createdAt": "2026-11-07T05:38:10.315Z"
+      }
+    }
+  ],
+  "sha256": {
+    "docs/reviews/R0-F-fix-snapshot/frozen-source/src__lib__maintenance.ts.frozen": "3c9ea09d82f1b96b0ac8b2640f7af02b0ca708400d52f00b6a9fb1a719a23911",
+    "package.json": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+    "docs/reviews/R0-F-fix-snapshot/frozen-source/src__app__api__system__maintenance__route.ts.frozen": "bfbb49ff3950e506e7f148122eef363e7ae96e375d1d40605318b7c8fbb0520d",
+    "src/lib/maintenance.ts": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+    "src/app/api/system/maintenance/route.ts": "c7e4b71f44e884f2b2d3ad261c237c48882f97dd0ccbe58be3a07fe6b3163e70",
+    "docs/reviews/R0-F1-fix-snapshot/manifest.json": "bf9bfbc734bcc1ab519dad839d724601b321e7e88a4d4e0caeaed2a492c3affa",
+    "docs/reviews/R0-F1-fix-snapshot/after-hashes.json": "ee8d3e4055e9172f341490c4f841d2e17508e6c8262f39a2453bd9ce7bb72eb9",
+    "docs/reviews/R0-F-independent-review/verification.json": "d176ff67f67f2d5001bfd5e304ab616c8eb41702524fb9a3a6d351a3509f1b09",
+    "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__app__api__system__maintenance__route.ts.snapshot.txt": "06746ea03abbd1b8e547354550a564d7667a53f2ef5a5efb65d086c34e5f2ac8",
+    "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__lib__maintenance.ts.snapshot.txt": "29ff06b7de04166f1ebdb348474f70ba84408e179ddd9f4ca238b3851b75d269",
+    "docs/reviews/R0-F1-fix-snapshot/frozen-source/src__app__api____tests____r0f-maintenance-readonly.test.ts.snapshot.txt": "7e7e0bfe6e50cff494516614e47de24844c6d977e14412d34b1ced9c06c9eb2b",
+    "src/app/api/__tests__/r0f-maintenance-readonly.test.ts": "d67ee7b4dc9c805597d38f089082c94fbb128364a6c9f6e0d917796f09dc89c3",
+    "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+    "docs/reviews/R0-F1-fix-report.md": "ecc264b6d281d3fc47aafc7d5685b58e7afc1aebbfdf744e6bb3f656354a35ce"
+  },
+  "limits": "Actual route/helper with reused closed IO fixture. No credential/env/DB/network/payment access. Exit 0 means the observations and remaining defect were reproduced, not acceptance. JSON writes only inside this review directory."
+}

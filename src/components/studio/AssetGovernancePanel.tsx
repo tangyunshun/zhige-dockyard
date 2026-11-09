@@ -202,6 +202,8 @@ export default function AssetGovernancePanel({
     endDate: "",
     titleKeyword: "",
   });
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
   const [logPagination, setLogPagination] = useState({ page: 1, total: 0, totalPages: 1 });
   const [expandedLogs, setExpandedLogs] = useState<Set<string>>(new Set());
   const [selectedLogIds, setSelectedLogIds] = useState<Set<string>>(new Set());
@@ -840,6 +842,7 @@ export default function AssetGovernancePanel({
                   <input
                     type="date"
                     value={logFilters.startDate}
+                    max={logFilters.endDate || today}
                     onChange={(e) => setLogFilters((f) => ({ ...f, startDate: e.target.value }))}
                     className="px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                   />
@@ -847,10 +850,13 @@ export default function AssetGovernancePanel({
                   <input
                     type="date"
                     value={logFilters.endDate}
+                    min={logFilters.startDate || undefined}
+                    max={today}
                     onChange={(e) => setLogFilters((f) => ({ ...f, endDate: e.target.value }))}
                     className="px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-[#3182ce]/20 focus:border-[#3182ce]"
                   />
                 </div>
+
                 <div className="flex items-center gap-2">
                   <input
                     type="text"

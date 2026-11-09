@@ -1,0 +1,697 @@
+{
+  "capturedAt": "2026-11-07T05:59:26.698Z",
+  "originalIssue": "F10 subscription-expiry cron fail-open / raw balance zeroing",
+  "cases": [
+    {
+      "name": "production_missing_secret_anonymous",
+      "environment": "production",
+      "configuredSecret": false,
+      "providedKey": false,
+      "reclaim": false,
+      "renewAfterScan": false,
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "checkedAt": "2026-11-07T05:59:26.684Z",
+        "downgraded": 1,
+        "reclaimedPoints": false,
+        "affected": [
+          {
+            "id": "fixture-workspace",
+            "name": "Fixture",
+            "fromPlan": "PRO",
+            "toPlan": "STANDARD"
+          }
+        ]
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.658Z",
+          "planExpiresAt": "2026-11-06T05:59:26.658Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "STANDARD",
+          "planStartedAt": null,
+          "planExpiresAt": null,
+          "planBillingCycle": null,
+          "extraSeats": 0,
+          "workspacequotaId": "fixture-quota",
+          "updatedAt": "2026-11-07T05:59:26.685Z"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "2",
+          "tokenBalance": "850",
+          "updatedAt": "2026-11-07T05:59:26.685Z"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": [
+          {
+            "kind": "read",
+            "table": "workspaceplan"
+          },
+          {
+            "kind": "read",
+            "table": "workspace",
+            "where": {
+              "plan": {
+                "not": "STANDARD"
+              },
+              "planExpiresAt": {
+                "not": null,
+                "lt": "2026-11-07T05:59:26.684Z"
+              }
+            }
+          },
+          {
+            "kind": "transaction"
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspace",
+            "where": {
+              "id": "fixture-workspace"
+            },
+            "data": {
+              "plan": "STANDARD",
+              "planStartedAt": null,
+              "planExpiresAt": null,
+              "planBillingCycle": null,
+              "extraSeats": 0,
+              "updatedAt": "2026-11-07T05:59:26.685Z"
+            }
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspacequota",
+            "where": {
+              "id": "fixture-quota"
+            },
+            "data": {
+              "enterpriseSlots": "2",
+              "updatedAt": "2026-11-07T05:59:26.685Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "development_missing_secret_anonymous",
+      "environment": "development",
+      "configuredSecret": false,
+      "providedKey": false,
+      "reclaim": false,
+      "renewAfterScan": false,
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "checkedAt": "2026-11-07T05:59:26.690Z",
+        "downgraded": 1,
+        "reclaimedPoints": false,
+        "affected": [
+          {
+            "id": "fixture-workspace",
+            "name": "Fixture",
+            "fromPlan": "PRO",
+            "toPlan": "STANDARD"
+          }
+        ]
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.689Z",
+          "planExpiresAt": "2026-11-06T05:59:26.689Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "STANDARD",
+          "planStartedAt": null,
+          "planExpiresAt": null,
+          "planBillingCycle": null,
+          "extraSeats": 0,
+          "workspacequotaId": "fixture-quota",
+          "updatedAt": "2026-11-07T05:59:26.690Z"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "2",
+          "tokenBalance": "850",
+          "updatedAt": "2026-11-07T05:59:26.690Z"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": [
+          {
+            "kind": "read",
+            "table": "workspaceplan"
+          },
+          {
+            "kind": "read",
+            "table": "workspace",
+            "where": {
+              "plan": {
+                "not": "STANDARD"
+              },
+              "planExpiresAt": {
+                "not": null,
+                "lt": "2026-11-07T05:59:26.690Z"
+              }
+            }
+          },
+          {
+            "kind": "transaction"
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspace",
+            "where": {
+              "id": "fixture-workspace"
+            },
+            "data": {
+              "plan": "STANDARD",
+              "planStartedAt": null,
+              "planExpiresAt": null,
+              "planBillingCycle": null,
+              "extraSeats": 0,
+              "updatedAt": "2026-11-07T05:59:26.690Z"
+            }
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspacequota",
+            "where": {
+              "id": "fixture-quota"
+            },
+            "data": {
+              "enterpriseSlots": "2",
+              "updatedAt": "2026-11-07T05:59:26.690Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "configured_wrong_key_control",
+      "environment": "production",
+      "configuredSecret": true,
+      "providedKey": true,
+      "reclaim": false,
+      "renewAfterScan": false,
+      "httpStatus": 401,
+      "response": {
+        "error": "unauthorized"
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.690Z",
+          "planExpiresAt": "2026-11-06T05:59:26.690Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.690Z",
+          "planExpiresAt": "2026-11-06T05:59:26.690Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      }
+    },
+    {
+      "name": "configured_valid_key_preserves_points",
+      "environment": "production",
+      "configuredSecret": true,
+      "providedKey": true,
+      "reclaim": false,
+      "renewAfterScan": false,
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "checkedAt": "2026-11-07T05:59:26.694Z",
+        "downgraded": 1,
+        "reclaimedPoints": false,
+        "affected": [
+          {
+            "id": "fixture-workspace",
+            "name": "Fixture",
+            "fromPlan": "PRO",
+            "toPlan": "STANDARD"
+          }
+        ]
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.693Z",
+          "planExpiresAt": "2026-11-06T05:59:26.693Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "STANDARD",
+          "planStartedAt": null,
+          "planExpiresAt": null,
+          "planBillingCycle": null,
+          "extraSeats": 0,
+          "workspacequotaId": "fixture-quota",
+          "updatedAt": "2026-11-07T05:59:26.694Z"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "2",
+          "tokenBalance": "850",
+          "updatedAt": "2026-11-07T05:59:26.694Z"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": [
+          {
+            "kind": "read",
+            "table": "workspaceplan"
+          },
+          {
+            "kind": "read",
+            "table": "workspace",
+            "where": {
+              "plan": {
+                "not": "STANDARD"
+              },
+              "planExpiresAt": {
+                "not": null,
+                "lt": "2026-11-07T05:59:26.694Z"
+              }
+            }
+          },
+          {
+            "kind": "transaction"
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspace",
+            "where": {
+              "id": "fixture-workspace"
+            },
+            "data": {
+              "plan": "STANDARD",
+              "planStartedAt": null,
+              "planExpiresAt": null,
+              "planBillingCycle": null,
+              "extraSeats": 0,
+              "updatedAt": "2026-11-07T05:59:26.694Z"
+            }
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspacequota",
+            "where": {
+              "id": "fixture-quota"
+            },
+            "data": {
+              "enterpriseSlots": "2",
+              "updatedAt": "2026-11-07T05:59:26.694Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "configured_reclaim_flag_zeros_balance_without_source_accounting",
+      "environment": "production",
+      "configuredSecret": true,
+      "providedKey": true,
+      "reclaim": true,
+      "renewAfterScan": false,
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "checkedAt": "2026-11-07T05:59:26.695Z",
+        "downgraded": 1,
+        "reclaimedPoints": true,
+        "affected": [
+          {
+            "id": "fixture-workspace",
+            "name": "Fixture",
+            "fromPlan": "PRO",
+            "toPlan": "STANDARD"
+          }
+        ]
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.694Z",
+          "planExpiresAt": "2026-11-06T05:59:26.694Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "STANDARD",
+          "planStartedAt": null,
+          "planExpiresAt": null,
+          "planBillingCycle": null,
+          "extraSeats": 0,
+          "workspacequotaId": "fixture-quota",
+          "updatedAt": "2026-11-07T05:59:26.695Z"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "2",
+          "tokenBalance": "0",
+          "updatedAt": "2026-11-07T05:59:26.695Z"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": [
+          {
+            "kind": "read",
+            "table": "workspaceplan"
+          },
+          {
+            "kind": "read",
+            "table": "workspace",
+            "where": {
+              "plan": {
+                "not": "STANDARD"
+              },
+              "planExpiresAt": {
+                "not": null,
+                "lt": "2026-11-07T05:59:26.695Z"
+              }
+            }
+          },
+          {
+            "kind": "transaction"
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspace",
+            "where": {
+              "id": "fixture-workspace"
+            },
+            "data": {
+              "plan": "STANDARD",
+              "planStartedAt": null,
+              "planExpiresAt": null,
+              "planBillingCycle": null,
+              "extraSeats": 0,
+              "updatedAt": "2026-11-07T05:59:26.695Z"
+            }
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspacequota",
+            "where": {
+              "id": "fixture-quota"
+            },
+            "data": {
+              "enterpriseSlots": "2",
+              "tokenBalance": "0",
+              "updatedAt": "2026-11-07T05:59:26.695Z"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "renewed_after_scan_still_downgraded",
+      "environment": "production",
+      "configuredSecret": true,
+      "providedKey": true,
+      "reclaim": false,
+      "renewAfterScan": true,
+      "httpStatus": 200,
+      "response": {
+        "success": true,
+        "checkedAt": "2026-11-07T05:59:26.696Z",
+        "downgraded": 1,
+        "reclaimedPoints": false,
+        "affected": [
+          {
+            "id": "fixture-workspace",
+            "name": "Fixture",
+            "fromPlan": "PRO",
+            "toPlan": "STANDARD"
+          }
+        ]
+      },
+      "before": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "PRO",
+          "planStartedAt": "2026-09-28T05:59:26.695Z",
+          "planExpiresAt": "2026-11-06T05:59:26.695Z",
+          "planBillingCycle": "MONTH",
+          "extraSeats": 5,
+          "workspacequotaId": "fixture-quota"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "20",
+          "tokenBalance": "850"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": []
+      },
+      "after": {
+        "workspace": {
+          "id": "fixture-workspace",
+          "name": "Fixture",
+          "plan": "STANDARD",
+          "planStartedAt": null,
+          "planExpiresAt": null,
+          "planBillingCycle": null,
+          "extraSeats": 0,
+          "workspacequotaId": "fixture-quota",
+          "updatedAt": "2026-11-07T05:59:26.696Z"
+        },
+        "quota": {
+          "id": "fixture-quota",
+          "enterpriseSlots": "2",
+          "tokenBalance": "850",
+          "updatedAt": "2026-11-07T05:59:26.696Z"
+        },
+        "grants": [
+          {
+            "id": "fixture-grant",
+            "remaining": "850"
+          }
+        ],
+        "ledger": [],
+        "events": [
+          {
+            "kind": "read",
+            "table": "workspaceplan"
+          },
+          {
+            "kind": "read",
+            "table": "workspace",
+            "where": {
+              "plan": {
+                "not": "STANDARD"
+              },
+              "planExpiresAt": {
+                "not": null,
+                "lt": "2026-11-07T05:59:26.696Z"
+              }
+            }
+          },
+          {
+            "kind": "transaction"
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspace",
+            "where": {
+              "id": "fixture-workspace"
+            },
+            "data": {
+              "plan": "STANDARD",
+              "planStartedAt": null,
+              "planExpiresAt": null,
+              "planBillingCycle": null,
+              "extraSeats": 0,
+              "updatedAt": "2026-11-07T05:59:26.696Z"
+            }
+          },
+          {
+            "kind": "write",
+            "scope": "TX",
+            "table": "workspacequota",
+            "where": {
+              "id": "fixture-quota"
+            },
+            "data": {
+              "enterpriseSlots": "2",
+              "updatedAt": "2026-11-07T05:59:26.696Z"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "sha256": {
+    "src/app/api/cron/workspace-subscription-expire/route.ts": "e514c43a62b5c300f61b140a30aed4895aee18c031b4aefa741a78c12391e3a3",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "docs/product-business-review-2026-11-05/RESTRUCTURING-PROPOSAL.md": "cdbe807f79bbebecc41bb1533d222edb9221515dd68745896bf9747fbcacf22c",
+    "src/app/api/workspace/seat-addon/route.ts": "054ec8a2a61e366bba55f0c0b98abd7e4803581be3dec6e7a64f817e3d3a78a1",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb"
+  },
+  "limits": "Synthetic env only; actual route direct execution plus static middleware evidence, no live HTTP or real DB/secret. Renewal modeled between scan and transaction; not real lock testing. Grants/ledger retained as memory sentinels to show the route has no source-accounting writes."
+}

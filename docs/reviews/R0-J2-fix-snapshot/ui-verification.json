@@ -1,0 +1,171 @@
+{
+  "capturedAt": "2026-11-08T03:29:05.171Z",
+  "scenarioCount": 10,
+  "observations": [
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "success",
+      "status": 200,
+      "threw": null,
+      "visibleIds": [
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已删除 2 项资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "partial",
+      "status": 207,
+      "threw": null,
+      "visibleIds": [
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已删除 1 项，1 项失败（synthetic failure）"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "denied",
+      "status": 403,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic denied"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "server-error",
+      "status": 500,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic server-error"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchDeleteAssets",
+      "mode": "missing-collection",
+      "status": 200,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "info",
+          "message": "没有需要删除的资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "success",
+      "status": 200,
+      "threw": null,
+      "visibleIds": [
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 2 项资料"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "partial",
+      "status": 207,
+      "threw": null,
+      "visibleIds": [
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "warning",
+          "message": "已移除 1 项。1 项删除失败（synthetic failure）"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "denied",
+      "status": 403,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic denied"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "server-error",
+      "status": 500,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "synthetic server-error"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "mode": "missing-collection",
+      "status": 200,
+      "threw": null,
+      "visibleIds": [
+        "ok-item",
+        "fail-item",
+        "unrelated"
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "已成功移除 undefined 项资料"
+        }
+      ]
+    }
+  ],
+  "limits": "Actual callbacks via AST/transpile + synthetic fetch/state; no browser DOM. R0-J2 §5: only succeededIds removed; failed/skipped/unrelated retained; 401/403/5xx leave list untouched with error toast; missing success collection treated as empty (never all-requested-as-success)."
+}

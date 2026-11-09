@@ -1,0 +1,284 @@
+{
+  "capturedAt": "2026-11-07T09:57:01.013Z",
+  "tests": 6,
+  "evidence": [
+    {
+      "case": "I01-I03",
+      "rows": [
+        {
+          "label": "explicit",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "explicit",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "explicit",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        }
+      ]
+    },
+    {
+      "case": "I02-I03",
+      "rows": [
+        {
+          "label": "default BYOK",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "default BYOK",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "platform to final BYOK with settlement ALL",
+          "status": 409,
+          "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+          "error": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        }
+      ]
+    },
+    {
+      "case": "I-MONTH-ORDER",
+      "rows": [
+        {
+          "label": "R0-H2 snapshot expired month",
+          "status": 200,
+          "code": null,
+          "error": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "quotaCycleCalls": 1,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT workspacemember.update",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "current expired month blocked before reset",
+          "status": 400,
+          "code": null,
+          "error": "您本月的个人算力点配额已用尽（当前已用 1000/1000，本次需要 100），请联系空间管理员提升配额",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        }
+      ]
+    },
+    {
+      "case": "I06-month-controls",
+      "rows": [
+        {
+          "label": "current month under limit",
+          "status": 200,
+          "code": null,
+          "error": null,
+          "consume": 1,
+          "hold": 0,
+          "execute": 1,
+          "refund": 0,
+          "tasks": [
+            "SUCCESS"
+          ],
+          "quotaCycleCalls": 1,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create",
+            "ROOT tenant.upsert",
+            "ROOT componenttask.create",
+            "TX tenant.upsert",
+            "TX componentstats.upsert",
+            "TX componentcatalog.update",
+            "TX componenttask.updateMany"
+          ],
+          "rawIo": []
+        },
+        {
+          "label": "current month exhausted",
+          "status": 400,
+          "code": null,
+          "error": "您本月的个人算力点配额已用尽（当前已用 1000/1000，本次需要 100），请联系空间管理员提升配额",
+          "consume": 0,
+          "hold": 0,
+          "execute": 0,
+          "refund": 0,
+          "tasks": [],
+          "quotaCycleCalls": 0,
+          "writes": [
+            "ROOT componentusage.create",
+            "ROOT operationlog.create"
+          ],
+          "rawIo": []
+        }
+      ]
+    },
+    {
+      "case": "I04-mocked-registry-controls",
+      "rows": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1&deploymentId=byo:w1",
+          "status": 200,
+          "data": {
+            "componentId": "comp-1",
+            "componentName": "测试组件",
+            "workspaceId": "w1",
+            "deployment": {
+              "id": "byo:w1",
+              "providerId": "prov-1",
+              "modelId": "model-1",
+              "upstreamModelId": "model-1"
+            },
+            "blocked": true,
+            "canExecute": false,
+            "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+            "message": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次不产生可扣点报价，未扣点、未调用模型；您的模型配置与绑定已保留。",
+            "tokens": {
+              "basis": "PAUSED"
+            },
+            "points": null,
+            "yuan": null,
+            "basis": null,
+            "blockedReason": "BYOK_BILLING_POLICY_UNCONFIRMED",
+            "explanation": "自带模型（BYOK）任务调用暂停：平台收费口径待确认，本次不提供可扣点报价，未扣点、未调用模型。",
+            "snapshot": null,
+            "settlement": null,
+            "pendingRegistration": null
+          }
+        },
+        {
+          "url": "/api/billing/byok-preview?workspaceId=w1",
+          "status": 200,
+          "data": {
+            "workspaceId": "w1",
+            "tokens": {
+              "input": 0,
+              "output": 0
+            },
+            "blocked": true,
+            "canExecute": false,
+            "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+            "message": "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次不产生可扣点报价，未扣点、未调用模型。",
+            "points": null,
+            "yuan": null,
+            "basis": null,
+            "blockedReason": "BYOK_BILLING_POLICY_UNCONFIRMED",
+            "byokServiceRateBps": 1500,
+            "snapshot": null
+          }
+        }
+      ],
+      "limits": "Registry IO mocked only in this control; real registry checked separately."
+    },
+    {
+      "case": "I-GET-DDL",
+      "status": 200,
+      "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+      "rawIo": [
+        {
+          "method": "$executeRawUnsafe",
+          "args": [
+            "ALTER TABLE `workspace_byo_model` ADD COLUMN `shareWithMembers` BOOLEAN NOT NULL DEFAULT true"
+          ]
+        }
+      ],
+      "limits": "Raw Prisma IO intercepted; no SQL or actual key decryption executed."
+    }
+  ]
+}

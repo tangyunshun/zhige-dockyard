@@ -1,0 +1,1308 @@
+{
+  "capturedAt": "2026-11-06T15:41:51.025Z",
+  "verdict": "PASS bounded R0-B3 source and isolated acceptance; freeze seat batch",
+  "fixedMatrix": [
+    {
+      "scenario": "T01_before_callback_order",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单已超时未支付，拒绝入账"
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "T01_before_callback_plan",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses order deadline after precheck, before transaction"
+      ]
+    },
+    {
+      "scenario": "T02",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单已超时未支付，拒绝入账"
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+      ]
+    },
+    {
+      "scenario": "T03",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+      ]
+    },
+    {
+      "scenario": "T04",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances during transaction workspace read, before seat write"
+      ]
+    },
+    {
+      "scenario": "T05",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-11-06T08:00:00.500Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock crosses plan deadline before conditional workspace write"
+      ]
+    },
+    {
+      "scenario": "T06_commit_only_crosses_deadline",
+      "response": [
+        {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        {
+          "ok": true,
+          "status": "ALREADY_PROCESSED",
+          "seats": 2,
+          "workspaceId": "w1"
+        }
+      ],
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances only after callback authorization, at commit"
+      ]
+    },
+    {
+      "scenario": "T07_equal",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T07_null",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": null,
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": null
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T07_normal",
+      "response": {
+        "ok": true,
+        "status": "FULFILLED",
+        "seats": 2,
+        "workspaceId": "w1"
+      },
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T08_concurrent_only_once",
+      "response": [
+        {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        {
+          "ok": true,
+          "status": "ALREADY_PROCESSED",
+          "seats": 2,
+          "workspaceId": "w1"
+        }
+      ],
+      "orderStatus": "SUCCESS",
+      "extraSeats": 2,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T08_failWorkspace",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单状态未确认变更（可凭订单号查询核实），可安全重试同一订单",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T08_failCommit",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "席位履约事务失败，订单状态未确认变更（可凭订单号查询核实），可安全重试同一订单",
+        "retryable": true
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    },
+    {
+      "scenario": "T08_quote_changes_at_write",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "空间资格或报价基准已变化，席位未发放，请人工核查（订单保留待支付原状）"
+      },
+      "orderStatus": "PENDING",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:00.000Z",
+      "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T09:00:00.000Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        }
+      ],
+      "events": []
+    }
+  ],
+  "beforeAfterSameIO": [
+    {
+      "id": "T02",
+      "before": {
+        "scenario": "T02_old",
+        "response": {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        "orderStatus": "SUCCESS",
+        "extraSeats": 2,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+        "planExpiresAt": "2026-12-06T08:00:00.000Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "OR": [
+                {
+                  "expiresAt": null
+                },
+                {
+                  "expiresAt": {
+                    "gte": "2026-11-06T08:00:00.000Z"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": {
+                "gt": "2026-11-06T08:00:00.000Z",
+                "equals": "2026-12-06T08:00:00.000Z"
+              }
+            }
+          }
+        ],
+        "events": [
+          "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+        ]
+      },
+      "after": {
+        "scenario": "T02_fixed",
+        "response": {
+          "ok": false,
+          "status": "REJECTED",
+          "error": "订单已超时未支付，拒绝入账"
+        },
+        "orderStatus": "EXPIRED",
+        "extraSeats": 0,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+        "planExpiresAt": "2026-12-06T08:00:00.000Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "expiresAt": "2026-11-06T08:00:00.500Z"
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": "2026-12-06T08:00:00.000Z"
+            }
+          },
+          {
+            "kind": "ROOT",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING"
+            }
+          }
+        ],
+        "events": [
+          "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+        ]
+      }
+    },
+    {
+      "id": "T03",
+      "before": {
+        "scenario": "T03_old",
+        "response": {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        "orderStatus": "SUCCESS",
+        "extraSeats": 2,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "OR": [
+                {
+                  "expiresAt": null
+                },
+                {
+                  "expiresAt": {
+                    "gte": "2026-11-06T08:00:00.000Z"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": {
+                "gt": "2026-11-06T08:00:00.000Z",
+                "equals": "2026-11-06T08:00:00.500Z"
+              }
+            }
+          }
+        ],
+        "events": [
+          "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+        ]
+      },
+      "after": {
+        "scenario": "T03_fixed",
+        "response": {
+          "ok": false,
+          "status": "REJECTED",
+          "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+        },
+        "orderStatus": "PENDING",
+        "extraSeats": 0,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "expiresAt": "2026-11-06T09:00:00.000Z"
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": "2026-11-06T08:00:00.500Z"
+            }
+          }
+        ],
+        "events": [
+          "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+        ]
+      }
+    },
+    {
+      "id": "T04",
+      "before": {
+        "scenario": "T04_old",
+        "response": {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        "orderStatus": "SUCCESS",
+        "extraSeats": 2,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "OR": [
+                {
+                  "expiresAt": null
+                },
+                {
+                  "expiresAt": {
+                    "gte": "2026-11-06T08:00:00.000Z"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": {
+                "gt": "2026-11-06T08:00:00.000Z",
+                "equals": "2026-11-06T08:00:00.500Z"
+              }
+            }
+          }
+        ],
+        "events": [
+          "Clock advances during transaction workspace read, before seat write"
+        ]
+      },
+      "after": {
+        "scenario": "T04_fixed",
+        "response": {
+          "ok": false,
+          "status": "REJECTED",
+          "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+        },
+        "orderStatus": "PENDING",
+        "extraSeats": 0,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "expiresAt": "2026-11-06T09:00:00.000Z"
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": "2026-11-06T08:00:00.500Z"
+            }
+          }
+        ],
+        "events": [
+          "Clock advances during transaction workspace read, before seat write"
+        ]
+      }
+    },
+    {
+      "id": "T05",
+      "before": {
+        "scenario": "T05_old",
+        "response": {
+          "ok": true,
+          "status": "FULFILLED",
+          "seats": 2,
+          "workspaceId": "w1"
+        },
+        "orderStatus": "SUCCESS",
+        "extraSeats": 2,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "OR": [
+                {
+                  "expiresAt": null
+                },
+                {
+                  "expiresAt": {
+                    "gte": "2026-11-06T08:00:00.000Z"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": {
+                "gt": "2026-11-06T08:00:00.000Z",
+                "equals": "2026-11-06T08:00:00.500Z"
+              }
+            }
+          }
+        ],
+        "events": [
+          "Clock crosses plan deadline before conditional workspace write"
+        ]
+      },
+      "after": {
+        "scenario": "T05_fixed",
+        "response": {
+          "ok": false,
+          "status": "REJECTED",
+          "error": "订单或套餐在最终授权点已不满足有效期限，席位未发放，请人工核查（订单保留待支付原状）"
+        },
+        "orderStatus": "PENDING",
+        "extraSeats": 0,
+        "now": "2026-11-06T08:00:02.000Z",
+        "orderExpiresAt": "2026-11-06T09:00:00.000Z",
+        "planExpiresAt": "2026-11-06T08:00:00.500Z",
+        "writes": [
+          {
+            "kind": "TX",
+            "table": "billingrecord",
+            "method": "updateMany",
+            "where": {
+              "id": "SA_fixture",
+              "status": "PENDING",
+              "expiresAt": "2026-11-06T09:00:00.000Z"
+            }
+          },
+          {
+            "kind": "TX",
+            "table": "workspace",
+            "method": "updateMany",
+            "where": {
+              "id": "w1",
+              "type": "ENTERPRISE",
+              "status": {
+                "notIn": [
+                  "ARCHIVED",
+                  "DISABLED"
+                ]
+              },
+              "plan": "PRO",
+              "planBillingCycle": "MONTH",
+              "planExpiresAt": "2026-11-06T08:00:00.500Z"
+            }
+          }
+        ],
+        "events": [
+          "Clock crosses plan deadline before conditional workspace write"
+        ]
+      }
+    }
+  ],
+  "otherEntries": [
+    {
+      "scenario": "T02_other_entry_real_wrapper",
+      "response": {
+        "ok": false,
+        "status": "REJECTED",
+        "error": "订单已超时未支付，拒绝入账"
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+      ]
+    },
+    {
+      "scenario": "T02_other_entry_mock_route",
+      "response": {
+        "httpStatus": 409,
+        "body": {
+          "error": "订单已超时未支付，拒绝入账"
+        }
+      },
+      "orderStatus": "EXPIRED",
+      "extraSeats": 0,
+      "now": "2026-11-06T08:00:02.000Z",
+      "orderExpiresAt": "2026-11-06T08:00:00.500Z",
+      "planExpiresAt": "2026-12-06T08:00:00.000Z",
+      "writes": [
+        {
+          "kind": "TX",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING",
+            "expiresAt": "2026-11-06T08:00:00.500Z"
+          }
+        },
+        {
+          "kind": "TX",
+          "table": "workspace",
+          "method": "updateMany",
+          "where": {
+            "id": "w1",
+            "type": "ENTERPRISE",
+            "status": {
+              "notIn": [
+                "ARCHIVED",
+                "DISABLED"
+              ]
+            },
+            "plan": "PRO",
+            "planBillingCycle": "MONTH",
+            "planExpiresAt": "2026-12-06T08:00:00.000Z"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "billingrecord",
+          "method": "updateMany",
+          "where": {
+            "id": "SA_fixture",
+            "status": "PENDING"
+          }
+        }
+      ],
+      "events": [
+        "Clock advances inside first conditional write, after callback sampled now, before condition evaluation"
+      ]
+    }
+  ],
+  "snapshotChecks": [
+    {
+      "file": "src/lib/payment/seat-addon-fulfill.ts",
+      "startMatchesPreviousAudit": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "startMatchesPreviousAudit": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    }
+  ],
+  "frozenChecks": [
+    {
+      "file": "src/lib/payment/fulfill.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/app/api/payments/mock/confirm/route.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/app/user/pay/qr/page.tsx",
+      "unchanged": true
+    },
+    {
+      "file": "src/app/user/pay/mock/page.tsx",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment-cashier-display.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/app/api/workspace/seat-addon/route.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/order-expiry.ts",
+      "unchanged": true
+    }
+  ],
+  "isolation": "Actual current and frozen start service loaded independently in separate memory fixtures. Actual REAL wrapper/MOCK route, expiry helper; closed IO stubs. No swapping/restoring current workspace source, DB, network or paid calls.",
+  "limits": "Serial in-memory transactions simulate waits and undo. Not real MySQL locks, browser DOM, actual provider transaction or production/financial acceptance. Commit-only wait allowed by frozen policy.",
+  "sha256": {
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/app/api/payments/mock/confirm/route.ts": "2795103fc335ab5be7334625b133e9ab5f02de6cc05c85762ced962892b1edc0",
+    "src/lib/workspace-readonly-guard.ts": "0e48b9f58526f70468ae6dcfba66f076741b7d3931b6ddc9e5fa812f04a34190",
+    "src/app/api/workspace/seat-addon/route.ts": "0ab6a55c346664fec69a48a0b66fb92680d72acf91dadc2b71b7910c710cb263",
+    "src/app/api/payments/order/route.ts": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+    "docs/reviews/R0-B3-fix-snapshot/frozen-source/src__lib__payment__seat-addon-fulfill.ts": "4fc0e9a42e95e3df9e457fdcfde7bfba125316a48d750f89546d9e3aefc26c6a",
+    "docs/reviews/R0-B3-fix-snapshot/manifest.json": "03f516082e9e45e430b6371a42b165a61090275ef93ed3f348053d01066eeff0",
+    "docs/reviews/R0-B2-independent-review/verification.json": "cec5d49db5e9aecfea4e84bcababf52d785f109feca805cad1108a4659c90d8a",
+    "src/app/user/pay/qr/page.tsx": "12663337c65beb3affed3e835e472d9603e1e4df34ede0e143501c255ed26aa0",
+    "src/app/user/pay/mock/page.tsx": "0f0b2d84306a964edb6979164283e1a79a435894cce62018f5603b22242b0734",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc590179a3c6766d9cb60b2785818caf0a0d3052d1c9dc86db11",
+    "src/app/api/__tests__/r0b-seat-addon.test.ts": "6077a33df08ab79ac554f746af7d6c9e900223992c305568b5009c2bf308b413",
+    "docs/reviews/R0-B3-fix-report.md": "ca257a2f240d1428e57003b42d3c27658ad9ccd984bee718d3a6b070c620f2c2"
+  }
+}

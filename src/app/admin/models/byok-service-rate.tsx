@@ -61,7 +61,7 @@ export function ByokServiceRateSync({ onApplied }: { onApplied?: () => void }) {
     });
     setSaving(false);
     if (ok && json?.success) {
-      toast.success(`BYO 平台服务费率已设为 ${(json.data.percent as number).toFixed(2)}%`);
+      toast.success(`BYO 平台服务费率已保存为 ${(json.data.percent as number).toFixed(2)}%（仅保存配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权）`);
       setConfirmOpen(false);
       await load();
       onApplied?.();
@@ -87,19 +87,19 @@ export function ByokServiceRateSync({ onApplied }: { onApplied?: () => void }) {
             </div>
             <div
               className="text-[11px] text-slate-400 truncate"
-              title="对所有空间自带私有模型（BYO）调用的统一抽佣比例"
+              title="对所有空间自带私有模型（BYO）的统一抽佣比例（仅存配置；Studio 自带模型任务调用仍暂停，恢复需单独授权）"
             >
-              自带私有模型（BYO）全局统一抽佣比例
+              自带私有模型（BYO）全局统一抽佣比例（仅存配置）
             </div>
           </div>
         </div>
 
         <div
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-emerald-50 border border-emerald-100/80 text-emerald-700 text-[11px] font-bold shrink-0"
-          title="修改后即刻生效，无需发版"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-50 border border-amber-100/80 text-amber-700 text-[11px] font-bold shrink-0"
+          title="仅保存费率配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-          实时生效 · 无需发版
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+          任务暂停 · 仅保存配置
         </div>
       </div>
 
@@ -153,20 +153,20 @@ export function ByokServiceRateSync({ onApplied }: { onApplied?: () => void }) {
       <div className="bg-slate-50/70 border-t border-slate-100/90 px-4 sm:px-5 py-2.5 text-[11px] text-slate-500 flex items-center justify-between gap-2">
         <span
           className="truncate"
-          title="服务费对所有自带私有模型（BYO）统一生效，保存后立即对系统估价与结算口径生效"
+          title="费率仅作为已存配置展示：自带模型（BYO）任务调用当前暂停（平台收费口径待确认），保存的费率不会立即用于 Studio 任务收费"
         >
-          服务费对所有自带私有模型（BYO）统一生效，保存后立即应用于计费结算
+          费率仅作为已存配置展示：自带模型任务调用当前暂停（收费口径待确认），不会用于当前任务收费
         </span>
       </div>
 
       <ConfirmDialog
         isOpen={confirmOpen}
         type="danger"
-        title="确认修改 BYO 平台服务费率？"
-        message="该费率为全局单一真源，对所有空间的自带模型统一生效。已登记价格的自带模型对外收费将按新费率实时重新折算。"
+        title="确认保存 BYO 平台服务费率？"
+        message="仅保存费率配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权。"
         warnings={[
           `服务费率：${percent != null ? (percent).toFixed(2) : "—"}% → ${valid ? pctNum.toFixed(2) : "—"}%`,
-          "立即对全部自带模型的估价 / 结算口径生效，无法撤销",
+          "保存不会恢复自带模型任务调用或启动收费；费率数值仅作为已存配置保留",
         ]}
         confirmText="确认保存"
         cancelText="取消"

@@ -1,0 +1,50 @@
+{
+  "capturedAtReal": "2026-11-08T02:40:00+08:00",
+  "purpose": "R0-J2 batch end hashes (after storage op persistence / atomic binding / clear-data claim protocol / UI partial-success fixes)",
+  "files": {
+    "src/lib/storage-quota.ts": {
+      "sha256End": "bd674807ddec52534ea3593331ecc86c925d95e1ef8af9b778c170196a1f8c02",
+      "sha256Start": "de7f954af9f42db499c305e1b8cb836d4779641093ce399611d6bea8652516d9",
+      "changed": true
+    },
+    "src/lib/file-store.ts": {
+      "sha256End": "f53ff936c4b29d48b93082c4e78129d24e394c852f3219da5244e138fa045ba2",
+      "sha256Start": "f53ff936c4b29d48b93082c4e78129d24e394c852f3219da5244e138fa045ba2",
+      "changed": false,
+      "note": "R0-J1 J-KEYS 已通过的 S3 同键/本地候选顺序保持冻结，本批零改动"
+    },
+    "src/app/api/studio/handler.ts": {
+      "sha256End": "a5b69ab74dfa2b0fdb01fd418fa2fb691bafb2e98b11d692fa9b9b8f3729d09b",
+      "sha256Start": "4fc881ad66a7f40c5d96365d699a8f6918568eb61eb54fb8fa9972aefb693b21",
+      "changed": true
+    },
+    "src/app/api/workspace/clear-data/route.ts": {
+      "sha256End": "86377e12c6627febb0f6ba726c3b2d579532f1c472d02628117953e1fbb8be81",
+      "sha256Start": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d",
+      "changed": true,
+      "note": "R0-J1 报告曾宣称已改但起止哈希相同（意外还原）；本批实际修改，起≠止"
+    },
+    "src/components/WorkspaceInternalLayoutV3.tsx": {
+      "sha256End": "8c1e17b358b8dfcd37d6a269c7989ce9245771ce9eaf8ff5ba2dd608bbe6f926",
+      "sha256Start": "fc23f4e02bea0b24658ffbd8e5a0002e5b85dc23fcdffa1b0228127394980e35",
+      "changed": true
+    },
+    "prisma/schema.prisma": {
+      "sha256End": "7665df42d13faf1e5327f63a1e29796570dd8c559c276ef2a4d0e9382ce26cb9",
+      "sha256Start": "09167a47",
+      "changed": true,
+      "note": "storageoperation.id 增加 @default(cuid())（R0-J1 草案遗留的无默认值主键契约修正）"
+    },
+    "src/app/api/__tests__/r0j-storage.test.ts": {
+      "sha256End": "ad0046d8403ac9734e859739ba97bda50d3c5d8df36dd57e8c60c95fdda9c233",
+      "sha256Start": "0bbb3504",
+      "changed": true,
+      "note": "夹具补 $transaction 事务语义与 usage>=0 写边界求值；remove_asset 用例按 R0-J2 §3 新契约更新"
+    },
+    "src/app/api/__tests__/r0j2-storage-close.test.ts": {
+      "sha256End": "ac854b55da38362d6a856ae22aeb19ede1064ed782887f52cbcb62d5098d7f18",
+      "isNew": true,
+      "note": "本批新增正向验收 21 用例（§9 表格场景）"
+    }
+  }
+}

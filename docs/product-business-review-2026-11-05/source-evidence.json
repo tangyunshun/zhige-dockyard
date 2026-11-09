@@ -1,0 +1,1038 @@
+{
+  "capturedAt": "2026-11-05T13:26:26.682Z",
+  "costAndEntitlementSymbolInventory": [
+    {
+      "file": "src/app/api/admin/model-deployments/[id]/test/route.ts",
+      "hits": [
+        {
+          "line": 4,
+          "text": "import { testDeploymentConnection } from \"@/lib/model-registry\";"
+        },
+        {
+          "line": 25,
+          "text": "const result = await testDeploymentConnection(id, { ignoreDisabled: true });"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/model-providers/[id]/test/route.ts",
+      "hits": [
+        {
+          "line": 4,
+          "text": "import { testProviderConnection } from \"@/lib/model-registry\";"
+        },
+        {
+          "line": 26,
+          "text": "const result = await testProviderConnection(id, { ignoreDisabled: true });"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/quota-apply/route.ts",
+      "hits": [
+        {
+          "line": 4,
+          "text": "import { grantPoints } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 12,
+          "text": "* 入账复用 grantPoints（pointgrant 分桶 + pointledger 流水 + workspacequota.tokenBalance 同事务更新），"
+        },
+        {
+          "line": 142,
+          "text": "const grantResult = await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/recharge-orders/route.ts",
+      "hits": [
+        {
+          "line": 7,
+          "text": "import { grantPoints } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 238,
+          "text": "const grant = await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/refund-requests/[id]/resolve/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { grantPoints } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 14,
+          "text": "* APPROVE：调用账务层 grantPoints 真正产生 REFUND 流水后退点，并把流水号写回申请单（refundLedgerId），"
+        },
+        {
+          "line": 81,
+          "text": "const grant = await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/settings/test-email/route.ts",
+      "hits": [
+        {
+          "line": 72,
+          "text": "const info = await transporter.sendMail({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/upgrade-applications/route.ts",
+      "hits": [
+        {
+          "line": 5,
+          "text": "import { upgradePersonalToEnterprise } from \"@/lib/workspace-upgrade-service\";"
+        },
+        {
+          "line": 129,
+          "text": "const res = await upgradePersonalToEnterprise({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/workspaces/recycle/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { recycleEnterprisePool } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 44,
+          "text": "const result = await recycleEnterprisePool({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/admin/workspaces/[id]/upgrade-to-enterprise/route.ts",
+      "hits": [
+        {
+          "line": 5,
+          "text": "import { upgradePersonalToEnterprise } from \"@/lib/workspace-upgrade-service\";"
+        },
+        {
+          "line": 45,
+          "text": "const result = await upgradePersonalToEnterprise({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/login/route.ts",
+      "hits": [
+        {
+          "line": 21,
+          "text": "import { grantNewUserGift } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 693,
+          "text": "const gift = await grantNewUserGift({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/qrcode/route.ts",
+      "hits": [
+        {
+          "line": 3,
+          "text": "import { grantNewUserGift } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 121,
+          "text": "await grantNewUserGift({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/register/route.ts",
+      "hits": [
+        {
+          "line": 4,
+          "text": "import { grantNewUserGift } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 6,
+          "text": "import { grantNewSpaceTrialQuota } from \"@/lib/new-space-trial-quota\";"
+        },
+        {
+          "line": 436,
+          "text": "await grantNewSpaceTrialQuota({"
+        },
+        {
+          "line": 443,
+          "text": "await grantNewUserGift({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/send-email-code/route.ts",
+      "hits": [
+        {
+          "line": 3,
+          "text": "import { sendMail, buildVerificationEmailHtml } from \"@/lib/mailer\";"
+        },
+        {
+          "line": 41,
+          "text": "const sendResult = await sendMail({ to: email, subject, text, html });"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/send-sms/route.ts",
+      "hits": [
+        {
+          "line": 2,
+          "text": "import { generateSmsCode, storeSmsCode } from \"@/lib/sms-store\";"
+        },
+        {
+          "line": 19,
+          "text": "const result = storeSmsCode(phone, code);"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/auth/wechat/callback/route.ts",
+      "hits": [
+        {
+          "line": 3,
+          "text": "import { grantNewUserGift } from '@/lib/credit-service';"
+        },
+        {
+          "line": 212,
+          "text": "await grantNewUserGift({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/cron/workspace-subscription-expire/route.ts",
+      "hits": [
+        {
+          "line": 53,
+          "text": "extraSeats: 0,"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/demo-request/route.ts",
+      "hits": [
+        {
+          "line": 3,
+          "text": "import { sendMail } from \"@/lib/mailer\";"
+        },
+        {
+          "line": 112,
+          "text": "const mailResult = await sendMail({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/membership/upgrade/route.ts",
+      "hits": [
+        {
+          "line": 8,
+          "text": "import { grantPoints } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 213,
+          "text": "await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/open/v1/execute/route.ts",
+      "hits": [
+        {
+          "line": 19,
+          "text": "* 渠道标记：pointledger 无 sourceType 字段、consumePoints 也无该入参，"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/payments/create/route.ts",
+      "hits": [
+        {
+          "line": 9,
+          "text": "import { createCharge, resolvePaymentMode, isRealGatewayConfigured } from \"@/lib/payment-gateway\";"
+        },
+        {
+          "line": 119,
+          "text": "const charge = await createCharge({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/payments/mock/confirm/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { grantPoints, getBalanceSummary } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 19,
+          "text": "*  2. 以 orderNo 作为 grantPoints 幂等键，重复点击只会入账一次；"
+        },
+        {
+          "line": 135,
+          "text": "data: { extraSeats: { increment: seats } },"
+        },
+        {
+          "line": 192,
+          "text": "const grant = await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/payments/notify/alipay/route.ts",
+      "hits": [
+        {
+          "line": 5,
+          "text": "import { fulfillPaidOrder } from \"@/lib/payment/fulfill\";"
+        },
+        {
+          "line": 51,
+          "text": "const fulfillment = await fulfillPaidOrder({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/payments/notify/wechat/route.ts",
+      "hits": [
+        {
+          "line": 5,
+          "text": "import { fulfillPaidOrder } from \"@/lib/payment/fulfill\";"
+        },
+        {
+          "line": 41,
+          "text": "const fulfillment = await fulfillPaidOrder({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/studio/handler.ts",
+      "hits": [
+        {
+          "line": 86,
+          "text": "consumePoints,"
+        },
+        {
+          "line": 89,
+          "text": "refundConsumedPoints,"
+        },
+        {
+          "line": 184,
+          "text": "createModelAdapter,"
+        },
+        {
+          "line": 1752,
+          "text": "readonly createModelAdapter: typeof createModelAdapter;"
+        },
+        {
+          "line": 1763,
+          "text": "consumePoints: typeof consumePoints;"
+        },
+        {
+          "line": 1765,
+          "text": "refundConsumedPoints: typeof refundConsumedPoints;"
+        },
+        {
+          "line": 1999,
+          "text": "refundConsumedPoints: (args: {"
+        },
+        {
+          "line": 2025,
+          "text": "await params.refundConsumedPoints({"
+        },
+        {
+          "line": 2204,
+          "text": "createModelAdapter,"
+        },
+        {
+          "line": 2214,
+          "text": "creditService: { consumePoints, consumeAndCreateSettlementHold, refundConsumedPoints },"
+        },
+        {
+          "line": 2242,
+          "text": "const createModelAdapter = ed.createModelAdapter;"
+        },
+        {
+          "line": 2255,
+          "text": "const consumePoints = creditService.consumePoints;"
+        },
+        {
+          "line": 2257,
+          "text": "const refundConsumedPoints = creditService.refundConsumedPoints;"
+        },
+        {
+          "line": 2367,
+          "text": "consumeResult = await consumePoints({"
+        },
+        {
+          "line": 2386,
+          "text": "const refineAdapter = await createModelAdapter(plan);"
+        },
+        {
+          "line": 2400,
+          "text": "await refundConsumedPoints({"
+        },
+        {
+          "line": 2427,
+          "text": "await refundConsumedPoints({"
+        },
+        {
+          "line": 2926,
+          "text": "refundConsumedPoints: creditService.refundConsumedPoints,"
+        },
+        {
+          "line": 3405,
+          "text": "adapter = await createModelAdapter(modelPlan);"
+        },
+        {
+          "line": 3615,
+          "text": "consumeResult = await consumePoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/user/workspaces/route.ts",
+      "hits": [
+        {
+          "line": 60,
+          "text": "extraSeats: true,"
+        },
+        {
+          "line": 300,
+          "text": "extraSeats: ws.extraSeats || 0,"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/create-enterprise/route.ts",
+      "hits": [
+        {
+          "line": 11,
+          "text": "import { grantNewSpaceTrialQuota } from \"@/lib/new-space-trial-quota\";"
+        },
+        {
+          "line": 202,
+          "text": "await grantNewSpaceTrialQuota({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/create-personal/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { grantNewUserGift } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 223,
+          "text": "await grantNewUserGift({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/invitation/verify/route.ts",
+      "hits": [
+        {
+          "line": 82,
+          "text": "const extraSeats = Number(invitation.workspace.extraSeats || 0);"
+        },
+        {
+          "line": 83,
+          "text": "const maxTeamSize = planSeats + extraSeats > 0 ? planSeats + extraSeats : 5;"
+        },
+        {
+          "line": 87,
+          "text": "{ error: `该协作空间的席位已满（上限 ${maxTeamSize} 人，含增购 ${extraSeats} 个），无法加入。请联系空间所有者增购席位或升级套餐。` },"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/join/route.ts",
+      "hits": [
+        {
+          "line": 128,
+          "text": "const extraSeats = Number(invitation.workspace.extraSeats || 0);"
+        },
+        {
+          "line": 129,
+          "text": "const maxTeamSize = planSeats + extraSeats > 0 ? planSeats + extraSeats : 5;"
+        },
+        {
+          "line": 133,
+          "text": "{ error: `该协作空间的席位已满（上限 ${maxTeamSize} 人，含增购 ${extraSeats} 个），无法加入。请联系空间所有者增购席位或升级套餐。` },"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/quota/recharge/route.ts",
+      "hits": [
+        {
+          "line": 10,
+          "text": "import { grantPoints, getBalanceSummary } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 114,
+          "text": "const grantResult = await grantPoints({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/quota/recycle/route.ts",
+      "hits": [
+        {
+          "line": 9,
+          "text": "import { recycleEnterprisePool } from \"@/lib/credit-service\";"
+        },
+        {
+          "line": 54,
+          "text": "const result = await recycleEnterprisePool({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/seat-addon/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { createCharge, resolvePaymentMode } from \"@/lib/payment-gateway\";"
+        },
+        {
+          "line": 122,
+          "text": "const charge = await createCharge({"
+        }
+      ]
+    },
+    {
+      "file": "src/app/api/workspace/upgrade/route.ts",
+      "hits": [
+        {
+          "line": 6,
+          "text": "import { createCharge, resolvePaymentMode } from \"@/lib/payment-gateway\";"
+        },
+        {
+          "line": 10,
+          "text": "provisionEnterpriseUpgrade,"
+        },
+        {
+          "line": 179,
+          "text": "const prov = await provisionEnterpriseUpgrade({"
+        },
+        {
+          "line": 228,
+          "text": "const charge = await createCharge({"
+        }
+      ]
+    }
+  ],
+  "caveat": "Symbol inventory includes imports/helpers and is not exhaustive control-flow proof. Non-symbol cost sources need manual audit.",
+  "sha256": {
+    "prisma/schema.prisma": "21cf68e19ecc886b06988a8e1c42c83fd0e7d3913741bfbe8be1270e7e4183f7",
+    "src/app/api/account-appeal/cancel/route.ts": "a9a793ba4161136069506dee06e8e1696809873e499cb72e7f6c7b28fb618ba9",
+    "src/app/api/account-appeal/my-appeal/route.ts": "a3faaf4b6df87ab1ac76effd56b452bfcb2da1831790d0848cf096887a013a13",
+    "src/app/api/account-appeal/submit/route.ts": "cf26527a3bf131009cc43f819bdb7c7a914dfed2276449382eb6ed6c3798ee76",
+    "src/app/api/admin/account-appeals/delete/route.ts": "e79c627cc4b8ab0990c2265574ae291064d5b8b317a1558f0982941b243447c8",
+    "src/app/api/admin/account-appeals/process/route.ts": "0b2d8f1bc351e3a39f15b39b2df2cffb5e357424521ebd1ca5d8dcf51062c2d1",
+    "src/app/api/admin/account-appeals/route.ts": "54b4c8963fdb29ca4360ad85d331fb79c171e3ce77cb96319800642e91c6a65b",
+    "src/app/api/admin/account-appeals/user-workspaces/route.ts": "4a14cffa5e59f171a4ef4d2255c473c765bb6d3ca99561a3b94cdc9c6791a38a",
+    "src/app/api/admin/account-deletion-config/route.ts": "e0544a5725b30daa4aeb6a5af539bfc77e40bf8ae99f2f0b2b829334a65c971c",
+    "src/app/api/admin/analytics/route.ts": "f354a0fb9626e027f000386470f91c2cd433d7bd7e8181436a3ecb438eabb3d1",
+    "src/app/api/admin/api-keys/route.ts": "bad2fdc9ca29de7ca9625b11cafb668b90c99f650bed738c84b87a6ba8fa8d72",
+    "src/app/api/admin/api-permission-rules/route.ts": "d90b00ac7e633a5cbfa084e38c85b2f2697e3cf4087ff91774276b9ae7e9dcd1",
+    "src/app/api/admin/billing-records/route.ts": "37503b026057b87fc9217397b733cfa7a38570a54d3c239b0b6ff0bec01eaab0",
+    "src/app/api/admin/clean-test-appeal/route.ts": "45447c009a47ac0a3fe71b0127e549ad271f8ab3aa157190705aea09dd182f28",
+    "src/app/api/admin/components/[id]/contracts/[version]/activate/route.ts": "f191166ad165ed10430350fd4aca40efa94b7f7d1e11620abf46db5f75d59055",
+    "src/app/api/admin/components/[id]/contracts/[version]/archive/route.ts": "29711d4241e0d283e3c2216527bd4d1b53d56fb547cec7665c0a67f1754d74e3",
+    "src/app/api/admin/components/[id]/contracts/[version]/delete/route.ts": "ea605954245dc6b9da8a23488ef8dd79fee3f3308aaa660fe1ae59a2d5e726ab",
+    "src/app/api/admin/components/[id]/contracts/[version]/publish/route.ts": "d8ad04ecc47f8dedca84cd4ec0e5ef6660bd9a20d9e5b2097a9f224f849918df",
+    "src/app/api/admin/components/[id]/contracts/[version]/route.ts": "c535dce6b24aa1234e54dcc63605ec7f49add86c4c99a370542f58e09ea6a74f",
+    "src/app/api/admin/components/[id]/contracts/route.ts": "56466f191e2bd0e090a4021be269b1971738221d9ce44b6dc9744783a8e8c03c",
+    "src/app/api/admin/components/batch-delete/route.ts": "15a2b3f8bd6ce30e8ec80b0b5d8b07caff0151a59b001206a81eb2cee22bf2cd",
+    "src/app/api/admin/components/batch-publish/route.ts": "90be71fafbf174e5a1dc0193abcb228270e9d6f4daf56f743a43240ad34811d5",
+    "src/app/api/admin/components/batch-unpublish/route.ts": "7b7fbe8a8e84bdb3b9ba057efd142d63e83e494047096a9ad30844c0cbe7b287",
+    "src/app/api/admin/components/contracts/overview/route.ts": "4061d4e9103ceb7579a0f1c9702d5e70693e896a4e005e4f7e5012a52c0be71b",
+    "src/app/api/admin/components/manual/route.ts": "4b0cb5878e6e4de1f94d448c4f5bb3b138039ab1ba5ad3ff56a84a38cbfd4253",
+    "src/app/api/admin/components/progress-audit/route.ts": "36e298d42fd9509f0b9e25e10ab36e7b1d003def91cdc5ee000e147c8ab31907",
+    "src/app/api/admin/components/route.ts": "4b60f829f5f3567c41c36fc108ab4b8e4271c42b4e025e444967e30eb8184b0a",
+    "src/app/api/admin/components/stats/route.ts": "4093ab10b497336486235be7b123f9f13234a74d025499fc8f9ab7ee82f0dc6b",
+    "src/app/api/admin/components/unpublish-check/route.ts": "579a431c480efe2b69d2a0746d0c9b9dccb670f9ea9c3153575e62710af4e0b6",
+    "src/app/api/admin/dashboard/route.ts": "44ae30ca9ab406162a9b37eeac3a64cfe95e6cdf2a5dd29e34b265d2bcf4084c",
+    "src/app/api/admin/demo-requests/[id]/route.ts": "984c7542ad77051f274cc932695932a316481cfc66871cbbb23e5c2d8787eafd",
+    "src/app/api/admin/demo-requests/route.ts": "f05d9649856260dccd694ababb59798430296f5de4a12d7c685c5cca585709f6",
+    "src/app/api/admin/documents/categories/route.ts": "8369f016d35a97f4f1ca1fce194a52133b924322938cf4f8d5b0e49890decb25",
+    "src/app/api/admin/documents/route.ts": "93dcc7baff0e440a3c0b45ca62eb5f913662baee4b6b0425e73ee35a5083fa43",
+    "src/app/api/admin/documents/sync-excel-markdown/route.ts": "3094dc0a64e23a7180bf71f5f57096841088d7962ff9590e12f0117288129bce",
+    "src/app/api/admin/export-log/route.ts": "6438c4ed8fd53c19b48cd38dbfb9611996705ace8f7bd5aab9bdbd87647dddd7",
+    "src/app/api/admin/login-histories/route.ts": "ec9392f0d729d6663a002c597eb054d55bccaf76c36750c2b943e5b86a2b559b",
+    "src/app/api/admin/membership/levels/[name]/route.ts": "4575849776a60e6a87f8bdd2dde32c7eade4d598b7651cadb8d083dbd70b090a",
+    "src/app/api/admin/membership/levels/route.ts": "e1db3ee71d302776a9863fa1e2240f8d7357f74eb45d77a389bdab2a56ed9718",
+    "src/app/api/admin/membership/logs/route.ts": "137b149a94a0db0d9f3184f75ff9b69ec965146f630be85080eb34aa3caccb74",
+    "src/app/api/admin/membership/orders/route.ts": "27981f736afe39ffa6f68d4359ce285aea0b338e13f56adb2a2b5fde96975830",
+    "src/app/api/admin/membership/stats/route.ts": "d579e1a5992598a628eca75e9cada72297280554750325f87ef0190753ddc576",
+    "src/app/api/admin/membership/users/route.ts": "fb1ff91c0b44be94093ac77d891c0fa0807618ec21cba29eb83f7e99e8ed2c75",
+    "src/app/api/admin/model-capabilities/route.ts": "5225c6ab16d2a27f993ad1c55f63e814bf60dd5cb2d1b3569bb9fdf524a668c0",
+    "src/app/api/admin/model-context/route.ts": "1094acbf91a0efc56653a0a1596cb9077e0ae78d333a7c1fd1e0eca45edde03d",
+    "src/app/api/admin/model-deployments/[id]/route.ts": "3782cfcdba2f0d058ec616ed6476625b497b9391a1515dae4e6f3c4503e27b60",
+    "src/app/api/admin/model-deployments/[id]/test/route.ts": "3fe46f82ae2019e991baa8812f5b5b7298016e43cf684bf2349d30cf551ec769",
+    "src/app/api/admin/model-deployments/default/route.ts": "a4f5faf53b6371b51403e84569d11708a6ce81d6931815596339a51f0726e6f5",
+    "src/app/api/admin/model-deployments/route.ts": "470e8f2948774556fb5bcd12eb0452752cf41139ae8ba2766eaed9ad10f886a7",
+    "src/app/api/admin/model-pricing/[deploymentId]/periods/[periodId]/route.ts": "b2cf6f79c97cff8479393b92360b031f79c84acab15674d2ca60c4a1c06eac51",
+    "src/app/api/admin/model-pricing/[deploymentId]/periods/route.ts": "84beb163603762a970401f85a13b4549da8f89cd4424528c64ddecea57804a8a",
+    "src/app/api/admin/model-pricing/[deploymentId]/route.ts": "d730afdfc645ddbf4e99033a4e12193ec2ce7f88cd7f7dbf6855b4f976642bdb",
+    "src/app/api/admin/model-pricing/byok-service-rate/route.ts": "b5bfddfc3f5a458ee3195e1c932e554cfa5f64e6457de159afbde6ac588d2f32",
+    "src/app/api/admin/model-pricing/global-markup/route.ts": "40c19a93a9d4a4496d238efc572933ae652a26581f91d8cde373c94b43f54035",
+    "src/app/api/admin/model-providers/[id]/route.ts": "4a7cbfaba3cc56763d4a2c991b9cb14e9e6766cc125a419225722d6d4235a9b3",
+    "src/app/api/admin/model-providers/[id]/test/route.ts": "b15015ce6b84c01f880c2075407ce8c92ca2afda976c89128da40a52875e15ea",
+    "src/app/api/admin/model-providers/route.ts": "8b765df24054576cef7a850d678af6ede485553ed914e9f5d634c43b4e868797",
+    "src/app/api/admin/nav-modules/route.ts": "27944c589b6513a745767f2abaf8f887427910cfd99fcb9f145f07ed0e66434e",
+    "src/app/api/admin/notification-groups/members/route.ts": "aa8e0bb26319838d44c33556f6a7ab480bf8b0c315c8267c955041d9fef976ff",
+    "src/app/api/admin/notification-groups/route.ts": "61c126a2fad6dc1360bdb6ffadb249d49a6554df1d87694fe66bb042e287eb76",
+    "src/app/api/admin/notifications/history/route.ts": "222b8f3ac2193aee4f531e39eb9f858ae3584858a1643ad31b986cb15d283d8a",
+    "src/app/api/admin/notifications/route.ts": "e51560d4b784825a04d12fdcbc250f13414827e99f5d998f80b342ea0a898933",
+    "src/app/api/admin/operation-logs/route.ts": "46f0971d7b796bf342376241443ebf3c9cb014e1fa13eb2e6e4c862d817fe43a",
+    "src/app/api/admin/pending-tasks/route.ts": "574221443e59c8f89a5d229c836e6021df13c07bf5b09585c95f277929767ac1",
+    "src/app/api/admin/permissions/route.ts": "00c72e11da2a2f8eaa3c5deac6829f9a38e11d1834234c3b521b58e6db81f8e2",
+    "src/app/api/admin/permissions/sync/route.ts": "0ebdc07f10f5190ccf57116feb167a7da9f23ea1e12f2eb47ce1a62b4ddd51a4",
+    "src/app/api/admin/platform-defaults/route.ts": "b95fab4bd8b4e6befced6022c337c184e6cf27a91d6ab427936ab05189f9e20a",
+    "src/app/api/admin/points/expire/route.ts": "ddda083ffb5a71fb0db3357646ea4c49a854990c570c0140c2f1b4a20daa58f4",
+    "src/app/api/admin/points/ledger/route.ts": "b44b6a723121afa5f11f26e2bbcd82864c1b901d624ff4f69a9be08e978960a0",
+    "src/app/api/admin/points/summary/route.ts": "114d1b1d0fd4393fe27df24b48f609d795a38d3fe42966bde31d58f0d06c7a7e",
+    "src/app/api/admin/posts/[postId]/members/route.ts": "29d944711b0cc4a569bcec0524d7c5586a4e6b237fa5bc33cee3ca57122fb10f",
+    "src/app/api/admin/posts/[postId]/route.ts": "bb49c7f3d2e3f8f4a471fd1757f7eef9f7f96cff7b2c9054c56d0bdfb68b9d79",
+    "src/app/api/admin/posts/debug/route.ts": "bf28195315a778241931bf18724778f512b8a86c692d3552c0310669a6249f20",
+    "src/app/api/admin/posts/route.ts": "153c981e5d8d5e9e31bb18eebacfb1e938626bc4ff6e58fa5b538d1c110a37b9",
+    "src/app/api/admin/posts/standard/route.ts": "f9b3a268e3725258ee14fbf5636ed888c4d1e647b8d8c6b18c1ccc3f52d807e4",
+    "src/app/api/admin/posts/submissions/route.ts": "8ac07cab92616db738324e34eaa9aedcfe0218816937ebcab64839909c4d14c3",
+    "src/app/api/admin/posts/usages/route.ts": "d2ed3315ef5eecf1cdd35c85c8e206bbb15f3221c3906d61ad0ee9fee3863e2f",
+    "src/app/api/admin/preferences/route.ts": "7868dae4444f53ddfb2f4e90865d0632d3b979a325e90a2e5f8967db27bbbbbd",
+    "src/app/api/admin/quota-apply/route.ts": "821bebe13ac68fa3e24093eb186524fee237ae8c94034170f3cd2a82d444b272",
+    "src/app/api/admin/recharge-orders/route.ts": "091b8224b3e6493068606d03a68538fd099f422da6377fbc5175882a51d922ac",
+    "src/app/api/admin/refund-recoveries/route.ts": "e269447e61a91830a675fb50145c281815a978b6bab58b82c1fa511a7473bd52",
+    "src/app/api/admin/refund-requests/[id]/resolve/route.ts": "61c31ee193dc189ae98e2bb4d9b8d478302cc968b551079d8ced3c61aa3e9a2b",
+    "src/app/api/admin/refund-requests/route.ts": "24c2fc56bdcf80eef5c26d6a7108170df872ac71731595ff5ca62e57306312cd",
+    "src/app/api/admin/settings/route.ts": "e451114c69c6219889caaf27e32c4b0f6526230255cffbca708649e8880cba38",
+    "src/app/api/admin/settings/test-email/route.ts": "0c121faf80d4c99eb9d0368cc1d98dcd6f1e7cbeffa10c3b78b710717fc2b7fc",
+    "src/app/api/admin/settings/test-sms/route.ts": "1497c937cb61ffde7b0a839ba39c41a502b0c2d62a5c5c9bae5d26418dc10415",
+    "src/app/api/admin/settings/upload-logo/route.ts": "3102947deef869fc65c0b269f8c196003ff74846f3a8dcb48cb5199b1e52ec7a",
+    "src/app/api/admin/settings/upload-qrcode/route.ts": "a99bdcdab39bf3dbec348ab985f75788716b00d22ca6da3ca27e54341f54b05b",
+    "src/app/api/admin/stages/[key]/components/route.ts": "aa5ffb0590a3bedec39c511465d4b31e1ee9793d0a9e897d9db99109f14d90f7",
+    "src/app/api/admin/stages/route.ts": "70aed7d5523a4586566d01a1c4c69576702b8176481d2899fad5996f3863f7d0",
+    "src/app/api/admin/system-status/route.ts": "aaa6d5ffda4bcbfd80f5062a4a1abdfa5cab35c8f544fc03d1be316c78e5d392",
+    "src/app/api/admin/system/recharge-account/route.ts": "78a46ac5ec177dc5102e45aa41b02bfc8c6583edb5f20c7773f2edcfe93d3866",
+    "src/app/api/admin/systemconfig-values/route.ts": "24a1f7f1e57c3bc73aed22d9b3c26e15b42291b179e4d4860b703a78608d5ecf",
+    "src/app/api/admin/tenants/member/route.ts": "abcb60d833bc8edf143b80911d5e5d0fe725ac60c7a5c57197f0d498289997d0",
+    "src/app/api/admin/tenants/route.ts": "7ae8245b89844ee8d517818e0d0d2e81221b2561c0ee5433ebf83d9a8ddd5eeb",
+    "src/app/api/admin/testimonials/config/route.ts": "a1afdcf0d24e0c1abcf1bf454dbfe37d46fc1a114fb12bb8bdb4cfe4a91786d5",
+    "src/app/api/admin/testimonials/review/route.ts": "43130b5fa09ecda0f9cad88153e249324e80ec58b19b3902e4b4b04b4a14d5cf",
+    "src/app/api/admin/testimonials/route.ts": "97965eac53caa55856894e9a568cf8c7da3c26ccb22a43f7ab61bcabd4ae4765",
+    "src/app/api/admin/testimonials/upload-avatar/route.ts": "6f3f6bfbc551da5222ad8eddea8142f997083a92957faf39a5f59aca8c5c7674",
+    "src/app/api/admin/token-packs/[id]/route.ts": "49528af32fe41a61fc660abd59ed94e5a7a061edec859cfd38b251117332ddd3",
+    "src/app/api/admin/token-packs/route.ts": "b151bed2872ece90bf48bda031e3bc4cc26ac1c990a2cd3ff6ba8219311c1a13",
+    "src/app/api/admin/token-settlements/[taskId]/resolve/route.ts": "8adb9d8e07d23ef9f0ef601980da55b0ac87872cc8296cef5d1c17b33c7c4334",
+    "src/app/api/admin/token-settlements/reconciliation/route.ts": "127dc968111cf2e6a947d07f746cda91311fa431d8edf28889b5c8d81a111cf9",
+    "src/app/api/admin/token-settlements/route.ts": "6cc4ff83e440649d2a1eb264ffff604a9f66d9d022fbd972d8867d2a597ab95b",
+    "src/app/api/admin/token-settlements/stats/route.ts": "5ec28057c7d12946dde66456215fb3f1a41bf6db46f0df9a2faa0cb05454b809",
+    "src/app/api/admin/upgrade-applications/route.ts": "1be45d34fcc5e5ca50518897a4121a2444916e282cbaeb6b4d94a95fd9d09566",
+    "src/app/api/admin/user/adjust-points/route.ts": "1a82bf1b2f4d4683a592aef194e1d5f3a82e6c3c29165368a0faff18f979bf1a",
+    "src/app/api/admin/user/ban/route.ts": "8cfd5b796e2a07bd82ffb095b06a3b0cd78fae0db0be2b4dface8976f13b0874",
+    "src/app/api/admin/user/clear-session/route.ts": "805a159836f495fc300e696f3b080d7ea3bead75e9f0c2f8609b2b8395ad963b",
+    "src/app/api/admin/user/delete-preview/route.ts": "705d26d50f6bd6fae9a4f40f8be39087020045d9f1de746cc0b27369adc860f1",
+    "src/app/api/admin/user/logout/route.ts": "0747806ffe23514f78dfc2eb9a2536e0e7bf397ea4ca68ef8be53987fc0ab280",
+    "src/app/api/admin/user/reset-password/route.ts": "0e1985c0f184772784174b449837a902bb7e98e232fd0d031ec69f865c358c3a",
+    "src/app/api/admin/user/reset-session/route.ts": "0bca1a76bf64e71d5fdf380fbe057ff0ee3199b4eda819e74c8f2a97981e9891",
+    "src/app/api/admin/user/route.ts": "e97803fde7646263c48adce1c62ebdfe8bb27095cff1b4a3ea4f059eff4ae8de",
+    "src/app/api/admin/users/[id]/status/route.ts": "d0665b5c25acef5dd90d60fc20bdb5271e69a44b37796d1437f19bc105ac3359",
+    "src/app/api/admin/users/batch-action/route.ts": "72584fe592830474ebfe57e97fbcf2af2797b5136ea31f58baaa352dfeae48b0",
+    "src/app/api/admin/users/batch-kick/route.ts": "1b7bd5c43857fc6b9142925c6bf54b4fe29b4eba0cc104590afb79a24d5f2310",
+    "src/app/api/admin/users/batch-logout/route.ts": "5dcb160635105f29ccba9c2c142efdcf50665035ed6bd51c20f6301ffd53f88e",
+    "src/app/api/admin/users/batch/route.ts": "97ca51831bba50095122653f4297f298744881ff616ef5bde650cac4be172edd",
+    "src/app/api/admin/users/debug/route.ts": "0d79da56eab3558afe0ff76e8d6cd555ee2a1c12a4cf0b78a7b7280fb4fe5956",
+    "src/app/api/admin/users/force-logout/route.ts": "d9fa9357105065e18fa39085e3040bd6601207dd866c6eb3373ed2d0f52a7888",
+    "src/app/api/admin/users/import-identifiers/route.ts": "59f900adecb8445d3e0dd97ab5b51b6df9e2c1335781a2c37773547f93aaf265",
+    "src/app/api/admin/users/route.ts": "9a958b942ec83efaf6cc0c9c9c8f659ae71cab5c6686e543b2e452b3a846d4e1",
+    "src/app/api/admin/users/search-ids/route.ts": "d7faa5227c59ed03f697061e40f81966a63839163738ca4ca9734e1519bc3e4c",
+    "src/app/api/admin/users/zombie-scan/route.ts": "dbac9882cece4e2ca216251bdcfa293b6afa4337dfa34e17e3289ea7db7111f6",
+    "src/app/api/admin/workspace-plans/[key]/route.ts": "54120864e92bbebef6c4ab3824453741e543f4f326e7943eee410ea9338656cd",
+    "src/app/api/admin/workspace-plans/route.ts": "6701fbe61ab233c6eb58b00bffecc7fe55c8c5dc792d207330ddd529c119d76a",
+    "src/app/api/admin/workspaces/[id]/model-policy/route.ts": "5873ddc1f24182452ba1c2dc8805260b44fa375807d8cfe5baa47dd38b544977",
+    "src/app/api/admin/workspaces/[id]/route.ts": "06ef54aa25ffb30336af1b98a779d2e3dfb34b44322c13750842f7b6c7ebec96",
+    "src/app/api/admin/workspaces/[id]/upgrade-to-enterprise/route.ts": "188e044ff61507e80b3ea0c7d6187c42f03762503bc17449389a3ad32bb3e17a",
+    "src/app/api/admin/workspaces/archive-inactive/route.ts": "993ad0f46ae3aac052059bc7dc338ea18dc104d422e1dceb15da69b87b97495d",
+    "src/app/api/admin/workspaces/batch-toggle/route.ts": "1524792dff807a7ebd889957ba95dca77d7a5de390a2b305b723c1540c2293dd",
+    "src/app/api/admin/workspaces/disable-check/route.ts": "ffc390e30baffc94f8b47010872a03b474be9c48b52924f203a9cecf86ef4aae",
+    "src/app/api/admin/workspaces/pool-threshold/route.ts": "13ea5c5c10d27316eda2ca95b061af7e771534a6051cdf1c8c442be270501f15",
+    "src/app/api/admin/workspaces/recycle/route.ts": "5bad6f3d7cbd4f61463317e8ea2f93447a3a633579783562eb70b43ce9e1bbc8",
+    "src/app/api/admin/workspaces/route.ts": "52a514445dfcca398d402978dd94986c53c90574d86ca1ec70183cb0ee2b207c",
+    "src/app/api/admin/workspaces/toggle-status/route.ts": "0320ae2d10f5bce99bfefe3376d51b7b94e1039ab08b4982c6817a9c3ca93b1a",
+    "src/app/api/auth/appeal/route.ts": "667029a7a3b8ece0fde71a50b12947c0d5173134ad166552804e29da4adbf629",
+    "src/app/api/auth/check-account-for-reset/route.ts": "4a7ecdd35d19841533c0737feb8a85cb0bb79eb2db1c9bbf1528c53066330bbc",
+    "src/app/api/auth/check-account/route.ts": "1f618350972fa3d854f074083bcda499afd3600540749574b5b7b7f6defd0287",
+    "src/app/api/auth/check-phone/route.ts": "110472890fff1c569cbec34efb1a1b9d982ce83d84a070b95f519032841988ae",
+    "src/app/api/auth/confirm-crossregion-login/route.ts": "cc3c5dcddd738c5f53cfdb50311193c48be4d48e0fac3c64395f36ffc48e43d3",
+    "src/app/api/auth/debug-superadmin/route.ts": "fefd4a6b7dc12d83e416acc1666b65a27a754455aa1577f49df59a48eeb97753",
+    "src/app/api/auth/github/callback/route.ts": "a304be1e0b57773c3e5e688ec1bc756bc59c85eecb70e7c56f7cf36c0bc4b8d0",
+    "src/app/api/auth/github/route.ts": "5efba09ef10476b3c2d0bac270f7a94610861232e89f82cfea2ec259b5f1112d",
+    "src/app/api/auth/init-admin/route.ts": "8a6bb60f3f10ed30ce085d223daeb6371158594da6f1d07271b2199c1fb8c5eb",
+    "src/app/api/auth/login-sms/route.ts": "d88a641f268a778fb0dae288ecd3a30a3b113a39d447a7be34db0afd71836a6f",
+    "src/app/api/auth/login/route.ts": "70e785ae9e9e7394833625a8afae790861ff99df64b03eba5eeee93fd976e5a0",
+    "src/app/api/auth/logout/route.ts": "3d9d6ff2b35a85b9dc8193b974fc1ca7f349c87511cb6da9c9190938df734f9c",
+    "src/app/api/auth/me/route.ts": "99b136101ccdcb9c24ae04f8050cd31fb5bb4cf2670f34b081c792662e06a7eb",
+    "src/app/api/auth/oauth-providers/route.ts": "2633dcb9923ccdd3fa1ba6378a8fe223e293fbff955a398a9334e1a136b709d4",
+    "src/app/api/auth/qq/callback/route.ts": "cba830ee5253563f27755f03bc637894b82f6b3299f600f7a1408555dc302d82",
+    "src/app/api/auth/qq/route.ts": "25dca582d94b9a554cc5d42852e27f752735450bde489a66ff360348ff694103",
+    "src/app/api/auth/qrcode/route.ts": "69ee8636b4e30cf7ba48d4ec84f3fa6a730d3cdf6be472ea2e3eba4ef3868f0d",
+    "src/app/api/auth/refresh/route.ts": "d624b0df707394b8c5b84fd979c544c36100c9eb1dd54be8d8f98086e54a4af7",
+    "src/app/api/auth/register/route.ts": "c1d6047ce4741c23350d6560f46e2f9be0cdb30a5cfc886ca155d30ec6214a56",
+    "src/app/api/auth/reset-password/route.ts": "c24897aa39ed0e8b3c210f8a1c5a3ffc32ce4bd32c466a7c01cc43152212f2e8",
+    "src/app/api/auth/send-email-code/route.ts": "7317eaec3b85611c5f5f7105e3b7112754687a7dc4a2efcf8599526ea9b4b3e0",
+    "src/app/api/auth/send-sms/route.ts": "68f0bb31664236a5132a6720898b2c5cf9643b1747abfec9377d0028862839c5",
+    "src/app/api/auth/set-cookie/route.ts": "fca52abcb9b660e60b5e4d36fb40034987a061231e9edd5772be76d8ca8e2059",
+    "src/app/api/auth/sso/revoke/route.ts": "705f56f3ad5df5f302695c867bde3aff2fc27f2f822bcd27910cd7e817c0407c",
+    "src/app/api/auth/touch/route.ts": "8b8fa4f78f9174f7dbac5cd30824a7e98b377de0d546b148ca9c5951cca15205",
+    "src/app/api/auth/verification-code/route.ts": "b3d4f0d168ef2086f486bce31102a01d16952c14c2df267b8dfede6ae69674b6",
+    "src/app/api/auth/verify-code/route.ts": "fa1cd6dbe4fb3a2e73322d925bc419d9fc5a5c54f66d55f7da729278a247a71d",
+    "src/app/api/auth/verify-email-code/route.ts": "aaf2438bb23380af2001e18ef1f24f843b625e9b4e24454aa60a21a4b9f178ff",
+    "src/app/api/auth/verify-password/route.ts": "f810cdcc3b84236b5f8d331107003b87db796395d65f7b814474b12b1e9d4d0c",
+    "src/app/api/auth/verify-setup-token/route.ts": "42bbc0f99ca58c07c039dbf83a89f471196c86017a1e563035015f279e4a102c",
+    "src/app/api/auth/verify-sms-code/route.ts": "0f776d3acd34a61e12ff21226c6cf2887bfaf3553668a995c6e609838e4c13a3",
+    "src/app/api/auth/verify-sms/route.ts": "b9cbf5e801784050fbaf06d1bbaf60c6db030cafb041369cdbcc07d2f85eb7f0",
+    "src/app/api/auth/verify/route.ts": "c0691d46935104689d18237b636d6b4afac73165cc0e4c2ab0ba19619543e01f",
+    "src/app/api/auth/wechat/callback/route.ts": "e7eda4fb6eb73d7ebce2250135e4a74e0caccbe591cf4de6734a527b3e979631",
+    "src/app/api/auth/wechat/route.ts": "e6cb66249d0763d6e8491b646aeba11f6826fa8199c1a11fdc52dd531022c171",
+    "src/app/api/billing/byok-preview/route.ts": "f5334ed86107863b5c60608ebca00fa21465a0a8b7cfb36c16e49f150d3b67ae",
+    "src/app/api/billing/estimate/route.ts": "41530f585a9dfe6387c2f5115c50bc1ea734b0219a2bf5d08cbcc0e3b4fde4e8",
+    "src/app/api/billing/records/route.ts": "6f760ca6dc75349a27d6df0bd17b848b91a904aeddef68378f24a63644cd69b9",
+    "src/app/api/components/[id]/contract-snapshot/route.ts": "d93256cc24ef396cc4a3e7d14ee1f41f32d7118021eaee37287a333d8ec0d4ac",
+    "src/app/api/components/route.ts": "e7e0de68e718d8ca5950efd33abfa3f8f831c431190dc6c851786234479e465a",
+    "src/app/api/contact-info/route.ts": "7560d6ea8f316dde727a864f43f084608558c9b16fd47c4a05a85954c8e3892e",
+    "src/app/api/cron/model-disable-sweep/route.ts": "ae3c48fa0450c18e14d29e8366d1231d5f882bd9d9ef407d012a89824ec09acc",
+    "src/app/api/cron/point-ledger-cleanup/route.ts": "9a6e8c9d55d4ebcff301629ccaadf3027e50a6456436f0c379a9fe77c3d5e9fd",
+    "src/app/api/cron/recharge-order-cleanup/route.ts": "c037322d5627e637b177c9e97c2a370042186567b406639a7bff1e49ade07c13",
+    "src/app/api/cron/token-settlement-reconciliation/route.ts": "b8440d63a657b5e056c0927bdee4d4cd5fadb93e7287efa50f5c9e8e0bdc363e",
+    "src/app/api/cron/token-settlement-recovery/route.ts": "228524fbfb33c3daebeeb9bf47a920aaac1aee4f1d9e2587b1e13caaf5e3d47d",
+    "src/app/api/cron/workspace-subscription-expire/route.ts": "e514c43a62b5c300f61b140a30aed4895aee18c031b4aefa741a78c12391e3a3",
+    "src/app/api/debug/test01/route.ts": "0280b7f1a5e4aefff893d7f117a39b59d5b1139023eec140d0344f0119218e8a",
+    "src/app/api/demo-request/route.ts": "73fc6cd92b9d8787fc5d0cb81879e5f7422261375e3318949fbc41a827b2a88c",
+    "src/app/api/developers/sandbox/route.ts": "c65eaf1393cfb38936d5361751558a1515f2b279635d2fd6965151c7518934c7",
+    "src/app/api/documents/[id]/feedback/route.ts": "22523b803a6da5b9bd7e3cf73f8ab4e650d978337a21f565d75a5e751cb7b6e2",
+    "src/app/api/documents/list/route.ts": "574574cb11ebfd7a6450399b41a97d7a6cb8903f6d3627da91141f949c62e75a",
+    "src/app/api/documents/view/route.ts": "9a85d14a584cee6994c10f8043b828907c40ee8e802517e7a83317189e85a223",
+    "src/app/api/export-max-rows/route.ts": "0930913330f8ab2ffaf23dd8238777ac211a4c33f1d5869fc3518d358a76d065",
+    "src/app/api/feedback/route.ts": "ddba6347a39702ac929f374de2629eafc24fc80831310302bf1c60a04773a779",
+    "src/app/api/health/debug-test01/route.ts": "0816499605f73cc349b8f95802963c553b53b039fe63fcb5fee4b25b0abbcb01",
+    "src/app/api/health/route.ts": "c5121a6ba4409f1c4e1658dbe5f8f2ec6dbd0856b8e0081b71fe3bbc81e836dc",
+    "src/app/api/internal/workspace-readonly/route.ts": "6fca896969de33b8a13145a6e0043a54a79ac9189098a7378d5fe896591c260d",
+    "src/app/api/membership/levels/route.ts": "ae270e3ee7900959e76bd3f9463b1ed694b487b2bbe2801192fd22186111a662",
+    "src/app/api/membership/quota/route.ts": "302dc7a2864772aafeb9311bc3151ef84c78c4460765abfb28b0049a6cff1ae3",
+    "src/app/api/membership/upgrade/route.ts": "0589292684e5f2a7a3b9e2f81e19961987940385450e1970bbdfa59af4b5c6da",
+    "src/app/api/model-pricing/effective/route.ts": "09d538791d4478d9abd5d9eef85ee1638e70d1a20c093aa87f601a98e65d68cc",
+    "src/app/api/model-pricing/public/route.ts": "5f43062ccfd54d93c58a6def85ab5298197598c39864eb07d820faa273076d39",
+    "src/app/api/open/v1/components/route.ts": "52a1d5765783481c4270900fb698fa7903575edb53d9cddb4cd17ab32b6db11f",
+    "src/app/api/open/v1/execute/route.ts": "256d75c48de5c63ea2df4548f0d8bfebb3c0ae3a6f4741a94d790f6ed9953d00",
+    "src/app/api/open/v1/me/route.ts": "120d9d222dc751fae4ba25a62d9adea2a86eae81300ca7e8ae0b2ab52562b675",
+    "src/app/api/open/v1/tasks/[id]/route.ts": "f8a6a0671fb7630a36fc8d5fb6ea2aac0100df07c71fc81ddb8162c16e0d5710",
+    "src/app/api/open/v1/tasks/route.ts": "f8080ec7c48f6417fe2de9d4e5aa26d3d8be4ffc8dc01475625202549475d756",
+    "src/app/api/open/v1/workspaces/route.ts": "39276b214a7e5ceedb994524da365952b5e477da7907e331fe4e8f3d489d6754",
+    "src/app/api/payments/cancel/route.ts": "e4868f14d2ca9b2b470dd3277553366efd1b66717f6c066235525488fb24cd68",
+    "src/app/api/payments/create/route.ts": "eb338f49b2d8d07b43c710129d6074f6d2c060134f5c51aaf2049b3c09bec58f",
+    "src/app/api/payments/mock/confirm/route.ts": "7be08326998d6a043bb5a4d9281c2283169f85770bc95ceee4f3a2fd4d0693d8",
+    "src/app/api/payments/notify/alipay/route.ts": "0be4a7510e2ba6a6c9dbc3357db2d72abfb11fc41afb9db28091d4df83196f67",
+    "src/app/api/payments/notify/wechat/route.ts": "eebc2b3edd185d034bc6a7efe725d12d055ab581ea3b861f941251e77d462deb",
+    "src/app/api/payments/order/route.ts": "fa9b471c2142ed442547e61e4fbf3c3b30c98411e1daa8115659a82ad28cc693",
+    "src/app/api/payments/orders/route.ts": "cf7ab31037023a156169d45609dd993165bfff9cca899cf67951912b1d514a3a",
+    "src/app/api/quota-apply/route.ts": "c359791bc0516a1390fe304b562df19f417d000e26a0f17874f9c566004e487e",
+    "src/app/api/security/diagnose/route.ts": "a1ce7d3348f4482dae4cbf722ba171f739ef9cfebd91861a23da2630a1b79464",
+    "src/app/api/studio/extract-text/route.ts": "0fb1e878659595907e597e44c75c95aba849ec0920374a145fecee6ab6dd1a09",
+    "src/app/api/studio/handler.ts": "0194dd6b64d3de5cbb1eefcb148af5ad6cf61cd1b403d88d2d7c3008f30c5d71",
+    "src/app/api/studio/route.ts": "20612f7f615029284f2b6de8f9224d6ff5dc72f452277ad765e1847419e5951d",
+    "src/app/api/system-documents/route.ts": "3ea33099da99ce3fba973e3a9b5ddc1700cd95337943184ee8c08477b2010646",
+    "src/app/api/system/api-permission-rules/route.ts": "a5e912584575f9a6f0368d0b739d8441bf60eb19f44454dd4a31baf252564a61",
+    "src/app/api/system/check-maintenance/route.ts": "4dba34c5e4d13e7b6fb027796cd85e8109c7c520d1ff8f4f61abc0df5f1dc8f7",
+    "src/app/api/system/check-update/route.ts": "ff0372d96c3ce89b0d3b087ea5bd2c9a0d9409765493f32d4ca5e683f5ea7c75",
+    "src/app/api/system/maintenance/route.ts": "bfbb49ff3950e506e7f148122eef363e7ae96e375d1d40605318b7c8fbb0520d",
+    "src/app/api/system/permission-context/route.ts": "7d66997cf5849af271ed92a907dba76ede1c3e2d2a29b3658ee6101c8e7d67d6",
+    "src/app/api/system/public-config/route.ts": "6b35f819cd0a857108bbdeda10df18955a15685ad76cdf87090168bf4b533482",
+    "src/app/api/system/recharge-account/route.ts": "6394a5d9e929d2159c315d1ef95cee6b17584892e85dc7ae1cb3bd91dc8beb2f",
+    "src/app/api/system/site-routes/route.ts": "ab5e7c744e833b3e98fc5030c92d9a862150a6076714c3502dc21bf288a1fc6b",
+    "src/app/api/system/status/route.ts": "66f1457cd4034586457c6f219de47a99fa52f77a33c3cfb00ba1bd25dfb25569",
+    "src/app/api/tasks/route.ts": "b9494bebad71da01bcdfd80c57354a39978ee92f8bc2efb1ef27333847f5e85b",
+    "src/app/api/test-db/route.ts": "d6298b4c879f997444dc8d16f8b7d88d16bbbf78fd158fa551a8eb18d254986b",
+    "src/app/api/testimonials/mine/route.ts": "62e6a83269befe420db1cfa88aad20bbfc46f1806a35bc7c70e88209ad87b0db",
+    "src/app/api/testimonials/route.ts": "10949c487ddae7004d7c8fda11ab5716036fc54106555d79979ccdc0a69eeafc",
+    "src/app/api/testimonials/submit/route.ts": "a071403865d51a1b2822341e6d3f9c6111b96752fc25af8c6452092a248eab4e",
+    "src/app/api/upload/route.ts": "21c3f8a2835d229ecc22947694e36d8263d98ad610e23929f5488e262e82f546",
+    "src/app/api/user/activities/route.ts": "caa5829a4ca729a681021c7c478b3665356a157f855d6c24af65d0fc1d4b2414",
+    "src/app/api/user/api-keys/route.ts": "040464a558aa29be51e79174bbb62c431eaaade354563bb2cd010906914b9fe3",
+    "src/app/api/user/billing-dict/route.ts": "0d7fd6a06bb16f105da17bbbfa05c992665578d0694073e95e6d372821846062",
+    "src/app/api/user/billing-records/route.ts": "33968934a9b055894a9875e231f9cdb0b77a362f34ed20769e80f7ff57bef76f",
+    "src/app/api/user/byo-models/[id]/assignments/route.ts": "780c9af0fcf08688685ddb6c9e9791e2a2d9059a508d91384a5ebb2987097f46",
+    "src/app/api/user/byo-models/[id]/route.ts": "a292b1a32065b82611773e7abcc7cf52f06f62d9f7ae6aaac4951523562e9b75",
+    "src/app/api/user/byo-models/route.ts": "feca034715a56b4af30e0191828db73c4305be9326969bfe586d9d0b2d573eb3",
+    "src/app/api/user/byo-models/test/route.ts": "98cc7970c87d9b5ddc8d2005b3a5bd623ad8b16b0d5f5b9f60b7dedcaf05dc2f",
+    "src/app/api/user/cancel-deletion/route.ts": "e2ec69cf9d5b352e66856e658ecaff52804896eb470ec125caeecea0662d6f36",
+    "src/app/api/user/change-binding/route.ts": "a2686ce09d189819a24aa4967529ec4f750627391a61b1d8b5a55a4e15e8c8f6",
+    "src/app/api/user/change-password/route.ts": "808ff40024031504b449c640a7d1d4abea43d657c3d89ba1d7d6e5f1503289a9",
+    "src/app/api/user/check-binding/route.ts": "187912428b82844ff9520c176c5173fd30339902f7e5fc7a91ac89ba70934af6",
+    "src/app/api/user/check-username/route.ts": "0b07d3b957fe16bbe32ff6f32ed6182aa9a83aebd4afb30b8772314f2442e77e",
+    "src/app/api/user/complete-oauth-profile/route.ts": "c6ada08fa0b63484081e5e990636028f5e557b459d89ae80a40ccd1c8fc9c2ea",
+    "src/app/api/user/components/route.ts": "27a024fec23047b2926ad4f36e5dd21091b467695738dd332413215b54632ffa",
+    "src/app/api/user/dashboard/stats/route.ts": "f7470c5baa6cc82d923045bd2cbf2e82fed81195e752d20f8b2ac271380c6982",
+    "src/app/api/user/delete-account/check/route.ts": "25899f3e7b2988882e59cccaa89191f91dfb37534257f15a8a1c17218a47de42",
+    "src/app/api/user/delete-account/route.ts": "a419e39e0ef618215604c97786a63b681d8c672e002656a337ee1275976b95e6",
+    "src/app/api/user/device-login/route.ts": "a08d290e5c589381853e76352b02cdbcff865e7ec60c3061883f31f7903eba38",
+    "src/app/api/user/devices/route.ts": "6e8732d1780bd63ec4ca8d4f901de5fd8a3bf47da0d7a246dec09bc723f3c03b",
+    "src/app/api/user/enterprise-pools/route.ts": "cab19391ccab0ddbbb54883fea32926a3205db3ed6ad2e345b70413c30726e99",
+    "src/app/api/user/export-log/route.ts": "4e36b7bcaad861984cd16f5c92407cd6768b96f1b2e2f71d441315a0b09881a7",
+    "src/app/api/user/invoice/apply/route.ts": "3a9b879b96dd6096d7e6731d231cafe0e1ffce2ad6aa3a2a1419dc8964d53d32",
+    "src/app/api/user/login-history/route.ts": "5c85debd2cb9fe76ae4abbf8e48ba1be826fbfec5fe8ba9883f9b4e63ce50a82",
+    "src/app/api/user/notifications/acknowledge-popup/route.ts": "ce32999e1abce46402e88bf00c2533df266ed0f3154c6ccf386e6f6a6b46b0d8",
+    "src/app/api/user/notifications/delete/route.ts": "339aa94a3953b04841c01d0033b9f8a98f02826f75ace3733de96d9e0e9170d8",
+    "src/app/api/user/notifications/list/route.ts": "7f0f3c5333b643d1bf255471bd77d3d0e49e2a52f76575114907608f874404e6",
+    "src/app/api/user/notifications/preferences/route.ts": "f91f1fc49ba1d9db18772e3442f3ae87236c5153d7aa565cc98139c9f1ed51f0",
+    "src/app/api/user/notifications/read/route.ts": "9895ba366d1ddde2eed585ab22958a015e233aab7813e4f75787b07b7177b48e",
+    "src/app/api/user/notifications/route.ts": "06cd4fad2db0c9e57319e21968dab702170575254d4835f8f28239054c8210ea",
+    "src/app/api/user/points/route.ts": "a90c7a8939ee9b779cc4dbc54283da7c9d6ef78784e7b4a7db1a6a369aca8bc0",
+    "src/app/api/user/preferences/route.ts": "5e5f9dd2be7e77e27f1c15f2f5f2258a909e026b67800d23550aa3322a057ba5",
+    "src/app/api/user/profile/route.ts": "8dcaf3376b7763eb1a64ce9397d4f07b8576c8204599a9f277e9da6b859df8f8",
+    "src/app/api/user/refund-requests/route.ts": "b9513aff0e422794710fc2fab600b6aa0c6807e05e748fd2b8aec074739dc04c",
+    "src/app/api/user/security-settings/route.ts": "82ef977826568a75305dbc239f82c58981413d6d1d77fb500588b2033d1bd281",
+    "src/app/api/user/session-settings/route.ts": "a188f65052b16d530a97c66e6c830450046259cec0605fb59ae916bcde53d47a",
+    "src/app/api/user/settings/route.ts": "ce8f1b5ab18c0460010144c7279022ff4655ae04e0b17bfd0982328e2c3ba86b",
+    "src/app/api/user/sub-accounts/activity/route.ts": "a4be9302f2cfb231569e2b201948f035879ef6edc16ecb2b9c21f9719673aa16",
+    "src/app/api/user/sub-accounts/authorize/route.ts": "e6ae7e1eb9250769aa9557b2dba47b88a52085261e0ef1d35925959af2245797",
+    "src/app/api/user/sub-accounts/route.ts": "588406d400dc1f49f325c5ae4472e80cb1a5c86cbde0b885afe2be0aac805b55",
+    "src/app/api/user/update-security/route.ts": "d5a9fed5e0598a06e61ebe3f78866d67479001a2663def12269245396c48ac0b",
+    "src/app/api/user/upload-avatar/route.ts": "c65dbb8f18deb52162b839e61e592639d8b035fcd6ce07bc2cd6b410e1ed1218",
+    "src/app/api/user/workspace-hub/dashboard/route.ts": "2a68aadfde36dbc65c52c6b1c652f59f21f4558e84e4e47a65f9780ff65b40f5",
+    "src/app/api/user/workspace-hub/post-icons/route.ts": "07e5290b6c67591a765f74e538283dcebb5db3a9de55fc8c503731c13f04eb2a",
+    "src/app/api/user/workspace-hub/posts/[postId]/route.ts": "40f9bbe41f97b514d0947ab8d37c4a28b64f934619ad81bfd881dd7ef0c29cf5",
+    "src/app/api/user/workspace-hub/posts/route.ts": "b623881a04996d4af014a41088cd9a3bcce5232f92ef5df5fb7096de89184db6",
+    "src/app/api/user/workspace-hub/posts/submissions/route.ts": "ad23cc923e53cee14151a991cb99bc3612027f8a823c4e54e8c0442f888bb5a2",
+    "src/app/api/user/workspace-hub/quota/route.ts": "fba68310586e7a31b9658f63594be5a7deca4563acdf5e25127d0241a2acd832",
+    "src/app/api/user/workspace-hub/upgrade/route.ts": "c2d8ce594e6fc02d6051a5ba6d4dc078428774a1434969ccf0343a8fcb48016b",
+    "src/app/api/user/workspaces/create/route.ts": "c9b47a89e13d2d481c07caaf252029874a7bfd9056fee025f876f1568c4b8402",
+    "src/app/api/user/workspaces/join/route.ts": "9831c41c90e3cd054a2562db28b53b56f76fc8769a1a3a4b1e6de125a55abd65",
+    "src/app/api/user/workspaces/route.ts": "7e3a7f625dcd3b528a6fc137e539a74ea5c73c274cb38a10294ead3f3d015af8",
+    "src/app/api/webhooks/route.ts": "2e2801daf7b6823c5699f4cd8ab870c2d78b71c18ec08ab349b4fd7e100412a6",
+    "src/app/api/workspace/[id]/logs/route.ts": "d7602f45ae4c27cee52186dd8518f29e342c4377618f457695c89ec5b4628409",
+    "src/app/api/workspace/[id]/model-application/[appId]/review/route.ts": "9d6777335f9e3f14213e65a1e37a29b7d30cab9b9530e3cc12aeae59a0c5010c",
+    "src/app/api/workspace/[id]/model-application/route.ts": "242831f115754bf6e01411bb6577a83b9af53dade3bc38710e1b69b2839c311b",
+    "src/app/api/workspace/[id]/model-policy/route.ts": "ca2730bfe7b5094bd3873824061212bc264ec6a0352b64da1a1d34a1c728baef",
+    "src/app/api/workspace/[id]/model-preference/route.ts": "41c4fa87de6280de5650b7b563c391756f7aa9426e3b51d0b10c207d5e8195bb",
+    "src/app/api/workspace/[id]/model-usage/route.ts": "e80286ea1e8ee79f4dd9e833a84f4363c31064c22b14db9269e10f9122990952",
+    "src/app/api/workspace/[id]/my-membership/route.ts": "7ab99a1199020cc1902bec2bc703a2b169a6f325ca161b9a73b3cc5e2e7b484f",
+    "src/app/api/workspace/appeal/route.ts": "b06d5898e23c1518a45bfb9148b6ba0224d17fdd0a3049c5c27cc056d5a3294e",
+    "src/app/api/workspace/assets/[assetId]/file/route.ts": "e566026c175c4be94c9075e3d346fb7998f9e2f9932b7a4916e4980b7507a3d7",
+    "src/app/api/workspace/assets/[assetId]/preview/route.ts": "edf195a4d81ac932a9f268c33a2d100ece5d93511cd5ada3965be845785e21cf",
+    "src/app/api/workspace/assets/route.ts": "d15d403fcf442e1e0e74f71a5acb830d08ccd3b7925c74f9923ad257b434b8cb",
+    "src/app/api/workspace/available-models/route.ts": "a64d4e0853d2c0daf7d6c861e3e22f14b3e94bbae3dbbe4ca1e588f08bf0ab03",
+    "src/app/api/workspace/byo-model/route.ts": "ec7a2878d92ed7cf87951c3dd2334750d6c48dc80c1d16b860086ebd0d3bc36d",
+    "src/app/api/workspace/byo-model/test/route.ts": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+    "src/app/api/workspace/check-delete/route.ts": "03fa3f9255433a78ccc9478ff2865372f967a08c68c37fa119e6dce4d3bc1283",
+    "src/app/api/workspace/check-personal/route.ts": "71b0711e4d80ab9746cd1ab07f1eed83e10f2f15139e2fb0a2e9761259bd36a2",
+    "src/app/api/workspace/clear-data/route.ts": "98cdf678ad9a571815aa5856815b85e137f005706aaf9b7a7130814a800471a8",
+    "src/app/api/workspace/configure-solution/route.ts": "9778128b58ca9d3079e1b90436bf708a0b9ab4d125001e61361b57134eb24856",
+    "src/app/api/workspace/create-enterprise/route.ts": "0a28b3c9794d7fffbff5f58f2aa79b38114e3de7255f664990d29b58082ed367",
+    "src/app/api/workspace/create-personal/route.ts": "5cf9a7232e7c318df25e7b054e96b3d39162ea6a8ebe33b20367bd82df88e478",
+    "src/app/api/workspace/delete/route.ts": "b7e02fc36d77c6af1ab314d7227ce69144fa736e2ebeedd6ce9fbfa98a18f0d3",
+    "src/app/api/workspace/dissolve-check/route.ts": "9c5ac4c9038d5296c8818f6728291e8d32cd8bbbd759fecd921a49e1dc1321bc",
+    "src/app/api/workspace/dissolve-cleanup/route.ts": "78144865966c590e341f8ac969f77b7b9e2012550754dafcbc7b9c8f77f5963b",
+    "src/app/api/workspace/enterprise-list/route.ts": "b3ccb35fdf814ef9352e0d64697f8d930960797495feb46b0bc0b26cc90c318a",
+    "src/app/api/workspace/info/route.ts": "82ecc80a998122c92ec1d5be010345b774cb2d251fc1bba11709b6a28745712a",
+    "src/app/api/workspace/integrations/route.ts": "cd2bd878e0b5589ebc8dc5e29292ba32d197d69e7802810a999e01020fa407e7",
+    "src/app/api/workspace/invitation/delete/route.ts": "54fb38ad51190a477c99e663a04ea4dc685ae45d8786f19282adb1f2b801c461",
+    "src/app/api/workspace/invitation/generate/route.ts": "710b83f2ab97a31e076b7c89fb2c71a93f76244a84a33be3aa938c59e8daae08",
+    "src/app/api/workspace/invitation/verify/route.ts": "2b080f8b40bf6a323649aedbbd6a57d0e2b0ba70acf5b7eef6d74295dc7e6cb8",
+    "src/app/api/workspace/join/route.ts": "8bbf44b9c79f640587d7c82bd07b8b88f8730c6bd5068bfc75de60fe515709c8",
+    "src/app/api/workspace/kickout/route.ts": "6ca8135bd10a0a8c0723cb81a0f51e78c562c43f9e5c53c6b16e83a209e0fa77",
+    "src/app/api/workspace/leave/route.ts": "72d69c1b138ecf2522cb23404b490dce81cc574d420aef5a6aa55eb0f22b8b40",
+    "src/app/api/workspace/list/route.ts": "3b73d8731f6b5d325440ce378bcb59d2cd0856803b5a073d6f9a1b55aa211f1a",
+    "src/app/api/workspace/member-stats/route.ts": "1920c7df8ecca51bebcd5b8fd7cceddb92d191c6b78fa7a2859e1e5f88b3958b",
+    "src/app/api/workspace/members/quota/route.ts": "21e889e97b12726210df8d555ac4eb6753134cb2d93f69b51ca87db4181b25fc",
+    "src/app/api/workspace/members/route.ts": "a3260d7d537b49557183a322a459977b8931123ccaed604d427c65bd3b3c0b7a",
+    "src/app/api/workspace/overview/route.ts": "cfa33d61258121fd0907bcb5886c32a880472a7c9980bba05cd23b5f7148df10",
+    "src/app/api/workspace/personal-dissolve-check/route.ts": "4b0970181aedde3c584012021ab07f1ffdd015096cb557f4e7209b2f77a4ec69",
+    "src/app/api/workspace/personal-dissolve-cleanup/route.ts": "78486e95a5148d19a2a757fadcda58085eceb8965324811bb4b6cdf3320855c7",
+    "src/app/api/workspace/posts/suggested/route.ts": "e61f828ad38ccf1a6aa19b54cd6e8aa21ec3e00e0270a08a2b69462fb34388f9",
+    "src/app/api/workspace/quota/points-ledger/route.ts": "051be26c29f13ecca5fb6284a4bfcd6731661e54cbb75fb04ca684c04d12a98f",
+    "src/app/api/workspace/quota/pool-threshold/route.ts": "9767082b9c9a8c672c6c0571f6371e1eaa58254239136bc3cfd26fd2a8114ca4",
+    "src/app/api/workspace/quota/recharge-orders/route.ts": "a4ecfae5a5c298bccc0fdbc6c4768aa241ae113c796677b59e5140fe1112a935",
+    "src/app/api/workspace/quota/recharge/route.ts": "60c7045f37fc5b793bf9d3e3ea3838457b8c839f567978def80c50cc7afbf225",
+    "src/app/api/workspace/quota/recycle/route.ts": "8fc5d6cdf237e6dea9792f143a1aef51dcde72214775cb83170b0499f2483c4e",
+    "src/app/api/workspace/quota/route.ts": "cc6aa167e39ff5b8b95d2f4841257cbec37d8a826979e0e846935237f65437de",
+    "src/app/api/workspace/quota/token-packs/route.ts": "10d6e05f3acdf5bbdb8e6631254d5113d465250cc58b8d86e45e2e70b30d384e",
+    "src/app/api/workspace/seat-addon/route.ts": "b4438f10b14f30c48fe5841e8c514e64c8d2f925cd0b5819dd24034cc3d83d28",
+    "src/app/api/workspace/shareable-list/route.ts": "473861d680d9909aefbe946af6900db23f62c7c353ba30948e882e56f16f5251",
+    "src/app/api/workspace/switch/route.ts": "141108977e292b866dce0a0b5b9b88a190404763582daa0a1d9776d544b3e489",
+    "src/app/api/workspace/transfer-ownership/route.ts": "10c1c81228bc3b16a73ea0cf769c83922c8d595550f49939c421f3dc32ec2d7a",
+    "src/app/api/workspace/update/route.ts": "bc4917fc021b8dde43224c876c58fe2aedfdd3b3fe36d167fbdbfd34d7a4a465",
+    "src/app/api/workspace/upgrade-application/route.ts": "12135bb57c323b414cd60db11734a7fd94bba19db4808825041d619629d4a4cb",
+    "src/app/api/workspace/upgrade-plan/route.ts": "5feda8d3ba77e045392eabe8b3d3bc966a3bb5d6eb0e449c94ea92f7b5bd7fc4",
+    "src/app/api/workspace/upgrade/plans/route.ts": "8be8070ecc31d9281f8719efc4278212ba991a5442e416ed50cda1155bb1ea13",
+    "src/app/api/workspace/upgrade/route.ts": "7598b92f42ac352fb9d250e21ff36448c31e703bba0cabc1a41fe33037705272",
+    "src/app/api/workspace/upload-icon/route.ts": "116924f6ddead5bf950b4f7866e65338305d89ff77d8373c65e5db375d4f6098",
+    "src/app/api/workspace/usage-stats/route.ts": "1f592f495d28061fcb17c63605013782caedb2d27550d10bd7f32ebeac00b7d3",
+    "src/app/auth/login/page.tsx": "f4f96551b575f637a39846c02f7278e7d0202d7fa5a10c89e9d6fa5373f1c2eb",
+    "src/app/auth/register/page.tsx": "f68a9b35ee594b921740e3d52032eef2c8eb3bdccf65fe08effc2e1ef03b9a68",
+    "src/app/pricing/page.tsx": "409f61567f099c9e25409527bb0262247564984b0e305fb6e3d2084e89047bdb",
+    "src/app/studio/page.tsx": "400984c570a18025f2b5620214cc0335af0c86b540eabb769deb55235ebae93e",
+    "src/app/workspace-hub/page.tsx": "0baa47cbe1d6cea99611a73daf97b0fc496f77292d5eb3950424460d8730443c",
+    "src/components/CTA.tsx": "1c11b15860090584712563f5fbe5ab0d3da24b1fceedccd90f33cb6f310276c4",
+    "src/components/HeroSection.tsx": "53baf7502d0416cbcccc6246851714112db85a355a80d74ebe3bbe0476062040",
+    "src/lib/account-deletion-auto-purge.ts": "45b75a61bddfec2958f1daeab175a9f7b79bfbf82ca1116dae5e6e25eab79589",
+    "src/lib/account-deletion.ts": "eca00364999df6209b1c992efdf95bc2d4a2e9c62b23904b6f9ce7f8dbce9511",
+    "src/lib/account-status.ts": "a8eb17e8e932b3c4e048f0e7430091c50c85f50516f08956bd3216728ff91b3a",
+    "src/lib/activity.ts": "fb7e183563364855bc65c1b66afdc059820fc7354861d63f1c2daedf0aeef520",
+    "src/lib/admin-component-manual.ts": "9cafef0d679ab57d3dc1bd75b6170d6a98a33df1f383733349f73de28a4433ee",
+    "src/lib/admin-error-presenter.ts": "0f51f763e1c3d5e2c3eed892871e73c26f332e80ebe4d132da5c3bbd3dd9a637",
+    "src/lib/admin-permission-utils.ts": "5be599505969c3ecabc7734bf3351494bd104af6f3eb4e79dbd6832997088bd5",
+    "src/lib/admin-user-deletion.ts": "3cf68362b7b8b74c08f223dfb2fcf5c12bd70027908e3c0541c0d4202a79f048",
+    "src/lib/api-key-auth.ts": "83c2ea784f6ea6f589b0a2470509c01085b9d40fde17f7db3705e18a9b36be98",
+    "src/lib/api-permission-rules.ts": "8b7e8ccf205a5937ed29b39cf12be369759dffa43edf8799a42a1c10a0450326",
+    "src/lib/asset-notify.ts": "08add1a6e42eea3f33836d284e35a386cc8f079eed2e4d63daee6722abd18c03",
+    "src/lib/asset-permission.ts": "4156788ad4375c828d2f5b0bc90e5f131033f0e0468d57dead67ed94674d9ad0",
+    "src/lib/audit-dict.ts": "af0f6a37a4a85042cc84a07ffaf4bab97a711379466de8beb1622f26be48965c",
+    "src/lib/audit-dictionaries.ts": "694c2fa07cf70624c4736ef37ec560fbb44f17227a2ab88eced52e081850ce5d",
+    "src/lib/auth-admin.ts": "94088e29d9aea2fdee79477c776f47e883d24be4899b631af5acf7c579587290",
+    "src/lib/auth.ts": "6a52abee23cdd071ccb0f4cb35241f3b9e13320d590270c4e3dba5d58bdd1c69",
+    "src/lib/billing-dict.ts": "f1cbf6c5ba4517906229ef3bd3811b60efabb5d34990eb700d5b97ef72e0b467",
+    "src/lib/billing-display-dict.ts": "250409716e79b56eaeea9b0371b4acf029feeb2fc3fa522f14ab0283f7d8eb42",
+    "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+    "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+    "src/lib/catalog-sanitize.ts": "a6fd5db3e6c9a61d9487e572981d9248ea4452f83c7e07c1b09ae1f548baaba6",
+    "src/lib/component-contract/artifact.ts": "8a1144f8ec558a66ea0a668b0772f4b551d4a5f80685d41744a27de8785144a6",
+    "src/lib/component-contract/capabilities.ts": "c58120c042f48a231f492eb72f7a6b9bc428d82043a262adb840fde44ec879a4",
+    "src/lib/component-contract/catalog-contracts-c01-c05.ts": "8105bf8648ddde1c60f6e6aeaf7a19ea6790a404238fb01b653b885674521024",
+    "src/lib/component-contract/catalog-contracts-c06-c08-c10-c11.ts": "4f02e35cffc8fdc27a0fc60f2286a961cb857eb78089932b228b723572a409dd",
+    "src/lib/component-contract/catalog-contracts-c12-c15.ts": "c296e7d306e0a46aa0d252819b1fb9696c3c8c5689c5b4ae2614391be1469621",
+    "src/lib/component-contract/catalog-contracts-c16-c19.ts": "f114df4377b50117488c33329fe85a6b66b772f0be3f44e2b10b22e6f56fc77e",
+    "src/lib/component-contract/catalog-contracts-c20-c25.ts": "7fcd99d68fc6c25dcbac3a97e40f1d8df7ff28c3a49b77ffb042fdafc14096e0",
+    "src/lib/component-contract/catalog-contracts-c26-c31.ts": "b5398596dea3c664952e15188d9916b897c99150d059735089dafa74b3081626",
+    "src/lib/component-contract/catalog-contracts-c32-c45.ts": "649d65e4cf48cf08e83d2ebf9fb377e278751c1cdc70020c7b251f0424b1512a",
+    "src/lib/component-contract/catalog-contracts-c46-c60.ts": "6c8415aca6e9faec7843f118a1c95df287d6a9c39f19f7deef848260e1bbddc7",
+    "src/lib/component-contract/errors.ts": "3cd2f750efd7fdd41584f69e0d196e222ad3c134d948fdcdcabb2813fb5a6631",
+    "src/lib/component-contract/index.ts": "c3472791d6160522f550c73d8b4695e6e29533027468575f26f952b3bb9fc49e",
+    "src/lib/component-contract/repository.ts": "d7d833b023cb989a7d9780f3008bb03f8e9a89d4b6126c08de0959e81a2c12df",
+    "src/lib/component-contract/snapshot.ts": "717f5b43395178aee6af86ba52a1a92db89fb42fb7a5f05cb9b826adb9f917d7",
+    "src/lib/component-contract/types.ts": "c55d8491ea841e9cf9dce9ac5c9dbe3f2342248320840dc0ca8bde7d026eac81",
+    "src/lib/component-contract/validators.ts": "305a314e3495389a557c11264ab8a360cd4a6a786a69a5a194bb21a997ec9a72",
+    "src/lib/component-cost-baseline.ts": "d99fd98349e7b3d5dd668b3e0227c9ae5e390530b0b98d5d0bd375a04fb47db2",
+    "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+    "src/lib/component-cost.ts": "42eebe06836f03202272f96a43d21d02cd709bcc4a27c7d12df91621c42bfa16",
+    "src/lib/component-execution-profile.ts": "aa3c08cc1bbdf3073d98e6a6afa912726da3903587eba02cf46e370fb96b2950",
+    "src/lib/component-progress-audit.ts": "0a763e09196a83773f0e6d6bc3ed6b64cea9d6784700bd7d57e2bf7dc3765483",
+    "src/lib/component-readiness-view.ts": "6f33cc06aa56953a325dc3e3b12b3177613aadc79a7fff6a7797002ffc93c165",
+    "src/lib/component-result.ts": "02311272e9f9665567fbffe373e1220f0c151363fa194c7b142f789037bd8916",
+    "src/lib/component-runtime-utils.ts": "ffecf508822d92481bd75f31f92ef0f45c0f9c47d70aa8c2e04d7766457e37bd",
+    "src/lib/credit-service.ts": "57bc72b9815ebe89f33b0878d50894e5a193b9c42d07f5b8b0a80eb689a4a024",
+    "src/lib/crypto-secrets.ts": "4eb017a8373d648393401b72c6d40a0650f24ef99e5eb34c01f89dd454a6832c",
+    "src/lib/csrf.ts": "7ccfdd3c0e7c84f73189e7aba25a75db0fba565881f443693a230e558b05f4a8",
+    "src/lib/email-code-store.ts": "720ded5434cad3683978cc83f78d1176a582910a3e2a4cf588ccea467f014797",
+    "src/lib/excel-doc-templates.ts": "ca522e1691e714a4431cfc502a4ea8e9fc0faf47e943d4c51f59130e35aa022a",
+    "src/lib/export-config.ts": "3c645d4f54b006d70f3dac334dad37f9cb000ffc69ab1e84a697cc49243c2a6c",
+    "src/lib/file-store.ts": "644844f307db72dd07e08b458408ae0377c002aaa1643192b9b5559ee99b5c15",
+    "src/lib/file-type.ts": "f5bd5c3fde21745b38334986ed7a1181c6f107d1bbb6bd9ff772808d70955f4c",
+    "src/lib/fileConstraintsFormat.ts": "5861c302284de5e7939eb1cf501ecb93a8bf472799c9e368a45527f753e3e150",
+    "src/lib/gateway-blacklist.ts": "3f7a90a5bd5fedffc1e30636c40b0a5f26611fb32fb89b7b97d16517000b8db5",
+    "src/lib/holiday-calendar.ts": "b7464609286403ef6f79aa678d2ca981426ff15617709d2e2c40e8307140ce55",
+    "src/lib/invitation-policy.ts": "30c2432cd5eb31d5c0560addcff5ddbaef86415974cf57d6a74d0efb1c40a2ba",
+    "src/lib/ip-risk.ts": "797f9bc22ebd8bff2f7067d000bdd36f9482bbb4e71f4466eb4c6ed4cca58843",
+    "src/lib/json-safe.ts": "eee9afd866ce146a486ada103ed4b731eea7ce2c1a0bc108517bc5ac35ec56ea",
+    "src/lib/jwt-config.ts": "3396a66164eb579aad9e2e157172da9c91f7dfd5dffc6b5a7f510e9771e51b9f",
+    "src/lib/legal-document-content.ts": "204751c4b654c7802358b15df53fbb742612809c050a2f7135557ff15ea27058",
+    "src/lib/limit-utils.ts": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a",
+    "src/lib/log-details.ts": "de080c0e4062f6c4ec930993aa261b10bbcf81f6d2a5ab9f501a0ee8d8b808ee",
+    "src/lib/mailer.ts": "4ccd4912d458f1150611d2175b74f8b436157e96a27528acea1d0ed013ca073c",
+    "src/lib/maintenance.ts": "3c9ea09d82f1b96b0ac8b2640f7af02b0ca708400d52f00b6a9fb1a719a23911",
+    "src/lib/membership.ts": "021142960326a8257bd1bdb6b0f8a57871d774797b4c0d500d6c8f66d34a157f",
+    "src/lib/model-adapter-env-compat.ts": "255f623c1928bbcfd1ea697854e67f55aca269c38e56af1dcd7e120a19ce79f0",
+    "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+    "src/lib/model-capability-labels.ts": "8c7f60641cbca6c62931f4a524b2c4cf0b5ba50a5de4bbd4e729d48a91fd268d",
+    "src/lib/model-context-catalog.ts": "9577f26a23c3c45a155399292d9b0947d7f32d3fc78f09d3f90a2573858d0aea",
+    "src/lib/model-deployment-guard.ts": "1db8f2d9825b99a360fe084c9ad8c0afa61b38b6a05f3c56e12a101763eceab0",
+    "src/lib/model-disable-service.ts": "7e397c8eb8d44216e9870b5e9d87e5e2dce612251e9e3b8912a8b3efb2f0a2f0",
+    "src/lib/model-endpoint.ts": "d57538576d986f52c4f651460f58e688b99eab48f6ff1701f8e743fc99a94550",
+    "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+    "src/lib/model-registry-lock.ts": "70b26b40074f8bf6d523116184b8223a28466e89e1cb82c40b9e6d3b56273474",
+    "src/lib/model-registry.ts": "3c0a0bd9d2a0b0c719d67fa7fecfe33d362af7d517f03dbb2dc83c295f7b7ee2",
+    "src/lib/new-space-trial-quota.ts": "baa8cdf544c7a7bf8e42f3de3555c391283e1e6236f71648c6db9ba9d2f682bd",
+    "src/lib/notifications-store.ts": "9be62ce80cd2a861681f84550e0d30a56548bfedba24b8ecd96c88c2c04d912b",
+    "src/lib/open-api-rate-limit.ts": "bc025449a1325962e63233fd0b358dfbc2ef0234fddbaa05f63e374e05d0ffdd",
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/lib/payment-gateway.ts": "56972d800e62068843c2c7086f48577a14157046f85da4b10fbf0586d5de79b2",
+    "src/lib/payment/alipay.ts": "6b0e641ae7975b44f1f340bec0b4c362ccaed5e5f7baa0de02bcca87b4da57ef",
+    "src/lib/payment/fulfill.ts": "63371884f259e0eea85bd4552194dd04f9812c98235684c8de9dc257fd226ce0",
+    "src/lib/payment/wechatpay.ts": "07bb7b6dfc535e4ccc37b4351097190b09e6c51df2d4b56278ccc456fd32f8b7",
+    "src/lib/period-schedule-text.ts": "eaede70555581a1e6e1ec23fa772721612be5d119faf6cefa851517fcdffecbe",
+    "src/lib/permission-rules-engine.ts": "7ad4e284b9c50eee1255cd29699cecd2e096529a79a6801ddd77baf24fd0951d",
+    "src/lib/personal-gift-migration.ts": "4015e3ce46994ff0d26542b03e4c488e6ef2a3695071f4f9735364a84af6119e",
+    "src/lib/platform-default-models.ts": "70e2fda46cb424e1308db09de02b55e122fae14ec4d3f5245da634bd54ea03b9",
+    "src/lib/platform.ts": "dfe290eb9e2bbf434b2c760d98f8498e3a5e817c39319b382293e4242d2a3b7d",
+    "src/lib/point-ledger-cleanup.ts": "d52363f8937e77e6f47af341f0e7d16b770fcae82c0d6b2fb4261ffc20808d55",
+    "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+    "src/lib/points-notifications.ts": "755a8df6d9b3ca403c0de97b37c103630f0005872a658ec7b410b4e5c2e64185",
+    "src/lib/prisma.ts": "fa6899268c5a2148fd6c42fafe54032eaee70a9e0fff89e10d508a9827bee53c",
+    "src/lib/quota-alert.ts": "c8be313efbb46f847c18b443a3736fa1f1debeb207506770892bdac3fe4cacd0",
+    "src/lib/quota-cycle.ts": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+    "src/lib/quota-token.ts": "556bb71a81d95702fc388b8f09478d34a5645a482032070101503cfc6aaba670",
+    "src/lib/rbac-init.ts": "30ea3f6de99ffd6bb726acc5ddbfbdf78aa40c813baa665f11d3db6669446564",
+    "src/lib/recharge-order-cleanup.ts": "0fb4e82389f49314a5eb34bcc2bf29c56b6a724bbd1249a0f72867f418851699",
+    "src/lib/refund-recovery.ts": "c5b5c2d224ccc7f398e31482dbf33ad1e900379283b96bb5b7ed8eaab10f3f7d",
+    "src/lib/refund-status.ts": "3a862aa169d5057b8c160c7e0ed84e822ef5c3ccc544c49fa7468965506fa199",
+    "src/lib/register-gift-config.ts": "5f4c5e7419149a0258a1952d466d441d968794dfce9ecec3951c716c448d3911",
+    "src/lib/requestDedupe.ts": "1709748537fb5cdb51eb7a25db658ce67775f3b078859fad28c76e9bb078352f",
+    "src/lib/role-utils.ts": "a8c3344fd4fe06191329139ab56fc1ce8540ee2fcc11eb03a29c535298dafdf2",
+    "src/lib/security-middleware.ts": "e5b9bd2563cf231f8ee31943c70d5607b4dc45614547299500c4471b9ed29c2a",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/lib/sensitive-words.ts": "87dc51b8ab3f49d980ba3b3cff568b72809351a2809bf99e1d184853be6225f8",
+    "src/lib/serverCache.ts": "0221c9f9f4344da3fcad2b8c2b015a83cc260a4f07696e8da0ddee4ab1170538",
+    "src/lib/session-cache.ts": "b95780ceb7c5ca021f6249d32de8698d81891272a93c956683318c27eef51bb8",
+    "src/lib/session-constants.ts": "c847656fd91c8379effbbf1d9721954a877657cf5a1fbfac429061cfcc0766c2",
+    "src/lib/setting-catalogs.ts": "bf9352f30f4675ab1a7f8a2fd5e368f6d808a46ff76cbdcb812e48581e856f05",
+    "src/lib/settlement-dict.ts": "45cccf2333f8a09b481b061e7de807f75ff2eb8332b843833124370eb2c5ed33",
+    "src/lib/smart-summary.ts": "5a607e0d62de201d379c5c61ee98c799e4dae5d1ec4ebaa94ab5bc89c4faeb3b",
+    "src/lib/sms-store.ts": "6acb9bf24ae4909fb72553daf4c796b245fdd0ae3ca64e75402a2eeed0557d2d",
+    "src/lib/standard-posts.ts": "c8b8bf68e8547b906cd401d84d11a1869b108f55bb482550672dece49d4b6a51",
+    "src/lib/step-up.ts": "ddee3cd3f82bc8b68481d181dcad7cb621f69cff1ae73742b2edbe13ae8e9467",
+    "src/lib/storage-quota.ts": "40c67567fc8f263c2ca576f450ba02b01669b170f89855df0a45e4060ed89487",
+    "src/lib/studio-rate-limit.ts": "744dce621d6e0f54eab4dbdeff13d9a5cdfabbd6391d2635931a9528915c43b2",
+    "src/lib/system-health.ts": "05271ab63dc6534ecfea6e8865c293fc5104dc1fe9858386bcda9525eaf290e1",
+    "src/lib/task-detail-merge.ts": "81f0949599fc0c085a8a12fa05a6661a4e3e744c520419e42219511e249a2e46",
+    "src/lib/task-execution-meta.ts": "33d25881cd93e792879558aac0f5c7424b99a7297583b7db253aa04f2e791d04",
+    "src/lib/task-query-helpers.ts": "53078d01e9ec23915854730a9b15c63e5fc21fff2cd0e4365d8b05fec0ca92c6",
+    "src/lib/task-status.ts": "5a880c9afdb7dc4afc23d1b2ea308b0ce99e8437005a9ed3fbdc5b3f9bb9c02b",
+    "src/lib/testimonial-service.ts": "3a60a47575ede9d2dae9a72d79c51561e07c854448850085580b511b5b679f04",
+    "src/lib/testimonials.ts": "a906d550e4facb7259acbe1645c41685444b514cbde7e2355b18a8683f931a12",
+    "src/lib/text-extract.ts": "07be5f5d1d167c88fec1c0fde557b60d88356ed089296e547e23632bff719e0c",
+    "src/lib/text-utils.ts": "f0f55e11b38465aa98894809b8720b4eb9cbbd299ea2d4bb83da58638e63fe50",
+    "src/lib/token-estimate.ts": "2b2badba13a77883a505a0b9ef978e51187b833f9338f45f52ce81935cc2823e",
+    "src/lib/token-pack-service.ts": "d4238577f9b2cc6a2ee6102885ac1e2794ae433fe40049260c986344d9049e59",
+    "src/lib/token-settlement-ops.ts": "40028d4f651a9d299900ced050ad41dda88c2d3b3250e41c9bff93c696b805d8",
+    "src/lib/token-settlement-service.ts": "ac1440924110c3300282b64f0d44f0b583a7a17d0d19f85c44aba7258139a659",
+    "src/lib/use-export-max-rows.ts": "75ea794d1f5729684cd7d2834be314d40127a43b154b04c7020ce11c02f4e8bd",
+    "src/lib/user-byo-model.ts": "f76d1c5a90061c3481ff96c427e1b1de39a9e49364aa2fb639c59253d3da6af7",
+    "src/lib/user-entitlement.ts": "32c0566f6b0d01a8783e55fb885fafcfaf103fef54fc32bd15e745e854936329",
+    "src/lib/validators.ts": "e1d1100ce62c60ca246198879d57174634d014ecdb9097f4a77e7350ec34c637",
+    "src/lib/with-auth.ts": "0cdc18ae116eab87bbd34e7c38ff3f589c9d519b50aace4ec0ce16dc632a193d",
+    "src/lib/workspace-activity.ts": "473cebc048d069f1e44d22e1862b10e98985027a27c8b2fe950af9276c9bf35e",
+    "src/lib/workspace-byo-model.ts": "fe9eb769098679f9a5b07bd1a95f3a96fb71879b3f11a5509d42b3f8bbdfed7d",
+    "src/lib/workspace-capability.ts": "cd16790ff8c7d8520036e7cce2a384ad3469858bdbf3c650454abf4c5ac1a3ac",
+    "src/lib/workspace-context.ts": "1ecbfde8d84100bc672784dc1fd0dd657788974f73033f91f7345649afa2ed53",
+    "src/lib/workspace-events.ts": "95db611ebc1e5f6ea5beb588c9b95b6f23e6498182f1af07209dd91b0912c342",
+    "src/lib/workspace-naming.ts": "4a1c47e67b5eebe38f0b651dddc967919e5bfa248415993196ae703417572a6d",
+    "src/lib/workspace-plan-service.ts": "297cd6af852e15e02b026d204a02535e9a1df790491a45004c89ae70d6cb4705",
+    "src/lib/workspace-post-submissions.ts": "ace5a558c2bb1d919ab3be39c3c9c434078417cef89885e1b862bcdf3f37097e",
+    "src/lib/workspace-readonly-guard.ts": "0e48b9f58526f70468ae6dcfba66f076741b7d3931b6ddc9e5fa812f04a34190",
+    "src/lib/workspace-upgrade-service.ts": "094e4ff07bf9a2f2783aa9fbaf3cc4cfa51a79d32c2a3a2efdee3a4dd9b52e62",
+    "src/lib/workspace-validators.ts": "cd07fd5c3ecaef3c6cd71563a75e3fc6c82f178198e64438c6aaf1cd0e2c0cbf",
+    "src/lib/workspaceInit.ts": "98c90c9c5cc475e819190d91219a80f828b7b7e6f4d51ad796ecd766b80bb5b0",
+    "src/lib/zombie-user.ts": "090ebd8a0b3d7a1be79510f974fa036c5db3c79c7bf6e3d0f448d2125089c516",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6"
+  }
+}

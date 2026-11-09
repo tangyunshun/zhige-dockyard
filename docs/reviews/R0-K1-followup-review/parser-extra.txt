@@ -1,0 +1,7 @@
+describe('Original shared sheet/cell budgets on current numeric extraction path',()=>{
+ it('defect KR5: worksheet extraction consumes no sheet/cell root budget',async()=>{
+  const {RootBudget}=await import('@/lib/parse-policy'),t=await import('@/lib/text-extract');const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Amount'],[42]]),'Revenue');XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['Amount'],[7]]),'Expenses');const data=XLSX.write(wb,{type:'buffer',bookType:'xlsx',compression:true,bookSST:true}) as Buffer;
+  const budget=new RootBudget({limits:{sheets:1,cells:1},deadlineMs:10000});const result=await t.parseWithBoundary(data,'small.xlsx','',{budget});expect(result.text).toContain('42');expect(result.text).toContain('7');expect(budget.used.sheets??0).toBe(0);expect(budget.used.cells??0).toBe(0);
+  observations.push({name:'sheet-cell-budget-not-consumed',actualSheets:2,actualCells:4,allowedSheets:1,allowedCells:1,meteredSheets:0,meteredCells:0,accepted:true});
+ });
+});

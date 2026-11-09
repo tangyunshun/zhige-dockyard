@@ -13,10 +13,10 @@
 
 import { prisma } from "@/lib/prisma";
 import { generateEnterpriseWorkspaceName } from "@/lib/workspace-naming";
-import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { getWorkspacePlanByKey, getWorkspacePlanStrict } from "@/lib/workspace-plan-service";
 import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
 import { migratePersonalGiftToEnterprisePool } from "@/lib/personal-gift-migration";
-import { storageMbToBytes } from "@/constants/workspace-plans";
+import { storageMbToBytes, type WorkspacePlanConfig } from "@/constants/workspace-plans";
 import { mergeLimits } from "@/lib/limit-utils";
 
 export type UpgradeSource = "SELF_SERVICE_PURCHASE" | "SALES_SIGNUP" | "ADMIN_MANUAL";
@@ -34,6 +34,11 @@ export interface UpgradePersonalToEnterpriseInput {
   force?: boolean;
   /** 指定工作空间配额记录 ID；缺省按 workspaceId 反查 */
   workspacequotaId?: string;
+  /** KN-C1：已核验的套餐配置快照（R0-A3）——自助免支付来源时由 route 层严格读取后传入；
+   *  传入后 resolveTargetConfig 跳过二次 DB 读取，直接以该快照贯穿全部写入，杜绝两次读取间配置漂移。 */
+  verifiedPlanConfig?: WorkspacePlanConfig;
+  /** [R0-A4 D1] 升级方式（retain/upgrade/delete），delete 已在服务层阻断 */
+  option?: "retain" | "upgrade" | "delete";
 }
 
 export interface UpgradePersonalToEnterpriseResult {
@@ -52,6 +57,12 @@ const genId = (prefix: string) => `${prefix}_${Date.now()}_${Math.random().toStr
 export async function upgradePersonalToEnterprise(
   input: UpgradePersonalToEnterpriseInput
 ): Promise<UpgradePersonalToEnterpriseResult> {
+  // [R0-A4 D1] delete 迁移方式在服务层兜底阻断（自查清单安全红线）
+  if (input.option === "delete") {
+    // [R0-A4 D1] 所有来源的 delete 迁移方式均阻断（包括管理员/签约），恢复需后续独立批次
+    throw new Error("MIGRATION_OPTION_UNAVAILABLE");
+  }
+
   // 1. 读取空间并做基础校验
   const workspace = await prisma.workspace.findUnique({
     where: { id: input.workspaceId },
@@ -86,16 +97,103 @@ export async function upgradePersonalToEnterprise(
     };
   }
 
-  // 2. 解析目标套餐（缺省选最低档可购买企业套餐）
-  const targetConfig = input.targetPlanKey
-    ? await getWorkspacePlanByKey(input.targetPlanKey)
-    : await resolveDefaultEnterprisePlan();
+  // 2. 解析目标套餐并贯穿已核验授权事实（避免「核验 STANDARD、实际开通 PRO」的漂移）。
+  // 自助免支付来源必须显式携带目标，且以严格读取（不回退常量）在写边界重新核验；
+  // 管理员 / 线下授予可沿用宽松读取与最低档回退（既有职责保留）。
+  // KN-C1（R0-A3）：route 层已通过 getWorkspacePlanStrict 严格读取并核验的配置快照
+  // 直接贯穿写入，不再二次 DB 读取，杜绝「核验 STANDARD → 写入时变 PRO」的时序漂移。
+  // [R0-A4 D2] 快照贯穿写入 + 写前一致性核验。
+  // [R0-A5 E1] 一致性核验扩展到全部实际写入事实：价格/资格之外还包括
+  // 空间资源（maxComponents/maxMembers/maxStorage/maxApiCalls）、功能权益（features）、
+  // 差异化赠送（trialGift.enabled/points/expireDays）与套餐名（账单标题）。
+  let targetConfig: WorkspacePlanConfig | null = null;
+  if (input.verifiedPlanConfig) {
+    // 有快照：重新读取当前 DB 状态做一致性核验
+    targetConfig = await verifyPlanSnapshotConsistency(input.targetPlanKey, input.verifiedPlanConfig);
+  } else {
+    targetConfig = await resolveTargetConfig(input);
+  }
   if (!targetConfig) throw new Error("TARGET_PLAN_NOT_FOUND");
   if (input.source === "SELF_SERVICE_PURCHASE" && !targetConfig.purchasable) {
     throw new Error("PLAN_NOT_PURCHASABLE_ONLINE");
   }
 
-  const cycle: "MONTH" | "YEAR" = input.billingCycle === "YEAR" ? "YEAR" : "MONTH";
+  return applyEnterpriseUpgrade(
+    {
+      workspaceId: input.workspaceId,
+      workspacequotaId: input.workspacequotaId,
+      billingCycle: input.billingCycle,
+      source: input.source,
+      actorId: input.actorId,
+    },
+    { id: workspace.id, name: workspace.name, ownerId: workspace.ownerId },
+    targetConfig,
+  );
+}
+
+/**
+ * [R0-A5 E1] 快照一致性核验：重新严格读取当前 DB 配置，与 route 层已确认的快照比较
+ * 「本次升级写入实际会使用」的全部规范事实，任一变化即拒绝（PLAN_CONFIG_CHANGED），
+ * 要求用户重新确认；通过后返回当前配置（内容与快照一致）供后续写入使用。
+ *
+ * 比较范围与 upgradePersonalToEnterprise 的实际写入一一对应（最小比较，可审查）：
+ *  - 套餐身份/账单命名：key（workspace.plan、订单 metadata）、name（账单标题）
+ *  - 价格/资格：priceMonthly、priceYearly（账单 amount）、purchasable（自助购买资格）
+ *  - 空间资源：maxComponents/maxMembers/maxStorage/maxApiCalls（workspace.quota 与 workspacequota）
+ *  - 功能权益：features（workspace.quota.features，按集合比较，顺序无关）
+ *  - 差异化赠送：trialGift.enabled/points/expireDays（grantNewSpaceTrialQuota overrides）
+ * 不比较 sortOrder、description、poolLowThreshold、并发/单文件/BYO 等本链路未写入的字段，
+ * 也不引入报价有效期/通用版本框架。
+ */
+async function verifyPlanSnapshotConsistency(
+  targetPlanKey: string | undefined,
+  snap: WorkspacePlanConfig,
+): Promise<WorkspacePlanConfig> {
+  const current = await getWorkspacePlanStrict(targetPlanKey);
+  if (!current.ok) {
+    // PLAN_INACTIVE / TARGET_PLAN_NOT_FOUND / PLAN_NOT_PURCHASABLE_ONLINE / PLAN_PRICE_INVALID / PLAN_CONFIG_UNAVAILABLE
+    throw new Error(current.code);
+  }
+  const curr = current.config;
+  // trialGift 在 DB 可为 NULL（dbToConfig 会回退常量），统一成可比较的规范串
+  const giftOf = (g: { enabled: boolean; points: number; expireDays: number } | null | undefined) =>
+    g ? `${g.enabled ? 1 : 0}:${g.points}:${g.expireDays}` : "0:0:0";
+  const changed =
+    curr.key !== snap.key ||
+    curr.name !== snap.name ||
+    curr.priceMonthly !== snap.priceMonthly ||
+    curr.priceYearly !== snap.priceYearly ||
+    curr.purchasable !== snap.purchasable ||
+    curr.maxComponents !== snap.maxComponents ||
+    curr.maxMembers !== snap.maxMembers ||
+    curr.maxStorage !== snap.maxStorage ||
+    curr.maxApiCalls !== snap.maxApiCalls ||
+    [...curr.features].sort().join("\u0001") !== [...snap.features].sort().join("\u0001") ||
+    giftOf(curr.trialGift) !== giftOf(snap.trialGift);
+  if (changed) {
+    throw new Error("PLAN_CONFIG_CHANGED");
+  }
+  return curr;
+}
+
+/**
+ * [R0-A5 E2] 企业开通的实际写入（私有）：套餐/配额/模型策略/操作日志/账单（原子事务）+ 差异化赠送。
+ * 只做写入，不做配置核验——核验统一由公开入口（upgradePersonalToEnterprise /
+ * provisionEnterpriseUpgrade）在任何业务写入之前完成后，把已核验配置传入本函数，
+ * 避免「更深层另一次读取又造成先写后拒绝」的窗口。
+ */
+async function applyEnterpriseUpgrade(
+  args: {
+    workspaceId: string;
+    workspacequotaId?: string;
+    billingCycle?: "MONTH" | "YEAR";
+    source?: UpgradeSource;
+    actorId?: string | null;
+  },
+  workspace: { id: string; name: string; ownerId: string },
+  targetConfig: WorkspacePlanConfig,
+): Promise<UpgradePersonalToEnterpriseResult> {
+  const cycle: "MONTH" | "YEAR" = args.billingCycle === "YEAR" ? "YEAR" : "MONTH";
   const now = new Date();
   const expiresAt = new Date(now.getTime() + (cycle === "YEAR" ? 365 : 30) * 86400000);
   const cycleAmount = cycle === "YEAR" ? targetConfig.priceYearly : targetConfig.priceMonthly;
@@ -116,7 +214,7 @@ export async function upgradePersonalToEnterprise(
   // 3. 原子事务：type / 套餐 / 配额 / 模型策略 / 操作日志 / 账单
   await prisma.$transaction(async (tx) => {
     await tx.workspace.update({
-      where: { id: input.workspaceId },
+      where: { id: args.workspaceId },
       data: {
         type: "ENTERPRISE",
         plan: targetConfig.key,
@@ -135,10 +233,10 @@ export async function upgradePersonalToEnterprise(
     });
 
     // 配额：已有则更新硬限额；缺失则补齐（余额 0 起步，赠送由下方统一处理）
-    let wsq = input.workspacequotaId
-      ? await tx.workspacequota.findUnique({ where: { id: input.workspacequotaId } })
+    let wsq = args.workspacequotaId
+      ? await tx.workspacequota.findUnique({ where: { id: args.workspacequotaId } })
       : null;
-    if (!wsq) wsq = await tx.workspacequota.findUnique({ where: { workspaceId: input.workspaceId } });
+    if (!wsq) wsq = await tx.workspacequota.findUnique({ where: { workspaceId: args.workspaceId } });
 
     let baseLevel: { maxStorage: bigint; maxApiCalls: bigint; tokenLimit: bigint } | null = null;
     if (wsq?.membershipLevelId) {
@@ -171,7 +269,7 @@ export async function upgradePersonalToEnterprise(
       await tx.workspacequota.create({
         data: {
           id: genId("wsq"),
-          workspaceId: input.workspaceId,
+          workspaceId: args.workspaceId,
           membershipLevelId: owner?.membershipLevel || "FREE",
           tokenBalance: BigInt(0),
           storageLimit: BigInt(finalStorageLimit),
@@ -185,13 +283,13 @@ export async function upgradePersonalToEnterprise(
 
     // 模型策略：仅当空间尚无策略时初始化（保留用户此前的自定义配置）
     const existingPolicy = await tx.workspace_model_policy.findUnique({
-      where: { workspaceId: input.workspaceId },
+      where: { workspaceId: args.workspaceId },
     });
     if (!existingPolicy) {
       await tx.workspace_model_policy.create({
         data: {
           id: genId("wmp"),
-          workspaceId: input.workspaceId,
+          workspaceId: args.workspaceId,
           defaultDeploymentId: null,
           allowedDeploymentIds: paidIds,
           disabledDeploymentIds: [],
@@ -203,15 +301,15 @@ export async function upgradePersonalToEnterprise(
     await tx.operationlog.create({
       data: {
         id: logId,
-        userId: input.actorId ?? workspace.ownerId,
-        workspaceId: input.workspaceId,
+        userId: args.actorId ?? workspace.ownerId,
+        workspaceId: args.workspaceId,
         action: "UPGRADE_PERSONAL_TO_ENTERPRISE",
         resource: "Workspace",
         details: {
           fromType: "PERSONAL",
           toType: "ENTERPRISE",
           toPlan: targetConfig.key,
-          source: input.source,
+          source: args.source,
           billingCycle: cycle,
           expiresAt: expiresAt.toISOString(),
         },
@@ -222,7 +320,7 @@ export async function upgradePersonalToEnterprise(
       data: {
         id: bilId,
         userId: workspace.ownerId,
-        workspaceId: input.workspaceId,
+        workspaceId: args.workspaceId,
         type: "PLAN_UPGRADE",
         title: `空间「${workspace.name}」升级为企业空间 · ${targetConfig.name}（${cycle === "YEAR" ? "年付" : "月付"}）`,
         amount: cycleAmount,
@@ -233,7 +331,7 @@ export async function upgradePersonalToEnterprise(
         metadata: {
           upgradeType: "personal_to_enterprise",
           toPlan: targetConfig.key,
-          source: input.source,
+          source: args.source,
           billingCycle: cycle,
           expiresAt: expiresAt.toISOString(),
         },
@@ -245,9 +343,9 @@ export async function upgradePersonalToEnterprise(
   let trialGranted: number | null = null;
   if (targetConfig.trialGift?.enabled && targetConfig.trialGift.points > 0) {
     const g = await grantNewSpaceTrialQuota({
-      workspaceId: input.workspaceId,
+      workspaceId: args.workspaceId,
       workspaceName: workspace.name,
-      operatorId: input.actorId ?? null,
+      operatorId: args.actorId ?? null,
       overrides: {
         enabled: true,
         points: targetConfig.trialGift.points,
@@ -279,6 +377,29 @@ async function resolveDefaultEnterprisePlan() {
 }
 
 /**
+ * 解析目标套餐配置；写边界重新核验，拒绝与已确认目标不一致。
+ * - 自助免支付(SELF_SERVICE_PURCHASE)：必须显式传 targetPlanKey，且用严格读取（不回退常量）核验；
+ *   缺失目标直接拒绝，不再自动挑更贵 / 排序更前的套餐。
+ * - 管理员 / 线下授予(SALES_SIGNUP / ADMIN_MANUAL)：沿用宽松读取与最低档回退，保留既有职责。
+ */
+async function resolveTargetConfig(
+  input: UpgradePersonalToEnterpriseInput,
+): Promise<WorkspacePlanConfig | null> {
+  if (input.targetPlanKey) {
+    if (input.source === "SELF_SERVICE_PURCHASE") {
+      const strict = await getWorkspacePlanStrict(input.targetPlanKey);
+      return strict.ok ? strict.config : null;
+    }
+    return await getWorkspacePlanByKey(input.targetPlanKey);
+  }
+  if (input.source === "SELF_SERVICE_PURCHASE") {
+    // 自助来源不允许无目标自动选档，交由调用方显式指定，杜绝漂移
+    return null;
+  }
+  return await resolveDefaultEnterprisePlan();
+}
+
+/**
  * 实际开通企业空间（支付成功后的履约动作）。
  *
  * 与「先下单后开通」的支付链路配合：POST /api/workspace/upgrade 只创建 PENDING 订单，
@@ -299,9 +420,18 @@ export async function provisionEnterpriseUpgrade(input: {
   targetPlanKey?: string;
   billingCycle?: "MONTH" | "YEAR";
   source?: UpgradeSource;
+  /** KN-C1（R0-A3）：已核验的套餐配置快照，由 route 层传入后贯穿全部写入 */
+  verifiedPlanConfig?: WorkspacePlanConfig;
 }): Promise<{ newWorkspaceId: string; message: string; giftMigrated: number }> {
   const { personalWorkspaceId, userId, option } = input;
   const source = input.source || "SELF_SERVICE_PURCHASE";
+
+  // [R0-A5 E3] delete 迁移方式对所有来源统一阻断（自助 / 管理员 / 签约 / 省略 source 的默认来源）：
+  // 资产已迁入的目标空间曾因赠送迁移等后续故障触发 cleanupOrphan 删除，跨资产/账务的完整迁移
+  // 恢复需后续独立批次；在任何业务写入之前明确拒绝，不把管理员权限视为可接受数据丢失的理由。
+  if (option === "delete") {
+    throw new Error("MIGRATION_OPTION_UNAVAILABLE");
+  }
 
   const personalWorkspace = await prisma.workspace.findUnique({
     where: { id: personalWorkspaceId },
@@ -315,17 +445,44 @@ export async function provisionEnterpriseUpgrade(input: {
   const ownerName = owner?.name || null;
   const now = new Date();
 
+  // ── [R0-A5 E2] 自助来源：最终配置核验前置到任何业务写入之前 ──
+  // retain 不再「先建空间/成员 → 深层核验失败 → cleanupOrphan 删除」；改价/停用/资源或赠送变化
+  // 在此处拒绝，零写入。核验通过的同一配置直接传入私有写函数 applyEnterpriseUpgrade，
+  // 更深层不再二次读取造成「先写后拒绝」窗口。
+  // 管理员 / 线下授予（无快照）沿用既有宽松解析职责，仍走 upgradePersonalToEnterprise 的写边界解析。
+  let selfServiceConfig: WorkspacePlanConfig | null = null;
+  if (input.verifiedPlanConfig) {
+    selfServiceConfig = await verifyPlanSnapshotConsistency(input.targetPlanKey, input.verifiedPlanConfig);
+    if (source === "SELF_SERVICE_PURCHASE" && !selfServiceConfig.purchasable) {
+      throw new Error("PLAN_NOT_PURCHASABLE_ONLINE");
+    }
+  }
+
   // ── 方式2（upgrade）：原地升级，个人空间直接转为企业空间 ──
   // 不新建空间、不迁移算力点（原空间的注册赠送随空间一起转为企业空间内的额度），数据全部原地保留。
   if (option === "upgrade") {
     const enterpriseName = await generateEnterpriseWorkspaceName(userId, ownerName);
-    await upgradePersonalToEnterprise({
-      workspaceId: personalWorkspaceId,
-      targetPlanKey: input.targetPlanKey,
-      billingCycle: input.billingCycle,
-      source,
-      actorId: userId,
-    });
+    if (selfServiceConfig) {
+      // [R0-A5 E2] 已核验配置直接写入，不经 upgradePersonalToEnterprise 二次核验/读取
+      await applyEnterpriseUpgrade(
+        {
+          workspaceId: personalWorkspaceId,
+          billingCycle: input.billingCycle,
+          source,
+          actorId: userId,
+        },
+        { id: personalWorkspace.id, name: personalWorkspace.name, ownerId: personalWorkspace.ownerId },
+        selfServiceConfig,
+      );
+    } else {
+      await upgradePersonalToEnterprise({
+        workspaceId: personalWorkspaceId,
+        targetPlanKey: input.targetPlanKey,
+        billingCycle: input.billingCycle,
+        source,
+        actorId: userId,
+      });
+    }
     await prisma.workspace.update({
       where: { id: personalWorkspaceId },
       data: { name: enterpriseName, updatedAt: now },
@@ -337,7 +494,7 @@ export async function provisionEnterpriseUpgrade(input: {
     };
   }
 
-  // ── 方式1（retain）/ 方式3（delete）：新建一个独立的企业空间 ──
+  // ── 方式1（retain）：新建一个独立的企业空间（方式3 delete 已在入口统一拒绝） ──
   const newWorkspaceId = `ws-ent-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // 补偿：若后续任意一步失败，清理已创建的孤儿企业空间，避免只建不开通
@@ -355,7 +512,7 @@ export async function provisionEnterpriseUpgrade(input: {
     await prisma.workspace.create({
       data: {
         id: newWorkspaceId,
-        // 方式1 为空白壳（不抄个人空间描述）；方式3 资产随后从个人空间搬入
+        // retain 为空白壳（不抄个人空间描述）
         name: enterpriseName,
         description: null,
         type: "PERSONAL",
@@ -374,36 +531,30 @@ export async function provisionEnterpriseUpgrade(input: {
       },
     });
 
-    // 统一升级服务：设置套餐 / 配额 / 模型策略 / 账单（原子事务）
-    await upgradePersonalToEnterprise({
-      workspaceId: newWorkspaceId,
-      targetPlanKey: input.targetPlanKey,
-      billingCycle: input.billingCycle,
-      source,
-      actorId: userId,
-    });
-
-    let giftMigrated = 0;
-    if (option === "delete") {
-      // 方式3：把个人空间的全部核心资产搬到新企业空间，原个人空间转为只读归档（不删除，数据不丢）
-      await movePersonalAssetsToEnterprise(personalWorkspaceId, newWorkspaceId, userId);
-      const migration = await migratePersonalGiftToEnterprisePool({
-        userId,
-        fromWorkspaceId: personalWorkspaceId,
-        toWorkspaceId: newWorkspaceId,
-      });
-      giftMigrated = migration.migrated;
-      await prisma.workspace.update({
-        where: { id: personalWorkspaceId },
-        data: { status: "ARCHIVED", updatedAt: now },
+    if (selfServiceConfig) {
+      // [R0-A5 E2] 已核验配置直接写入（此时空间/成员已建，配置不可能再被深层核验拒绝）
+      await applyEnterpriseUpgrade(
+        {
+          workspaceId: newWorkspaceId,
+          billingCycle: input.billingCycle,
+          source,
+          actorId: userId,
+        },
+        { id: newWorkspaceId, name: enterpriseName, ownerId: userId },
+        selfServiceConfig,
+      );
+    } else {
+      // 统一升级服务：设置套餐 / 配额 / 模型策略 / 账单（原子事务）
+      await upgradePersonalToEnterprise({
+        workspaceId: newWorkspaceId,
+        targetPlanKey: input.targetPlanKey,
+        billingCycle: input.billingCycle,
+        source,
+        actorId: userId,
       });
     }
 
-    const message =
-      option === "delete"
-        ? "已创建企业空间，原个人空间已转为只读归档"
-        : "已创建企业空间，个人空间已保留";
-    return { newWorkspaceId, message, giftMigrated };
+    return { newWorkspaceId, message: "已创建企业空间，个人空间已保留", giftMigrated: 0 };
   } catch (innerErr) {
     await cleanupOrphan();
     throw innerErr;
@@ -469,6 +620,11 @@ export async function fulfillEnterpriseUpgradeFromOrder(orderNo: string): Promis
     };
   }
   if (order.status !== "PENDING") throw new Error(`ORDER_STATE_${order.status}`);
+
+  // [R0-A4 D1] 历史待支付订单的 option=delete 同样阻断（不执行危险迁移）
+  if (meta.option === "delete") {
+    throw new Error("MIGRATION_OPTION_UNAVAILABLE");
+  }
 
   return provisionEnterpriseUpgrade({
     personalWorkspaceId: meta.workspaceId,

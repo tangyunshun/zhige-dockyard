@@ -1,0 +1,26 @@
+{
+  "src/lib/storage-quota.ts": {
+    "sha256After": "898c6e174e3ece7ffcce11a5f6118fde4d540f562ddbdd3a4a61f88f3882657d",
+    "bytes": 15966,
+    "sha256Start": "40c67567fc8f263c2ca576f450ba02b01669b170f89855df0a45e4060ed89487"
+  },
+  "src/lib/file-store.ts": {
+    "sha256After": "a3d07e2a50b4116a1b57dff3a009fcf657a90c596d4614b4c444792b857547fd",
+    "bytes": 7591,
+    "sha256Start": "644844f307db72dd07e08b458408ae0377c002aaa1643192b9b5559ee99b5c15"
+  },
+  "src/app/api/studio/handler.ts": {
+    "sha256After": "ee4b5ee7f94873a11440b3138c78694168c7752bfe0f42cfaca211d25cee8a66",
+    "bytes": 342809,
+    "sha256Start": "80fe316293fb007f858282bd7212aad5c881d3a31e4c0b42909b816060ed46d0"
+  },
+  "src/app/api/workspace/clear-data/route.ts": {
+    "sha256After": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d",
+    "bytes": 6092,
+    "sha256Start": "98cdf678ad9a571815aa5856815b85e137f005706aaf9b7a7130814a800471a8"
+  },
+  "src/app/api/__tests__/r0j-storage.test.ts": {
+    "sha256After": "477e5f04797965ba872e12ff87d6fc75f0cf7b0ba5ea007d1f56e6ebbbfe07bb",
+    "bytes": 36599
+  }
+}

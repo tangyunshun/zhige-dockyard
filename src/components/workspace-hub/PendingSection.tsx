@@ -1,5 +1,6 @@
 "use client";
 
+import { formatDateTime } from "@/utils/format";
 import React from "react";
 import { Clock, Check, X, ShieldAlert } from "lucide-react";
 
@@ -57,7 +58,7 @@ export default function PendingSection({
                 </p>
                 <span className="text-[9px] text-slate-400 font-medium flex items-center gap-1 mt-1.5">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>收到于 {new Date(item.createdAt).toLocaleString("zh-CN")}</span>
+                  <span>收到于 {formatDateTime(item.createdAt)}</span>
                 </span>
               </div>
             </div>

@@ -31,7 +31,9 @@ import {
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import Pagination from "@/components/Pagination";
+import { isProtectedActivity } from "@/lib/log-protection";
 
 interface UserActivity {
   id: string;
@@ -44,9 +46,19 @@ interface UserActivity {
   resourceLabel?: string | null;
   resourceId?: string | null;
   workspaceId?: string | null;
+  workspaceName?: string | null;
+  myRole?: string | null;
   ipAddress?: string | null;
   createdAt: string;
   metadata?: any;
+  metadataRaw?: any;
+  resolvedNames?: Record<string, string> | null;
+}
+
+interface WorkspaceOption {
+  id: string;
+  name: string;
+  myRole: string | null;
 }
 
 interface ActivityStatistics {
@@ -57,13 +69,6 @@ interface ActivityStatistics {
   membership: number;
   today: number;
 }
-
-// 安全敏感动作判定：与后端 /api/user/activities DELETE 的保护名单同口径，
-// 登录/支付/改密/转让/注销等合规溯源记录不允许当事人删除（按钮隐藏 + 批量剔除）
-const PROTECTED_ACTION_PATTERN =
-  /password|login|logout|pay|recharge|refund|transfer|deletion|delete[-_ ]?account|kick|stepup|verify/i;
-const isProtectedActivity = (a?: { action?: string } | null) =>
-  !!a && PROTECTED_ACTION_PATTERN.test(a.action || "");
 
 // 常见业务字段转中文对照表，收录全站数据库核心属性，彻底杜绝 price, points, isActive 等英文原样暴露
 const FIELD_TRANSLATIONS: Record<string, string> = {
@@ -179,6 +184,102 @@ const FIELD_TRANSLATIONS: Record<string, string> = {
   content: "文本内容",
   remark: "备注说明",
   memo: "备忘信息",
+
+  // 登录与设备环境（密码/短信/第三方联合登录、挤线下线、登出、设备流转审计）
+  os: "操作系统",
+  browser: "浏览器",
+  deviceType: "设备类型",
+  deviceName: "设备名称",
+  deviceId: "设备编号",
+  loginMethod: "登录方式",
+  path: "访问路径",
+  keyId: "密钥编号",
+  keyName: "密钥名称",
+
+  // 空间升级 / 加入 / 解散 / 转让 / 注销 / 方案部署审计
+  fromType: "原空间类型",
+  toType: "目标空间类型",
+  toPlan: "目标套餐",
+  source: "触发来源",
+  billingCycle: "计费周期",
+  workspaceType: "空间类型",
+  workspacePlan: "空间套餐",
+  workspaceVisibility: "空间可见性",
+  invitationCode: "邀请码",
+  fromOwnerId: "原所有者编号",
+  toOwnerId: "新所有者编号",
+  toOwnerName: "新所有者姓名",
+  toOwnerEmail: "新所有者邮箱",
+  solution: "部署方案",
+  configuredAt: "配置时间",
+  members: "涉及成员",
+  assets: "涉及资产",
+  tasks: "涉及任务",
+  pendingInvitations: "待处理邀请",
+  checkTimestamp: "合规检测时间",
+  subUserId: "子账号编号",
+  subName: "子账号名称",
+
+  // 以下字段名均来自真实数据库穷举（operationlog 668 条记录、153 个不同键），
+  // 与脚本 scripts/enum-op-log-metadata-keys.ts 的扫描结果一一对应，杜绝继续靠猜漏翻
+  key: "配置标识键",
+  page: "访问页面",
+  contractVersion: "合同版本",
+  keys: "配置项键名集合",
+  filters: "筛选条件",
+  exportType: "导出类型",
+  groupNo: "账期分组序号",
+  task: "关联任务标识",
+  activated: "是否已激活",
+  publishedAt: "发布时间",
+  grantedPermissions: "授予的权限清单",
+  added: "新增数量",
+  reviewer: "审核人",
+  costKept: "是否保留成本基线",
+  operation: "具体操作",
+  unboundAt: "解绑时间",
+  cooldownDays: "注销冷静期天数",
+  deletionDeadline: "注销截止时间",
+  vote: "评价倾向",
+  mode: "执行模式",
+  inputChars: "输入字符数",
+  outputChars: "输出字符数",
+  bioChanged: "个人简介是否变更",
+  emailChanged: "邮箱是否变更",
+  phoneChanged: "手机号是否变更",
+  movedEntries: "迁移条目数",
+  skippedSample: "跳过样本",
+  totalSelected: "已选总数",
+  value: "配置取值",
+  case: "场景类型",
+  softDeleted: "是否已软删除",
+  threshold: "阈值",
+  resetToPlanDefault: "是否重置为套餐默认",
+  search: "搜索关键词",
+  canDisable: "是否允许停用",
+  self: "是否本人操作",
+  resourceKey: "资源标识键",
+  byok: "是否自带模型(BYOK)",
+  group: "所属分组",
+  label: "显示标签",
+  level: "敏感级别",
+  durationText: "时长说明",
+  categoryKey: "分类标识键",
+  categoryLabel: "分类名称",
+  buckets: "分桶数量",
+  rule: "规则详情",
+  changed: "变更字段",
+  asDefault: "是否设为默认",
+  inWhitelist: "白名单命中数",
+  boundAt: "绑定时间",
+  targetType: "目标类型",
+  notified: "已通知数量",
+  pathPrefix: "路径前缀",
+  permission: "权限标识",
+  new: "变更后内容",
+  old: "变更前内容",
+  before: "更新前",
+  after: "更新后",
 };
 
 // 岗位与常见英文代码转中文映射表
@@ -244,7 +345,8 @@ const formatMetadataKey = (key: string): string => {
 };
 
 // 将字段值英文转为中文显示（如 true/false/ADMIN/UI_DESIGNER 等，带单位智能格式化）
-const formatMetadataValue = (key: string, val: any): string => {
+// resolvedNames：后端解析好的「内部编号 → 真实名称」映射，让审核人/用户编号等显示姓名而非裸 ID
+const formatMetadataValue = (key: string, val: any, resolvedNames?: Record<string, string> | null): string => {
   const lower = key.toLowerCase();
   if (val === true) {
     if (lower.includes("delete")) return "已确认删除";
@@ -257,6 +359,14 @@ const formatMetadataValue = (key: string, val: any): string => {
     return "否 / 停用关闭";
   }
   if (val === null || val === undefined || val === "") return "无";
+
+  // 内部编号优先翻译为真实名称（用户姓名 / 空间名称，由后端直接注入）
+  if (typeof val === "string") {
+    if (resolvedNames && resolvedNames[val]) return resolvedNames[val];
+    // 极少数未能解析的内部编号：如实显示原编号（悬浮可看），不再用无意义的占位文案
+    if (/^cm[a-z0-9]{20,}$/.test(val)) return val;
+    if (/^ws-[a-z0-9-]+$/.test(val)) return val;
+  }
 
   // 针对 price 字段若是数值，加上货币符号与“元”
   if (lower === "price" && typeof val === "number") {
@@ -287,6 +397,43 @@ const formatMetadataValue = (key: string, val: any): string => {
   }
 
   const s = String(val);
+
+  // 登录与设备环境专项翻译（按字段名精确匹配，避免与通用词冲突）
+  if (lower === "loginmethod") {
+    if (s === "password") return "账号密码登录";
+    if (s === "sms") return "短信验证码登录";
+    if (s === "oauth") return "第三方联合登录";
+    if (s === "oauth_register") return "第三方注册并登录";
+  }
+  if (lower === "devicetype") {
+    if (s === "web") return "网页端";
+    if (s === "mobile") return "移动端";
+    if (s === "tablet") return "平板端";
+    if (s === "desktop") return "桌面电脑端";
+    if (s === "DESKTOP") return "桌面电脑端";
+    if (s === "MOBILE") return "移动端";
+  }
+  if (lower === "workspacetype" || lower === "fromtype" || lower === "totype") {
+    if (s === "PERSONAL") return "个人空间";
+    if (s === "ENTERPRISE") return "企业空间";
+  }
+  if (lower === "billingcycle") {
+    const cyc = s.toLowerCase();
+    if (cyc === "monthly" || cyc === "month") return "按月付费";
+    if (cyc === "yearly" || cyc === "year") return "按年付费";
+  }
+  if (lower === "type") {
+    if (s === "TIMEOUT") return "超时自动退出";
+    if (s === "MANUAL") return "用户主动退出";
+    if (s === "DEVICE_LIMIT_REPLACED") return "设备数达上限，旧设备自动下线";
+    if (s === "user_deletion_finalized") return "账号注销已执行";
+  }
+  if (lower === "reason") {
+    if (s === "timeout") return "长时间无操作";
+    if (s === "user_logout") return "用户主动退出";
+    if (s === "cooldown_elapsed") return "注销冷静期已结束";
+  }
+
   if (CODE_TRANSLATIONS[s]) return CODE_TRANSLATIONS[s];
   if (s === "success") return "成功";
   if (s === "failed" || s === "error") return "失败";
@@ -334,6 +481,11 @@ export default function UserActivitiesPage() {
   const [timeRange, setTimeRange] = useState<"all" | "today" | "7days" | "30days">("all");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 空间维度筛选：全部 / 个人空间（无空间归属）/ 具体企业空间
+  const [workspaceFilter, setWorkspaceFilter] = useState<string>("all");
+  const [workspaces, setWorkspaces] = useState<WorkspaceOption[]>([]);
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天（与全站时间约束一致）
+  const today = new Date().toISOString().slice(0, 10);
 
   // 多选与批量操作状态
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -341,9 +493,11 @@ export default function UserActivitiesPage() {
 
   // 详情弹窗状态
   const [showDetailModal, setShowDetailModal] = useState(false);
+  useEscapeKey(showDetailModal, () => setShowDetailModal(false));
   const [selectedActivity, setSelectedActivity] = useState<UserActivity | null>(null);
   const [copiedMetadata, setCopiedMetadata] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+  useEscapeKey(showRawJson, () => setShowRawJson(false));
 
   // 删除确认对话框状态
   const [confirmDelete, setConfirmDelete] = useState<{
@@ -383,6 +537,11 @@ export default function UserActivitiesPage() {
           queryParams.set("keyword", searchTerm.trim());
         }
 
+        // 空间维度筛选：all 不传，personal 表示个人空间动作，其余为具体 workspaceId
+        if (workspaceFilter !== "all") {
+          queryParams.set("workspaceId", workspaceFilter);
+        }
+
         const res = await fetch(`/api/user/activities?${queryParams.toString()}`, {
           headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
         });
@@ -391,6 +550,9 @@ export default function UserActivitiesPage() {
           const data = await res.json();
           if (data.success) {
             setActivities(data.data || []);
+            if (Array.isArray(data.workspaces)) {
+              setWorkspaces(data.workspaces);
+            }
             if (data.pagination) {
               setPagination(data.pagination);
             }
@@ -415,13 +577,13 @@ export default function UserActivitiesPage() {
         if (isManual) setRefreshing(false);
       }
     },
-    [filterType, timeRange, startDate, endDate, searchTerm, toast]
+    [filterType, timeRange, startDate, endDate, searchTerm, workspaceFilter, toast]
   );
 
   // 初始化与筛选联动
   useEffect(() => {
     loadActivities(1, false);
-  }, [filterType, timeRange, startDate, endDate]);
+  }, [filterType, timeRange, startDate, endDate, workspaceFilter]);
 
   // 搜索提交
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -450,6 +612,7 @@ export default function UserActivitiesPage() {
     setTimeRange("all");
     setStartDate("");
     setEndDate("");
+    setWorkspaceFilter("all");
     setSelectedIds([]);
     setSelectAll(false);
     toast.info("已重置为全部操作记录");
@@ -488,7 +651,7 @@ export default function UserActivitiesPage() {
   // 触发批量删除（自动剔除受合规保护的安全敏感日志）
   const handleTriggerBatchDelete = () => {
     const deletable = selectedIds.filter(
-      (id) => !isProtectedActivity(activities.find((a) => a.id === id)),
+      (id) => !isProtectedActivity(activities.find((a) => a.id === id)?.action),
     );
     if (deletable.length === 0) {
       toast.error("所选日志均为安全敏感记录（登录/支付/改密/转让等），受合规保护不可删除");
@@ -507,7 +670,7 @@ export default function UserActivitiesPage() {
     try {
       const authToken = getAuthToken();
       const deletableSelected = selectedIds.filter(
-        (id) => !isProtectedActivity(activities.find((a) => a.id === id)),
+        (id) => !isProtectedActivity(activities.find((a) => a.id === id)?.action),
       );
       const payload =
         confirmDelete.type === "batch"
@@ -860,6 +1023,28 @@ export default function UserActivitiesPage() {
             </select>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           </div>
+
+          {/* 空间维度下拉：区分个人空间与作为所有者/管理员/协同者的企业空间 */}
+          <div className="w-full md:w-64 shrink-0 relative">
+            <select
+              value={workspaceFilter}
+              onChange={(e) => setWorkspaceFilter(e.target.value)}
+              className="w-full h-10 pl-3 pr-8 border border-slate-200 bg-white rounded-xl focus:border-[#3182ce] focus:ring-2 focus:ring-[#3182ce]/20 outline-none text-xs font-bold text-slate-700 transition-all cursor-pointer appearance-none"
+            >
+              <option value="all">🌐 全部空间（个人 + 企业）</option>
+              <option value="personal">👤 仅个人空间（无空间归属）</option>
+              {workspaces.map((ws) => {
+                const roleText =
+                  ws.myRole === "OWNER" ? "所有者" : ws.myRole === "ADMIN" ? "管理员" : "协同者";
+                return (
+                  <option key={ws.id} value={ws.id}>
+                    🏢 {ws.name}（{roleText}）
+                  </option>
+                );
+              })}
+            </select>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+          </div>
         </form>
 
         {/* 时间筛选整行：快捷按钮 + 紧跟在近30天后面的自定义时间选择框 */}
@@ -900,6 +1085,7 @@ export default function UserActivitiesPage() {
               <input
                 type="date"
                 value={startDate}
+                max={endDate || today}
                 onChange={(e) => {
                   setStartDate(e.target.value);
                   setTimeRange("all");
@@ -911,6 +1097,8 @@ export default function UserActivitiesPage() {
               <input
                 type="date"
                 value={endDate}
+                min={startDate || undefined}
+                max={today}
                 onChange={(e) => {
                   setEndDate(e.target.value);
                   setTimeRange("all");
@@ -919,9 +1107,10 @@ export default function UserActivitiesPage() {
                 title="截止日期"
               />
             </div>
+
           </div>
 
-          {(searchTerm || filterType !== "ALL" || startDate || endDate || timeRange !== "all") && (
+          {(searchTerm || filterType !== "ALL" || startDate || endDate || timeRange !== "all" || workspaceFilter !== "all") && (
             <button
               type="button"
               onClick={handleResetFilters}
@@ -1036,7 +1225,7 @@ export default function UserActivitiesPage() {
                 {activities.map((activity) => {
                   const isChecked = selectedIds.includes(activity.id);
                   const colorConfig = getActivityColor(activity.resourceType);
-                  const isProtected = isProtectedActivity(activity);
+                  const isProtected = isProtectedActivity(activity.action);
 
                   return (
                     <tr
@@ -1094,6 +1283,27 @@ export default function UserActivitiesPage() {
                             标的：{activity.resourceLabel || formatResourceLabel(activity.resourceId)}
                           </div>
                         )}
+                        {/* 空间维度与当时身份：个人空间动作显示「个人空间」，企业空间动作显示空间名 + 所有者/管理员/协同者 */}
+                        <div className="mt-1 flex items-center gap-1.5 flex-wrap">
+                          {activity.workspaceId ? (
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border bg-slate-50 text-slate-500 border-slate-200"
+                              title={`所属空间：${activity.workspaceName || activity.workspaceId}`}
+                            >
+                              🏢 {activity.workspaceName || "企业空间"}
+                              <span className="text-slate-400">·</span>
+                              {activity.myRole === "OWNER"
+                                ? "所有者"
+                                : activity.myRole === "ADMIN"
+                                  ? "管理员"
+                                  : "协同者"}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded border bg-indigo-50 text-indigo-600 border-indigo-200">
+                              👤 个人空间
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* 来源 IP */}
@@ -1278,8 +1488,8 @@ export default function UserActivitiesPage() {
 
                   <div className="p-3 bg-slate-50/80 border border-slate-100 rounded-xl space-y-1">
                     <span className="text-[11px] text-slate-400 font-bold block">所属工作空间</span>
-                    <span className="text-xs font-mono text-slate-700 truncate block">
-                      {selectedActivity.workspaceId || "个人中心主空间"}
+                    <span className="text-xs font-bold text-slate-700 truncate block" title={selectedActivity.workspaceId || undefined}>
+                      {selectedActivity.workspaceName || (selectedActivity.workspaceId ? "企业空间" : "个人中心主空间")}
                     </span>
                   </div>
                 </div>
@@ -1317,10 +1527,10 @@ export default function UserActivitiesPage() {
                       >
                         {showRawJson ? "切换为中文卡片" : "查看原始 JSON"}
                       </button>
-                      {selectedActivity.metadata && Object.keys(selectedActivity.metadata).length > 0 && (
+                      {(selectedActivity.metadataRaw ?? selectedActivity.metadata) && Object.keys(selectedActivity.metadataRaw ?? selectedActivity.metadata).length > 0 && (
                         <button
                           type="button"
-                          onClick={() => copyMetadata(selectedActivity.metadata)}
+                          onClick={() => copyMetadata(selectedActivity.metadataRaw ?? selectedActivity.metadata)}
                           className="text-[11px] font-bold text-[#3182ce] hover:text-[#2b6cb0] flex items-center gap-1 transition-colors cursor-pointer"
                         >
                           {copiedMetadata ? (
@@ -1341,9 +1551,9 @@ export default function UserActivitiesPage() {
 
                   {showRawJson ? (
                     <div className="relative rounded-xl border border-slate-200 bg-slate-900 p-3 text-slate-100 font-mono text-[11px] leading-relaxed max-h-48 overflow-y-auto">
-                      {selectedActivity.metadata && Object.keys(selectedActivity.metadata).length > 0 ? (
+                      {(selectedActivity.metadataRaw ?? selectedActivity.metadata) && Object.keys(selectedActivity.metadataRaw ?? selectedActivity.metadata).length > 0 ? (
                         <pre className="whitespace-pre-wrap break-all text-emerald-400">
-                          {JSON.stringify(selectedActivity.metadata, null, 2)}
+                          {JSON.stringify(selectedActivity.metadataRaw ?? selectedActivity.metadata, null, 2)}
                         </pre>
                       ) : (
                         <span className="text-slate-400 italic">
@@ -1365,8 +1575,11 @@ export default function UserActivitiesPage() {
                               <span className="font-bold text-slate-500 text-xs shrink-0">
                                 {formatMetadataKey(k)}:
                               </span>
-                              <span className="font-medium text-slate-800 text-xs text-right break-all max-w-[70%]">
-                                {formatMetadataValue(k, v)}
+                              <span
+                                className="font-medium text-slate-800 text-xs text-right break-all max-w-[70%]"
+                                title={typeof v === "string" ? v : undefined}
+                              >
+                                {formatMetadataValue(k, v, selectedActivity.resolvedNames)}
                               </span>
                             </div>
                           ))}

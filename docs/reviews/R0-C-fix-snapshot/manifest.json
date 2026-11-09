@@ -1,0 +1,35 @@
+{
+  "capturedAt": "2026-11-06T23:50:33+08:00",
+  "purpose": "R0-C：原方案 F06 企业共享池 → 个人钱包转移安全止损（唯一任务）",
+  "note": "改动前保存的真实原始副本在 frozen-source/，结束态在 end-source/；两者均加 .frozen 后缀以退出 tsconfig 的 **/*.ts(x) 编译收集，内容逐字节未变、SHA256 与 B3 独立审核记录一致。历史报告、审核材料与历史反例脚本均未改动。",
+  "gitHead": "761684be8d5661d6ed288f3b91d1fedfdc795a75",
+  "gitStatusAtStart": { "total": 115, "modified": 101, "untracked": 14 },
+  "startSource": "docs/reviews/R0-C-fix-snapshot/frozen-source/",
+  "endSource": "docs/reviews/R0-C-fix-snapshot/end-source/",
+  "files": [
+    { "path": "src/lib/credit-service.ts", "startSha256": "57bc72b9815ebe89f33b0878d50894e5a193b9c42d07f5b8b0a80eb689a4a024", "endSha256": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de", "diff": "+19 / -98" },
+    { "path": "src/app/api/workspace/quota/recycle/route.ts", "startSha256": "8fc5d6cdf237e6dea9792f143a1aef51dcde72214775cb83170b0499f2483c4e", "endSha256": "e5bdf2aedc65f7aef8b0bf671446b8d09c27b4992bb0f86f60456141c54dca1d", "diff": "+48 / -55" },
+    { "path": "src/app/api/admin/workspaces/recycle/route.ts", "startSha256": "5bad6f3d7cbd4f61463317e8ea2f93447a3a633579783562eb70b43ce9e1bbc8", "endSha256": "c93cfc55e31d6e7c44ce5e4464cdc4989c27307f79b9c754be735431422b4c75", "diff": "+48 / -33" },
+    { "path": "src/components/EnterprisePoolManager.tsx", "startSha256": "46fc1467f36080a88c17ad3912fb6d8cd145f04762004920b68d064f954115ca", "endSha256": "5ef95e3ac38d539ea5209c0fc320adfbeb7b681539dad23f0de195bd4f289625", "diff": "+22 / -110" },
+    { "path": "src/components/WorkspaceInternalLayoutV3.tsx", "startSha256": "d26e8422fbd116296d275518479b6c2e54033a7b87f07157bf28181483d21002", "endSha256": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02", "diff": "+5 / -37" },
+    { "path": "src/components/workspace/RechargeModal.tsx", "startSha256": "9113f78cbd44ec880211d71f776dc74ae947c4f1ceec2075e63f6b78133ab722", "endSha256": "c1f574a72ecbe81af853c7800da44576c9578a523e29824cbea1439d4caa6428", "diff": "+10 / -47" }
+  ],
+  "newFiles": [
+    "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+    "docs/reviews/R0-C-fix-report.md",
+    "docs/reviews/R0-C-fix-snapshot/manifest.json",
+    "docs/reviews/R0-C-fix-snapshot/verify-r0c-pages.cjs",
+    "docs/reviews/R0-C-fix-snapshot/frozen-source/*",
+    "docs/reviews/R0-C-fix-snapshot/end-source/*"
+  ],
+  "frozenUnchanged": {
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c…",
+    "src/app/user/pay/mock/page.tsx": "0f0b2d84306a964e…",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc59…",
+    "src/lib/order-expiry.ts": "15b9395be8037720…",
+    "docs/reviews/R0-B3-independent-review/verify-next-pool.cjs": "1a9f0838c88e5e15…（未运行、未修改）"
+  },
+  "protectedAdjacentPath": "credit-service.ts 的 transferPoints(MEMBER_TO_POOL) 段（约 1376–1570 行）差量为 0；grantPoints / consumePoints / refundConsumedPoints 等原语未改。",
+  "isolation": "内存 Prisma / 认证 / 通知 / 成员关系夹具；vm 转译执行真实组件；零真实库写入、迁移、退款、支付、模型调用、部署、依赖下载。",
+  "rollback": "按 manifest 的 6 组开始/结束哈希逐项反向应用本批差量；执行前重新核对当前哈希与他人改动。冻结副本与历史材料不删除。未实际回退。"
+}

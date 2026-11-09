@@ -1,0 +1,157 @@
+/**
+ * [R0-H / 原方案 F11] 平台模型固定点数兼容模式：执行前成本准入（纯函数，唯一裁决真源）。
+ *
+ * 规则（IDE-R0-H-PROMPT.md §3/§4）：
+ *  - 取消旧「成本超过 2 倍才阻断」容忍区：保守执行成本上界 > 本次实际会扣的名义预算即拒绝；
+ *  - 成本缺失 ≠ 免费：pricing 缺失、状态不可采信（UNCONFIGURED/UNVERIFIED/OBSERVED_ONLY）、
+ *    币种不可靠（非 CNY，本系统点数换算唯一权威口径）、任一侧成本缺失/非法，都不得按 0 继续；
+ *    只有权威事实证明免费（priceStatus=FREE，或 VERIFIED 且两侧成本均为 0）才按零成本放行；
+ *  - 预算 = 本次实际会扣的合法整数点数（固定点数计费的 rawCost）；非正整数视为损坏配置拒绝；
+ *  - 金额全程 BigInt 微元（1 算力点 = 10000 微元，MICROS_PER_POINT 唯一真源），
+ *    除法一律向上取整（保守上界），加价系数沿用既有统一口径（模型级覆盖 ?? 全局 k）；
+ *  - 供应商成本、用户售价、点数面值、现金收入与利润是不同概念：本函数只做
+ *    「保守成本上界 ≤ 名义预算」的止损比较，不构成任何利润率或补贴授权。
+ */
+
+import { MICROS_PER_POINT } from "@/lib/point-rate";
+
+/** 可采信的价格状态：明确免费，或供应商价目表已确认 */
+const TRUSTED_PRICE_STATUSES = new Set(["FREE", "VERIFIED"]);
+
+export interface CostAdmissionPricing {
+  currency?: string | null;
+  priceStatus?: string | null;
+  costInputMicrosPerMillion?: unknown;
+  costOutputMicrosPerMillion?: unknown;
+}
+
+export type CostAdmissionDecision =
+  | {
+      allowed: true;
+      /** 保守成本上界（微元，BigInt）；免费时为 BigInt("0") */
+      conservativeCostMicros: bigint;
+      /** 保守成本上界折算点数（向上取整；免费时 0） */
+      conservativeCostPoints: number;
+      /** 本次名义预算（点） */
+      budgetPoints: number;
+    }
+  | { allowed: false; code: "MODEL_COST_NOT_TRUSTWORTHY" | "MODEL_COST_EXCEEDS_BUDGET"; error: string };
+
+function toNonNegativeSafeInt(v: unknown): number | null {
+  // null/undefined 视为「缺失」，绝不与 0 混淆（Number(null) === 0 的陷阱）
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "bigint" ? Number(v) : Number(v);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+/** 向上取整整除（保守上界）：ceil(a / b)，a/b 均为非负 BigInt，b > 0 */
+function ceilDiv(a: bigint, b: bigint): bigint {
+  if (a === BigInt("0")) return BigInt("0");
+  return (a + b - BigInt("1")) / b;
+}
+
+export function decidePlatformModelCostAdmission(args: {
+  pricing: CostAdmissionPricing | null | undefined;
+  /** 最终实际输入 Token（与 adapter.execute 同源的保守估算） */
+  inputTokens: number;
+  /** 实际传给适配器的输出硬上限（目录×3 / env / 默认，与执行一致） */
+  maxOutputTokens: number;
+  /** 本次实际会扣的固定点数（名义预算） */
+  budgetPoints: number;
+  /** 生效加价率基点（模型级覆盖 ?? 全局 k），沿用既有统一口径 */
+  markupRateBps: number;
+}): CostAdmissionDecision {
+  const { inputTokens, maxOutputTokens, budgetPoints } = args;
+
+  // 1. 名义预算：必须是本次实际会扣的合法正整数点数（损坏配置诚实拒绝，不取整猜测）
+  if (!Number.isSafeInteger(budgetPoints) || budgetPoints <= 0) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "该组件的扣点配置不是有效的正整数点数，无法建立本次执行预算，已取消执行（未扣点、未调用模型）。请联系平台管理员修正组件定价。",
+    };
+  }
+  // 2. 用量入参：非负安全整数
+  const inTok = toNonNegativeSafeInt(inputTokens);
+  const outTok = toNonNegativeSafeInt(maxOutputTokens);
+  if (inTok === null || outTok === null) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "本次请求的用量参数非法，无法建立可信成本边界，已取消执行（未扣点、未调用模型）。",
+    };
+  }
+  // 3. 价格记录必须存在（缺失 ≠ 免费）
+  const pricing = args.pricing ?? null;
+  if (!pricing) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "该模型的供应商成本未配置，无法核验本次执行成本，已取消执行（未扣点、未调用模型）。请联系平台管理员在模型注册表登记并确认价格。",
+    };
+  }
+  // 4. 状态可采信：仅 FREE / VERIFIED；UNCONFIGURED / UNVERIFIED / OBSERVED_ONLY / 未知一律不可信
+  if (!pricing.priceStatus || !TRUSTED_PRICE_STATUSES.has(String(pricing.priceStatus))) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "该模型的价格尚未经过确认（未配置或仅有观测数据），无法核验本次执行成本，已取消执行（未扣点、未调用模型）。请联系平台管理员确认模型定价。",
+    };
+  }
+  // 5. 币种：点数换算唯一权威口径为 CNY 微元；其他币种无授权换算规则，不猜汇率
+  if (String(pricing.currency ?? "CNY") !== "CNY") {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "该模型价格币种不是平台统一计费币种，无法可靠换算本次执行成本，已取消执行（未扣点、未调用模型）。请联系平台管理员核对价格币种。",
+    };
+  }
+  // 6. 成本单价：两侧都必须是已登记的非负安全整数（输入与输出都可能产生用量，缺一不可）
+  const costIn = toNonNegativeSafeInt(pricing.costInputMicrosPerMillion);
+  const costOut = toNonNegativeSafeInt(pricing.costOutputMicrosPerMillion);
+  if (costIn === null || costOut === null) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "该模型的供应商成本单价缺失或非法，无法核验本次执行成本，已取消执行（未扣点、未调用模型）。请联系平台管理员补全模型成本价格。",
+    };
+  }
+  // 7. 加价系数：非负安全整数基点（沿用既有统一口径）
+  const markupBps = toNonNegativeSafeInt(args.markupRateBps);
+  if (markupBps === null) {
+    return {
+      allowed: false,
+      code: "MODEL_COST_NOT_TRUSTWORTHY",
+      error: "模型加价系数配置非法，无法建立可信成本边界，已取消执行（未扣点、未调用模型）。请联系平台管理员核对计费配置。",
+    };
+  }
+
+  // 8. 保守成本上界（BigInt 微元，除法全部向上取整）：
+  //    成本微元 = ceil((输入×输入单价 + 输出×输出单价) / 1e6)
+  //    售价底线微元 = ceil(成本微元 × (10000 + 加价基点) / 10000)
+  const MILLION = BigInt("1000000");
+  const costMicros = ceilDiv(
+    BigInt(inTok) * BigInt(costIn) + BigInt(outTok) * BigInt(costOut),
+    MILLION,
+  );
+  const saleMicros = ceilDiv(costMicros * BigInt(10000 + markupBps), BigInt("10000"));
+  const costPoints = Number(ceilDiv(saleMicros, MICROS_PER_POINT)); // MICROS_PER_POINT = BigInt("10000")
+  const budget = BigInt(budgetPoints);
+
+  if (saleMicros > budget * MICROS_PER_POINT) {
+    // 不暴露内部成本数值与单价明细
+    return {
+      allowed: false,
+      code: "MODEL_COST_EXCEEDS_BUDGET",
+      error: `本次任务按当前模型定价评估的执行成本已超过该组件定价（${budgetPoints} 点），已取消执行：未扣除算力点、未调用模型服务。请稍后重试，或联系平台管理员调整组件定价。`,
+    };
+  }
+
+  return {
+    allowed: true,
+    conservativeCostMicros: saleMicros,
+    conservativeCostPoints: costPoints,
+    budgetPoints,
+  };
+}

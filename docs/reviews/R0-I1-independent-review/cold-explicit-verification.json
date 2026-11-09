@@ -1,0 +1,20 @@
+{
+  "capturedAt": "2026-11-07T14:00:54.799Z",
+  "fixture": {
+    "mode": "explicit",
+    "query": "&deploymentId=byo:w1",
+    "defaultId": "byo:w1",
+    "personal": false,
+    "fail": false,
+    "status": 200,
+    "exec": 0
+  },
+  "status": 200,
+  "code": "BYOK_BILLING_POLICY_UNCONFIRMED",
+  "rawStatements": [
+    "QUERY SELECT `shareWithMembers` FROM `workspace_byo_model` LIMIT 1"
+  ],
+  "rawWriteAttempts": 0,
+  "regularWrites": [],
+  "limits": "One fresh isolated Vitest file per cold path; actual GET/registry/BYO helper, only Prisma/decryption IO faked. Expected write count reproduces current defect, not acceptance."
+}

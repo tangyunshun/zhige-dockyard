@@ -1,0 +1,50 @@
+{
+  "capturedAt": "2026-11-08T09:28:46.704Z",
+  "mode": "actual createPrismaBackend implementation, no backend override; memory models evaluate WHERE/update/uniqueness; serialized rollback-capable transactions; sweep races use explicit barriers; no live DB",
+  "observations": [
+    {
+      "name": "actual-backend-admission-positive",
+      "active": 1,
+      "workUnits": 1
+    },
+    {
+      "name": "double-sweep-capacity-underflow",
+      "sweeperArrivals": 2,
+      "counterActive": 1,
+      "actualActive": 2,
+      "configuredActiveCap": 1,
+      "workUnits": 3
+    },
+    {
+      "name": "expiry-work-units-leak",
+      "cycles": 12,
+      "counterActive": 0,
+      "actualActive": 0,
+      "workUnits": 12,
+      "nextAdmission": "PARSE_BUSY"
+    },
+    {
+      "name": "sweep-partial-commit-no-recovery",
+      "oldStatus": "EXPIRED",
+      "counterActive": 2,
+      "actualActive": 1
+    },
+    {
+      "name": "weighted-release-leak",
+      "acquiredWorkUnits": 2,
+      "counterActive": 0,
+      "remainingWorkUnits": 1
+    },
+    {
+      "name": "expired-request-starts-without-lease",
+      "configuredPlatformCap": 1,
+      "simultaneousWorkers": 2,
+      "oldLeaseStatus": "EXPIRED",
+      "statuses": [
+        200,
+        200
+      ],
+      "elapsedBeforeOriginalWorkerMs": 100000
+    }
+  ]
+}

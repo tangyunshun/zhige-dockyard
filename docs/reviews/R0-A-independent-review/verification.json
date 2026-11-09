@@ -1,0 +1,84 @@
+{
+  "capturedAt": "2026-11-05T13:58:11.848Z",
+  "kind": "offline isolated audit; no real database or paid calls",
+  "results": [
+    {
+      "scenario": "unapproved_zero_price_non_base_plan",
+      "route": "src/app/api/workspace/create-enterprise/route.ts",
+      "httpStatus": 200,
+      "writes": [
+        {
+          "table": "workspace",
+          "plan": "PRO",
+          "maxMembers": -1
+        },
+        {
+          "table": "operationlog"
+        }
+      ],
+      "effects": [
+        "assemble",
+        "trial"
+      ],
+      "meaning": "Current check accepts PRO as FREE solely because its prices are zero, contrary to R0-A base-free-only rule."
+    },
+    {
+      "scenario": "unapproved_zero_price_non_base_plan",
+      "route": "src/app/api/user/workspaces/create/route.ts",
+      "httpStatus": 200,
+      "writes": [
+        {
+          "table": "workspace",
+          "plan": "PRO",
+          "maxMembers": -1
+        }
+      ],
+      "effects": [
+        "assemble"
+      ],
+      "meaning": "Current check accepts PRO as FREE solely because its prices are zero, contrary to R0-A base-free-only rule."
+    },
+    {
+      "scenario": "personal_creation_now_depends_on_enterprise_checkout_gate",
+      "config": "paid-standard",
+      "httpStatus": 402,
+      "body": {
+        "error": "PAID_PLAN_REQUIRES_CHECKOUT",
+        "message": "该套餐为付费套餐，需先完成在线购买流程，本次未创建空间、未产生扣款",
+        "success": false
+      },
+      "writes": [],
+      "meaning": "New guard affects PERSONAL branch, which was explicitly outside the modification scope."
+    },
+    {
+      "scenario": "personal_creation_now_depends_on_enterprise_checkout_gate",
+      "config": "missing-standard",
+      "httpStatus": 503,
+      "body": {
+        "error": "PLAN_CONFIG_UNAVAILABLE",
+        "message": "套餐配置暂不可用，请稍后再试"
+      },
+      "writes": [],
+      "meaning": "New guard affects PERSONAL branch, which was explicitly outside the modification scope."
+    },
+    {
+      "scenario": "adjacent_upgrade_uses_fallback_on_config_failure",
+      "httpStatus": 200,
+      "effects": [
+        {
+          "type": "provision-called",
+          "target": "STANDARD"
+        }
+      ],
+      "meaning": "Real route and real fallback reader call provisioning after config failure. Provisioning is a stub: no claim of completed live rights mutation."
+    }
+  ],
+  "sha256": {
+    "src/constants/workspace-plans.ts": "caaf9d799be130fbcf5f505eb6722652f63926e389444a3c03164492eef2e78a",
+    "src/lib/limit-utils.ts": "825308b1d4d5690c62271e07792f87691b5b0ef34601a5e8d7f798d5e86be72a",
+    "src/lib/workspace-plan-service.ts": "e56237429520a56bd5262b8b480a7ee74cfd09bc82e4b5a6bed91bd5da01fcd9",
+    "src/app/api/workspace/create-enterprise/route.ts": "458179ed102d34047971db25244f0402f4121c41368d6ee5dda49e398e82603f",
+    "src/app/api/user/workspaces/create/route.ts": "88fa993daab8f6c166710dc29961369da15fc60203be92b119c63c322b5b2d09",
+    "src/app/api/workspace/upgrade/route.ts": "7598b92f42ac352fb9d250e21ff36448c31e703bba0cabc1a41fe33037705272"
+  }
+}

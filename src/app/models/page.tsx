@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import Link from "next/link";
 import { ChevronDown, Clock, Tag, Cpu, Search, Zap, Calculator, AlertTriangle, Sparkles } from "lucide-react";
 import { yuanToPoints, formatYuanFromPoints, POINT_UNIT_HINT, POINTS_PER_YUAN } from "@/lib/point-rate";
+import { formatNumber, formatDate } from "@/utils/format";
 import { formatPeriodSchedule, buildTierCaption } from "@/lib/period-schedule-text";
 import { MODEL_CAPABILITY_LABELS } from "@/lib/model-capability-labels";
 
@@ -64,6 +66,8 @@ const KIND_CLASS: Record<string, string> = {
   HOLIDAY: "bg-amber-50 text-amber-600 border-amber-100",
   CUSTOM: "bg-slate-100 text-slate-600 border-slate-200",
 };
+const PAGE_SIZE = 24;
+
 const STATUS_LABEL: Record<string, string> = {
   VERIFIED: "已生效",
   OBSERVED_ONLY: "仅观测",
@@ -184,14 +188,14 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
             STATUS_CLASS[verifyStatus] || STATUS_CLASS.UNCONFIGURED
           }`}
         >
-          {STATUS_LABEL[verifyStatus] || verifyStatus}
+          {STATUS_LABEL[verifyStatus] || "待定"}
         </span>
         {it.capabilities.map((c) => (
           <span
             key={c}
             className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200"
           >
-            {CAP_LABELS[c] || c}
+            {CAP_LABELS[c] || "其他"}
           </span>
         ))}
       </div>
@@ -365,7 +369,7 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
               <div className="flex items-center justify-between rounded-lg bg-white border border-blue-100 px-3 py-2">
                 <span className="text-[11px] font-bold text-slate-500">预计扣点</span>
                 <span className="font-mono text-base font-black text-[#3182ce] tabular-nums">
-                  {est == null ? "—" : `${est} 点`}
+                  {est == null ? "—" : `${est.toLocaleString()} 点`}
                   {est != null && (
                     <span className="text-[10px] text-slate-400 font-semibold ml-1">
                       （{formatYuanFromPoints(est)}）
@@ -437,7 +441,7 @@ function ModelCard({ it }: { it: ModelPriceItem }) {
                       )}
                     </div>
                     <span className="shrink-0 text-[10px] font-bold text-slate-400">
-                      {STATUS_LABEL[p.status] || p.status}
+                      {STATUS_LABEL[p.status] || "待定"}
                     </span>
                   </div>
                   <p className="text-[10px] text-slate-500 font-medium mb-2 flex items-center gap-1">
@@ -477,6 +481,7 @@ export default function ModelPricingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [keyword, setKeyword] = useState("");
+  const [visibleCount, setVisibleCount] = useState(24); // KN-UI：初始渲染 24 条 + 「加载更多」分页（自查清单指令四）
   const [providerFilter, setProviderFilter] = useState<string | null>(null);
   const [capFilter, setCapFilter] = useState<string | null>(null);
   const [onlyPriced, setOnlyPriced] = useState(false);
@@ -494,7 +499,7 @@ export default function ModelPricingPage() {
           setMeta((data.meta as PricingMeta) ?? null);
         }
       } catch (e) {
-        if (alive) setError((e as Error)?.message || "加载失败");
+        if (alive) setError("网络异常，模型定价加载失败，请检查网络后重试");
       } finally {
         if (alive) setLoading(false);
       }
@@ -503,6 +508,9 @@ export default function ModelPricingPage() {
       alive = false;
     };
   }, []);
+
+  // KN-UI：筛选变化时重置分页
+  useEffect(() => { setVisibleCount(24); }, [keyword, providerFilter, capFilter, onlyPriced]);
 
   const providers = useMemo(
     () => Array.from(new Set(items.map((it) => it.providerName))).sort(),
@@ -646,7 +654,7 @@ export default function ModelPricingPage() {
                     : "bg-white text-slate-500 border-slate-200 hover:border-[#3182ce]/40"
                 }`}
               >
-                {CAP_LABELS[c] || c}
+                {CAP_LABELS[c] || "其他"}
               </button>
             ))}
           </div>
@@ -674,19 +682,43 @@ export default function ModelPricingPage() {
         {loading ? (
           <div className="text-center py-20 text-sm text-slate-400 font-bold">正在加载模型定价…</div>
         ) : error ? (
-          <div className="text-center py-20 text-sm text-rose-600 font-bold bg-rose-50 border border-rose-200 rounded-2xl">
-            {error}
+          <div className="px-4">
+            <LoadErrorBanner message={error} onRetry={() => { setError(null); window.location.reload(); }} retrying={loading} />
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-20 text-sm text-slate-400 font-bold">
             暂无可展示的模型定价（{keyword || providerFilter || capFilter || onlyPriced ? "无匹配结果" : "平台尚未配置开放模型"}）
+            {(keyword || providerFilter || capFilter || onlyPriced) && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => { setKeyword(""); setProviderFilter(""); setCapFilter(""); setOnlyPriced(false); }}
+                  className="px-4 py-2 bg-[#3182ce] hover:bg-[#2b6cb0] text-white text-xs font-black rounded-xl cursor-pointer"
+                >
+                  清空筛选条件
+                </button>
+              </div>
+            )}
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {filtered.map((it) => (
-              <ModelCard key={it.id} it={it} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+              {filtered.slice(0, visibleCount).map((it) => (
+                <ModelCard key={it.id} it={it} />
+              ))}
+            </div>
+            {filtered.length > visibleCount && (
+              <div className="text-center mt-8">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+                  className="px-6 py-2.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-200 shadow-sm transition-all cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  加载更多（{filtered.length - visibleCount} 个）
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
 

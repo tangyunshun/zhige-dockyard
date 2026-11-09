@@ -979,9 +979,9 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
           <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2 text-[11px]">
             <span
               className="text-slate-400 truncate whitespace-nowrap min-w-0"
-              title={`自带私有模型：调用直连你的私有端点，平台另收 ${byoServiceRatePct}% 服务费`}
+              title="自带私有模型：任务调用暂不可用（平台收费口径待确认，本次不扣点、不调用模型）；绑定与默认设置已保留"
             >
-              自带私有模型：直连你的私有端点，另收 {byoServiceRatePct}% 服务费
+              自带私有模型：任务调用暂不可用（收费口径待确认）
             </span>
             <button
               type="button"
@@ -1597,7 +1597,7 @@ export default function WorkspaceModelPolicyTab({ workspaceId, userRole, workspa
               {byoModels.length === 0 ? (
                 <>本空间尚未绑定任何自带模型；请先到工作台「我的模型」创建自备私有端点，并把它绑定到本空间后，即可在此设为默认。</>
               ) : (
-                <>本空间已有 <strong>{byoModels.length}</strong> 款自带模型。绑定仅代表可用，不等于默认：要作为任务默认，请点「设为默认」。自带模型调用直连你自己的私有端点，平台另收 <strong>{byoServiceRatePct}%</strong> 服务费。</>
+                <>本空间已有 <strong>{byoModels.length}</strong> 款自带模型。绑定仅代表可用，不等于默认：要作为任务默认，请点「设为默认」。自带模型的任务调用暂不可用（平台收费口径待确认，执行时不会扣点、不会调用模型），绑定与默认设置已保留。</>
               )}
             </span>
           </div>

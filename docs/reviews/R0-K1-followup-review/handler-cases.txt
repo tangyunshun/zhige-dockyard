@@ -1,0 +1,32 @@
+import {afterEach,afterAll} from 'vitest';
+import {EventEmitter} from 'node:events';
+const observations:any[]=[];
+afterEach(async()=>{(await import('@/lib/parse-runner')).__resetParseRunnerHooks();(await import('@/lib/parse-admission')).__setParseAdmissionBackendForTest(null);});
+describe('Current actual Studio upload and F13 storage protocol',()=>{
+ it('positive: denied shared admission now rejects actual upload before worker/storage',async()=>{
+  seedQuota('w1',0n,1000n);let acquired=0,starts=0;
+  const a=await import('@/lib/parse-admission'),p=await import('@/lib/parse-policy'),r=await import('@/lib/parse-runner');
+  a.__setParseAdmissionBackendForTest({acquire:async()=>{acquired++;throw new p.ParseResourceError(p.PARSE_CODES.ADMISSION_NOT_READY);},release:async()=>true,quarantine:async()=>{},sweep:async()=>0});
+  r.__setParseRunnerHooks({workerFactory:()=>{starts++;throw Error('must not start');}});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action:'upload_doc',title:'test',visibility:'PRIVATE',workspaceId:'w1'},{name:'small.txt',type:'text/plain',content:'Controlled text'}),makeDeps());
+  expect(res.status).toBe(503);expect(acquired).toBe(1);expect(starts).toBe(0);expect(memFiles.size).toBe(0);expect(h.tables.document.size).toBe(0);
+  observations.push({name:'upload-admission-now-wired',status:res.status,acquired,workerStarts:starts,files:memFiles.size});
+ });
+ it('positive: actual upload no longer immediately releases on STOP_UNCONFIRMED',async()=>{
+  seedQuota('w1',0n,1000n);let acquired=0,released=0,quarantined=0;let fake:any;
+  const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner');
+  a.__setParseAdmissionBackendForTest({acquire:async()=>{acquired++;return 'granted';},release:async()=>{released++;return true;},quarantine:async()=>{quarantined++;},sweep:async()=>0});
+  r.__setParseRunnerHooks({exitConfirmMs:5,terminateTimeoutMs:5,workerFactory:()=>{fake=new EventEmitter();fake.terminate=()=>new Promise(()=>{});queueMicrotask(()=>fake.emit('message',{envelope:'result',text:'Controlled text',usage:{}}));return fake;}});
+  const deps=makeDeps(),{runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action:'upload_doc',title:'test',visibility:'PRIVATE',workspaceId:'w1'},{name:'small.txt',type:'text/plain',content:'Controlled text'}),deps);const body=await res.json();
+  expect(body.code).toBe('PARSE_STOP_UNCONFIRMED');expect(res.status).toBe(503);expect(acquired).toBe(1);expect(released).toBe(0);expect(quarantined).toBe(0);expect(deps.creditService.consumePoints).not.toHaveBeenCalled();expect(deps.creditService.consumeAndCreateSettlementHold).not.toHaveBeenCalled();
+  observations.push({name:'studio-immediate-release-fixed-but-no-quarantine',status:res.status,code:body.code,acquired,released,quarantined,workerExitNotObserved:true,used:String(h.tables.workspacequota.get('q-w1').storageUsed),documents:h.tables.document.size});fake.emit('exit',0);
+ });
+ it('positive: admitted normal upload preserves real F13 accounting and output',async()=>{
+  seedQuota('w1',0n,1000n);let acquired=0,released=0,starts=0;const a=await import('@/lib/parse-admission'),r=await import('@/lib/parse-runner'),{Worker}=await import('node:worker_threads');
+  a.__setParseAdmissionBackendForTest({acquire:async()=>{acquired++;return 'granted';},release:async()=>{released++;return true;},quarantine:async()=>{},sweep:async()=>0});r.__setParseRunnerHooks({workerFactory:(file,opts)=>{starts++;return new Worker(file,opts);}});
+  const content='Controlled normal storage upload.',{runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action:'upload_doc',title:'test',visibility:'PRIVATE',workspaceId:'w1'},{name:'small.txt',type:'text/plain',content}),makeDeps());
+  expect(res.status).toBe(200);expect(acquired).toBe(1);expect(released).toBe(1);expect(starts).toBe(1);expect(h.tables.document.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(BigInt(Buffer.byteLength(content)));
+  observations.push({name:'normal-upload-storage-positive',status:res.status,acquired,released,starts,used:String(h.tables.workspacequota.get('q-w1').storageUsed)});
+ });
+});
+afterAll(()=>require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'docs/reviews/R0-K1-followup-review/handler-evidence.json'),JSON.stringify({capturedAt:new Date().toISOString(),mode:'Actual handler/storage/parser; fake IO, real normal worker or explicit controlled lifecycle double',observations},null,2)));

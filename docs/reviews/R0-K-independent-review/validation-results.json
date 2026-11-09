@@ -1,0 +1,209 @@
+{
+  "capturedAt": "2026-11-08T09:14:00.535Z",
+  "batch": "R0-K / original F14",
+  "verdict": "NOT ACCEPTED; bounded return R0-K1 within original K01-K04",
+  "businessSourceEditsByReviewer": 0,
+  "sourceStableThroughAudit": true,
+  "formalFrozenRegression": {
+    "files": [
+      "src/app/api/__tests__/r0j6-status-fixes.test.ts",
+      "src/app/api/__tests__/r0j5-remaining-branches.test.ts",
+      "src/app/api/__tests__/r0j4-storage-fixes.test.ts",
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts",
+      "src/app/api/__tests__/r0j-storage.test.ts",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+      "src/app/api/__tests__/r0g-cron-subscription-expire.test.ts",
+      "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+      "src/app/api/__tests__/r0e-production-mock.test.ts",
+      "src/app/api/__tests__/r0d-refund-approval.test.ts",
+      "src/app/api/__tests__/r0c-pool-recycle.test.ts",
+      "src/app/api/__tests__/r0b-seat-addon.test.ts",
+      "src/app/api/__tests__/r0a-business-boundary.test.ts",
+      "src/app/api/__tests__/r0a2-real-combo.test.ts",
+      "src/app/api/__tests__/r0a3-combo-regression.test.ts",
+      "src/app/api/__tests__/r0a4-combo-regression.test.ts"
+    ],
+    "passedFiles": 18,
+    "passedTests": 523,
+    "exitCode": 0,
+    "provenance": "Independently executed THIS audit; exec session 94097; duration 34.51 seconds; observed complete process output.",
+    "command": "vitest run <exact formal.files listed here>"
+  },
+  "authorBatch": {
+    "passedTests": 32,
+    "exitCode": 0,
+    "resultFile": "formal-results.json",
+    "command": "vitest run --config docs/reviews/R0-K-independent-review/vitest.review.config.ts docs/reviews/R0-K-independent-review/formal-copy.test.ts --reporter=json --outputFile=docs/reviews/R0-K-independent-review/formal-results.json",
+    "copyModification": "Only worker staging path changed from existing .next path to new audit-local staged path; all assertions and imports unchanged. Verified exact transformed equality.",
+    "actualNextBuild": false
+  },
+  "nodeTest": {
+    "files": [
+      "src/lib/__tests__/text-extract.test.ts",
+      "src/lib/__tests__/text-extract-paths.test.ts"
+    ],
+    "passedTests": 18,
+    "exitCode": 0,
+    "command": "tsx --test src/lib/__tests__/text-extract.test.ts src/lib/__tests__/text-extract-paths.test.ts",
+    "durationMs": 6281,
+    "provenance": "Independently executed THIS audit; node:test complete TAP output observed."
+  },
+  "independent": {
+    "total": 18,
+    "passed": 18,
+    "positive": 2,
+    "defectCharacterizations": 16,
+    "exitCode": 0,
+    "aggregate": "independent-summary.json",
+    "commands": [
+      "vitest run --config docs/reviews/R0-K-independent-review/vitest.review.config.ts docs/reviews/R0-K-independent-review/handler-review.test.ts docs/reviews/R0-K-independent-review/admission-review.test.ts docs/reviews/R0-K-independent-review/parser-review.test.ts --reporter=json --outputFile=docs/reviews/R0-K-independent-review/independent-results.json",
+      "vitest run --config docs/reviews/R0-K-independent-review/vitest.review.config.ts docs/reviews/R0-K-independent-review/parser-review.test.ts --reporter=json --outputFile=docs/reviews/R0-K-independent-review/parser-final-results.json"
+    ],
+    "note": "First run 16 cases; only parser subsequently changed from 9 to 11. Reuse unchanged handler/admission 7 and latest parser 11; do not double-count the superseded parser run."
+  },
+  "typescript": {
+    "command": "tsc --noEmit --incremental false -p tsconfig.json",
+    "exitCode": 0,
+    "provenance": "Independent exec session 83621 THIS audit"
+  },
+  "workerSyntax": {
+    "command": "node --check src/lib/parse-worker.cjs",
+    "exitCode": 0
+  },
+  "version": {
+    "startCopies": 12,
+    "endCopies": 19,
+    "changedExistingFiles": 7,
+    "protectedPreviouslyTrackedUnchanged": 39,
+    "sha256": {
+      "src/lib/text-extract.ts": "211b9fa5f44e52872b0e18f32ea0d783a1a19e5091aadd9581ae3674d96c3ddf",
+      "src/app/api/studio/extract-text/route.ts": "2b5083fafc1e6b83d4536ad1792272ec68d65794f92bd7af8a4a39560679ad92",
+      "src/app/api/studio/handler.ts": "4919aa888feefce18dd8609708599ccc9db3f7609508f4d6cd6addc03609a489",
+      "src/app/api/workspace/assets/[assetId]/preview/route.ts": "91657ec4cfc66ed308b61f617b6b67758213b05b78c4450204681db76048bbe8",
+      "prisma/schema.prisma": "8506f23459746d6beb6357947ecd093ade22e52327cf6038b59d74808e8724bb",
+      "src/lib/__tests__/text-extract.test.ts": "c5099f7c1ea78432e7d42afe0cd86401f487929d4119e558a0ec3000f7ab4bae",
+      "next.config.js": "8ff7a4e2a42b4c6089a99aaa6aa07383c716779f421f837ccc454671d98b9a40",
+      "src/lib/parse-policy.ts": "e2f1a9e0b486742296f65b445a98f4f55bce525374b59dfe154a82d4cf06023e",
+      "src/lib/parse-worker.cjs": "773bdc1a475ec2be4021bff772aa7499b03c495a02258cd6b528a8a13caad30e",
+      "src/lib/parse-runner.ts": "c53b60f905f09667330148daeb841433fe8aaedb3e63cf1913e78a00f8ec4093",
+      "src/lib/parse-admission.ts": "43f737d701b9a6220a43d74d8fb7936044a59be41147402c4c53d292aa9eed10",
+      "prisma/migrations/20261108000000_parse_admission/migration.sql": "2fbf32b00222ca3d94cab2172f213b5a7bc67d8a9a4fc3b89e291bb9a96d7717",
+      "src/app/api/__tests__/r0k-parse-resource.test.ts": "174d0738f1bf4bc1f7493050f548d25d6fed1944947a0d427a330507dcca1dca",
+      "docs/reviews/R0-K-fix-snapshot/vitest.r0k.config.ts": "e361bc456047d19f0b55aeba694a871c025b82a8813dc425fa0b45b1926c602b",
+      "src/lib/__tests__/text-extract-paths.test.ts": "1f49b9d7d743c2a23818ce54bfda7322209539376d97fc8d7e7ca35682a61985",
+      "src/lib/file-store.ts": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+      "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+      "package.json": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+      "tsconfig.json": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329",
+      "src/lib/storage-quota.ts": "0bef7f02d6206544c45045e89239945a60309f4a512a9f0227186cf2498f0666",
+      "src/app/api/workspace/clear-data/route.ts": "7e4aea48aecbbac40a5e65dfd354aaed430202b840d72d378e79856521a88c26",
+      "src/app/api/__tests__/r0j6-status-fixes.test.ts": "ca36bb2fa67479b67c0cab47ddea6f3cc369e36e2f8046a57cbcf91e5b7436cc",
+      "src/app/api/__tests__/r0j2-storage-close.test.ts": "83340107c1f9ac18545e852341c91629c3e069101438fc19b449f88ecbfa2005",
+      "src/app/api/__tests__/r0j4-storage-fixes.test.ts": "de87755b95556de55a2d250808beaa15ce9cff7fe84671359f2f5887a962dbef",
+      "src/app/api/__tests__/r0j5-remaining-branches.test.ts": "12e7e25357904d633d06c29296212e743fa6e620523b069f3af052bbeb360d47",
+      "src/components/WorkspaceInternalLayoutV3.tsx": "7c0dd62c88bf644b333feb094226debcef3fa74abdc2af426e34f442c570be5b",
+      "src/app/api/__tests__/r0j-storage.test.ts": "44e4f40635c32227b575544a48b409fc4811e89b285c7065fccf814cedf8e0ee",
+      "src/app/api/__tests__/r0j3-recovery-close.test.ts": "d7f9e9543fefe16d537907ef9be7bc57c60e5d35658ad43ce7d1e106be59f64e",
+      "src/app/api/workspace/assets/[assetId]/file/route.ts": "d4ac28fcb0036d3fdb36fe0046c42648cbdb095093f6c4fd7b7eab4536b90204",
+      "src/app/api/billing/estimate/route.ts": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+      "src/lib/model-registry.ts": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+      "src/lib/workspace-byo-model.ts": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+      "src/app/api/__tests__/r0h-cost-admission.test.ts": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+      "src/app/api/__tests__/r0i2-cold-quote.test.ts": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+      "src/app/admin/models/byok-service-rate.tsx": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+      "src/app/api/billing/byok-preview/route.ts": "099c797e4b657c7055838a509c6e9deda29f0c586bc1b9cf7197bbf0145f9575",
+      "src/components/studio/WorkspaceModelPolicyTab.tsx": "93a7e73e1a11570ac1d219e102de53b887429baa94dab9d811a322b668cea6c9",
+      "src/lib/model-cost-admission.ts": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b",
+      "src/app/api/cron/workspace-subscription-expire/route.ts": "cffd87b9fdc8052aae5ae3cf81b4207a79d0157cc8777e4b5cfd251a5c235296",
+      "src/app/api/system/maintenance/route.ts": "c2584eea17f0feecfe6ded1aad2846c5147ab1d15de0e6c9870c55d541ac5ef7",
+      "src/lib/maintenance.ts": "9ec33aaf834fd5d51c464dce41d7333d02b07bfce99148a5b6cef87ec22390ac",
+      "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+      "src/lib/payment-gateway.ts": "68fff929175636c2bd30a4b44dd2638a1c9eff31cc7cf378df0e3b21acc32141",
+      "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+      "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+      "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+      "src/app/admin/maintenance/page.tsx": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da",
+      "src/lib/point-rate.ts": "f625b3fe1680855a69ab67e1d8b4ae5e79b085306bd19856990d59e90f1a1ee6",
+      "src/lib/component-cost-floor.ts": "57badcfb05732666ce1bcf36a18e30b5ea9ddf916b6e61e71d49a40035ca7a94",
+      "src/lib/model-pricing.ts": "dfa70cdd08afbe41e78e399c6a677b2b22bb9af73407dd7116115ef1185870c9",
+      "src/lib/model-adapter.ts": "93f9d16d586c95ef8b2579062f8299e3917f10d457f69a1bd456fd22d8fda8f3",
+      "src/lib/billing/billing-config.ts": "a7ca7872fd52285fb704da02eea9d40a27c8d2be188aac35da57777c287e21ea",
+      "src/lib/billing/pricing-center.ts": "17dcb40d4b7124bea4458910ae93744ee9a60370ab835117dc9f910d1002250b",
+      "src/lib/quota-cycle.ts": "e7370f89d5adc4f9e7f3e3d72518a7470f315832532f997fc24b54d79008dd80",
+      "src/app/api/workspace/byo-model/test/route.ts": "f3f9e1f9ba062c5c87575b77a9202192e0c7307b7cede1d552b519c372330440",
+      "src/app/knowledge/page.tsx": "98f3947d5f906261bdfd177d70a0ea4de455694638b85ad9282c6c3de5d35b6f"
+    }
+  },
+  "findings": [
+    {
+      "id": "KR1",
+      "priority": "P1",
+      "groups": [
+        "K03",
+        "K04"
+      ]
+    },
+    {
+      "id": "KR2",
+      "priority": "P1",
+      "groups": [
+        "K03"
+      ]
+    },
+    {
+      "id": "KR3",
+      "priority": "P1",
+      "groups": [
+        "K01",
+        "K03"
+      ]
+    },
+    {
+      "id": "KR4",
+      "priority": "P1",
+      "groups": [
+        "K01",
+        "K03"
+      ]
+    },
+    {
+      "id": "KR5",
+      "priority": "P1",
+      "groups": [
+        "K02"
+      ]
+    },
+    {
+      "id": "KR6",
+      "priority": "P2",
+      "groups": [
+        "K02",
+        "K04"
+      ]
+    },
+    {
+      "id": "KR7",
+      "priority": "P2",
+      "groups": [
+        "K04"
+      ]
+    }
+  ],
+  "scope": {
+    "F01ThroughF13Frozen": true,
+    "F14Closed": false,
+    "next": "R0-K1 / only KR1-KR7 within K01-K04",
+    "F15OrF16Started": false
+  },
+  "limits": [
+    "No live DB, cloud, customer file, model, payment, migration or deployment",
+    "Actual Prisma implementation evaluated against isolated condition-aware delegates, not live MySQL locks/crash testing",
+    "OCR lifecycle uses fake OCR; no language download or actual recognition",
+    "Controlled termination-double reproduces unbounded wait; no intentionally hung real external worker left running",
+    "No true Next build or real deployment artifact verification",
+    "No OOM, zip bomb or large-file load experiment",
+    "No real financial loss or production profitability claim"
+  ]
+}

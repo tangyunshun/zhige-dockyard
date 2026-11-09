@@ -5,6 +5,7 @@ import { Building2, Layers, Shuffle, ArrowRight, ShieldAlert, Crown, Phone, Mail
 import { useToast } from "@/components/Toast";
 import { Workspace, EnterpriseQuota } from "@/hooks/useWorkspaceHubData";
 import { getAuthToken } from "@/utils/auth";
+import { resolveUpgradeResponse } from "@/lib/upgrade-response-protocol";
 
 interface PlanOption {
   key: string;
@@ -129,33 +130,45 @@ export default function UpgradeModal({
       });
 
       const data = await res.json();
-      if (res.ok && data.success) {
-        // 付费套餐：跳转到收银台完成支付，支付成功后服务端才会真正开通企业空间
-        if (data.payUrl) {
-          window.location.href = data.payUrl;
+      if (res.ok) {
+        // [R0-A5 E5] 三入口统一协议：先验证业务成功（success===true），再处理支付地址/免费完成；
+        // success:false 携带 payUrl 不得跳转收银台
+        const action = resolveUpgradeResponse(data);
+        if (action.kind === "pay_redirect") {
+          // 待支付：跳转收银台，不写已开通标记、不触发完成回调
+          window.location.href = action.payUrl;
           return;
         }
-        // 免费套餐：无需支付，直接开通
-        toast.success(data.message || "空间升级成功！");
+        if (action.kind === "free_success") {
+          // 仅真实免费开通完成才写标记、触发完成回调
+          toast.success(action.message);
 
-        // 写入客户端 localStorage 升级标记
-        localStorage.setItem("personalWorkspaceUpgraded", "true");
-        if (option === "retain") {
-          localStorage.setItem("upgradeMode", "parallel");
-        } else if (option === "upgrade") {
-          // 原地升级：个人空间直接转企业，不新建、不删除
-          localStorage.setItem("upgradeMode", "relabel");
-        } else if (option === "delete") {
-          // 迁移模式：原个人空间转为只读归档（非删除）
-          localStorage.setItem("upgradeMode", "migrate");
-          localStorage.setItem("personalWorkspaceArchived", "true");
+          // 写入客户端 localStorage 升级标记（仅真实免费开通时）
+          localStorage.setItem("personalWorkspaceUpgraded", "true");
+          if (option === "retain") {
+            localStorage.setItem("upgradeMode", "parallel");
+          } else if (option === "upgrade") {
+            localStorage.setItem("upgradeMode", "relabel");
+          } else if (option === "delete") {
+            localStorage.setItem("upgradeMode", "migrate");
+            localStorage.setItem("personalWorkspaceArchived", "true");
+          }
+
+          onUpgradeSuccess();
+          onClose();
+          return;
         }
-
-        onUpgradeSuccess();
-        onClose();
-      } else {
-        toast.error(data.error || "升级失败，请重试");
+        if (action.kind === "pending") {
+          // success:true 但缺 payUrl/free → 待处理/异常响应，不当已开通
+          toast.info(action.message);
+          return;
+        }
+        // failed：success:false 或协议不完整
+        toast.error(action.message);
+        return;
       }
+      // HTTP 错误：显示错误说明
+      toast.error(data.message || data.error || "升级失败，请重试");
     } catch (error) {
       console.error("Upgrade personal workspace error:", error);
       toast.error("网络请求失败，请稍后重试");
@@ -250,10 +263,10 @@ export default function UpgradeModal({
                 </div>
               </div>
 
-              {/* 迁移模式 */}
+              {/* 迁移模式 —— [R0-A5 E5] 诚实禁用：初始即显示「暂不可用」标签与原因，点击可触发提示 */}
               <div
-                onClick={() => !loading && setOption("delete")}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
+                onClick={() => { if (!loading) { toast.error("迁移方式暂不可用：跨资产迁移的完整性修复中，请选择保留或原地升级"); } }}
+                className={`p-4 rounded-xl border-2 cursor-not-allowed opacity-60 transition-all flex flex-col justify-between ${
                   option === "delete"
                     ? "border-red-500 bg-red-50/10 shadow-xs"
                     : "border-slate-200 hover:border-slate-300"
@@ -265,14 +278,17 @@ export default function UpgradeModal({
                       <Shuffle className="w-4 h-4" />
                     </div>
                     <span className="text-xs font-bold text-slate-800">迁移模式</span>
+                    <span className="ml-auto inline-block text-[10px] font-bold text-[#f59e0b] bg-[#f59e0b]/10 px-2 py-0.5 rounded leading-normal">
+                      暂不可用
+                    </span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    创建一个新的企业空间，并把您个人空间的全部资料（文档、项目、模型、对话等）迁移过去，原个人空间转为只读归档（数据保留）。
+                    跨资产迁移的完整性修复中，当前不可选择；请使用「保留个人空间」或「原地升级」。
                   </p>
                 </div>
                 <div className="mt-3 pt-1">
-                  <span className="inline-block text-[10px] font-bold text-red-600 bg-red-100/60 px-2 py-0.5 rounded leading-normal">
-                    适合彻底迁移并清空沙箱
+                  <span className="inline-block text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded leading-normal">
+                    恢复开放前不可选择
                   </span>
                 </div>
               </div>

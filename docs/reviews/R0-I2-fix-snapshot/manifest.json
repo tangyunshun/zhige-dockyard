@@ -1,0 +1,117 @@
+{
+  "capturedAtReal": "2026-11-07T14:48:23.816Z",
+  "capturedAtRealNote": "归档补交时真实生成时间（本地时区随 ISO 记录）；原开工快照缺失，本目录副本为 RECOVERED_AFTER_REVIEW 审核后重建，非开工时原始采集",
+  "purpose": "R0-I2 K05 归档补交：四个修改前起点副本（审核后重建）+ 当前结束哈希核验",
+  "startHashSource": "docs/reviews/R0-I2-independent-review/manifest-verification.json 的 startHashReferences（独立审核核验的 R0-I1 结束态）",
+  "reconstruction": {
+    "method": "参考 docs/reviews/R0-I2-independent-review/check-differences.cjs 的内存逆向（审核已核验该逆向完全解释前后哈希差异），候选哈希逐一匹配 startHashReferences 后仅写入本归档目录",
+    "status": "RECOVERED_AFTER_REVIEW",
+    "originalStartSnapshotMissing": true,
+    "log": "reconstruct-log.json"
+  },
+  "files": {
+    "src/app/api/billing/estimate/route.ts": {
+      "archiveCopy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt",
+      "actualSha256": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+      "expectedStartSha256": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+      "verified": true
+    },
+    "src/lib/model-registry.ts": {
+      "archiveCopy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__model-registry.ts.snapshot.txt",
+      "actualSha256": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+      "expectedStartSha256": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+      "verified": true
+    },
+    "src/lib/workspace-byo-model.ts": {
+      "archiveCopy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__lib__workspace-byo-model.ts.snapshot.txt",
+      "actualSha256": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+      "expectedStartSha256": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+      "verified": true
+    },
+    "src/app/api/__tests__/r0h-cost-admission.test.ts": {
+      "archiveCopy": "docs/reviews/R0-I2-fix-snapshot/frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt",
+      "actualSha256": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+      "expectedStartSha256": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+      "verified": true
+    }
+  },
+  "verification": {
+    "capturedAtReal": "2026-11-07T14:48:23.816Z",
+    "checks": {
+      "copiesReadableAndMatchStart": [
+        {
+          "file": "frozen-source/src__app__api__billing__estimate__route.ts.snapshot.txt",
+          "bytes": 9426,
+          "actual": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+          "expected": "cf0d741a2a5a8cec4d06f137b5c6f78a2c9769f04b8e45d848b1879573984912",
+          "match": true
+        },
+        {
+          "file": "frozen-source/src__lib__model-registry.ts.snapshot.txt",
+          "bytes": 68159,
+          "actual": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+          "expected": "b87c91275242a3a895553078b528419235ca6e965159a2e612a5cb1e5864b86c",
+          "match": true
+        },
+        {
+          "file": "frozen-source/src__lib__workspace-byo-model.ts.snapshot.txt",
+          "bytes": 20307,
+          "actual": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+          "expected": "eb4648b2fc14bdcb8043471b46bb2f5b4d3cb8c998c38461f727e8df5f9c7139",
+          "match": true
+        },
+        {
+          "file": "frozen-source/src__app__api____tests____r0h-cost-admission.test.ts.snapshot.txt",
+          "bytes": 52002,
+          "actual": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+          "expected": "812f67f872cc0343a038f32a7655a6e3586b57fb937f92e86db4eefab882a906",
+          "match": true
+        }
+      ],
+      "currentDeliveryUnchanged": [
+        {
+          "file": "src/app/api/billing/estimate/route.ts",
+          "actual": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+          "expected": "c141d5c39d4e19b71b73a6bc089d45c0507717a8f348a57a672bc4779d132050",
+          "match": true
+        },
+        {
+          "file": "src/lib/model-registry.ts",
+          "actual": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+          "expected": "7f4d9ae1d75808f4ebf3a75b6687acf19751924bfb8aa443d228843295350227",
+          "match": true
+        },
+        {
+          "file": "src/lib/workspace-byo-model.ts",
+          "actual": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+          "expected": "fa18f04119e836e0708abceb3327d83aa7125f52f5596d5d418084ed7f958d53",
+          "match": true
+        },
+        {
+          "file": "src/app/api/__tests__/r0h-cost-admission.test.ts",
+          "actual": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+          "expected": "c1a9f49fc5bb69c867d9a28410a8c455b2f15af47028f277aac1575deeb590d5",
+          "match": true
+        },
+        {
+          "file": "src/app/api/__tests__/r0i2-cold-quote.test.ts",
+          "actual": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+          "expected": "ef86ca8371f16ff877d65858862ee3b901c28b0b22ca8438d638171b85873d33",
+          "match": true
+        }
+      ],
+      "rawSelfCheck": {
+        "fixtureRecord": "EXEC ALTER TABLE `t` ADD COLUMN `c` BOOLEAN",
+        "classifiedAsWrite": true,
+        "note": "EXEC 通道即写通道；QUERY SELECT 不误判；注入该记录会使 isRawWriteAttempt 断言失败"
+      }
+    },
+    "commands": [
+      {
+        "cmd": "node docs/reviews/R0-I2-fix-snapshot/reconstruct-log.json 写入 + 本脚本逐哈希核验",
+        "exitCode": 0
+      }
+    ]
+  },
+  "allChecksPassed": true
+}

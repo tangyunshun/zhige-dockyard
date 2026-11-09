@@ -7,13 +7,40 @@ import { ADMIN_ROLE_VALUES } from "@/lib/role-utils";
  * POST /api/demo-request
  * 处理演示请求：先落库，再发邮件通知（邮件发送失败不影响已保存的数据）。
  */
+// KN-SEC：简易 IP 速率限制（自查清单安全红线：公开写接口防刷）
+const _demoRateMap = new Map<string, { count: number; resetAt: number }>();
+const DEMO_RATE_LIMIT = 5;
+const DEMO_RATE_WINDOW = 60 * 60 * 1000; // 1 小时
+
+function checkDemoRateLimit(ip: string): boolean {
+  const now = Date.now();
+  const entry = _demoRateMap.get(ip);
+  if (!entry || now > entry.resetAt) {
+    _demoRateMap.set(ip, { count: 1, resetAt: now + DEMO_RATE_WINDOW });
+    return true;
+  }
+  entry.count++;
+  return entry.count <= DEMO_RATE_LIMIT;
+}
+
 export async function POST(request: NextRequest) {
   try {
+    // KN-SEC：IP 速率限制（每 IP 每小时最多 5 次，防垃圾注册/邮件轰炸）
+    const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
+    if (!checkDemoRateLimit(ip)) {
+      return NextResponse.json({ error: "提交过于频繁，请 1 小时后再试" }, { status: 429 });
+    }
     const body = await request.json();
     const { name, email, company, phone, requirements } = body;
 
-    // 验证必填字段
-    if (!name || !email || !company) {
+    // KN-SEC：trim 后非空校验（自查清单指令一：空白字符串不得通过）
+    const trimmedName = typeof name === "string" ? name.trim() : "";
+    const trimmedEmail = typeof email === "string" ? email.trim() : "";
+    const trimmedCompany = typeof company === "string" ? company.trim() : "";
+    const trimmedRequirements = typeof requirements === "string" ? requirements.trim() : "";
+
+    // 验证必填字段（trim 后）
+    if (!trimmedName || !trimmedEmail || !trimmedCompany) {
       return NextResponse.json(
         {
           success: false,
@@ -25,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     // 验证邮箱格式
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
+    if (!emailRegex.test(trimmedEmail)) {
       return NextResponse.json(
         {
           success: false,
@@ -35,14 +62,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // KN-SEC：长度上限校验（自查清单指令一/三）
+    if (trimmedName.length > 50 || trimmedEmail.length > 100 || trimmedCompany.length > 100 || trimmedRequirements.length > 5000) {
+      return NextResponse.json({ error: "字段内容超出长度限制" }, { status: 400 });
+    }
+
     // 落库
     const created = await prisma.demorequest.create({
       data: {
-        name: String(name).trim(),
-        email: String(email).trim(),
-        company: String(company).trim(),
+        name: trimmedName,
+        email: trimmedEmail,
+        company: trimmedCompany,
         phone: phone ? String(phone).trim() : null,
-        requirements: requirements ? String(requirements).trim() : null,
+        requirements: trimmedRequirements || null,
       },
     });
 

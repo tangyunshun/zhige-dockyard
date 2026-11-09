@@ -84,7 +84,7 @@ export function useEnterpriseWorkspace({ refresh }: UseEnterpriseWorkspaceProps)
           router.push(`/workspace/${data.workspace.id}`);
         }
       } else {
-        const errorMsg = data.details ? `创建失败: ${data.details}` : (data.error || data.message || "创建失败");
+        const errorMsg = data.details ? `创建失败: ${data.details}` : (data.message || data.error || "创建失败");
         toast.error(errorMsg);
       }
     } catch (error) {

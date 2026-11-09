@@ -1,0 +1,463 @@
+{
+  "capturedAt": "2026-11-06T16:57:04.319Z",
+  "verdict": "PASS bounded R0-D stop-loss; freeze batch",
+  "cases": [
+    {
+      "id": "D01",
+      "action": "APPROVE",
+      "status": 403,
+      "requestedKeys": [
+        "order:refund_approve"
+      ],
+      "requestReads": 0,
+      "writes": []
+    },
+    {
+      "id": "D01",
+      "action": "REJECT",
+      "status": 403,
+      "requestedKeys": [
+        "order:refund_approve"
+      ],
+      "requestReads": 0,
+      "writes": []
+    },
+    {
+      "id": "D01_unauthorized",
+      "status": 401,
+      "writes": []
+    },
+    {
+      "id": "D02_D03_D04",
+      "options": {
+        "scope": "WALLET"
+      },
+      "parallelRequests": 8,
+      "writes": [],
+      "requestReads": 0,
+      "assets": {
+        "wallet": "0",
+        "pool": "0",
+        "grants": [
+          {
+            "id": "source",
+            "scope": "WALLET",
+            "userId": "u1",
+            "workspaceId": null,
+            "remaining": "0"
+          }
+        ],
+        "ledger": [
+          {
+            "id": "consume",
+            "direction": "OUT",
+            "type": "CONSUME",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WALLET",
+            "points": "100",
+            "grantId": "source",
+            "componentId": null,
+            "idempotencyKey": "TASK:t1#1"
+          }
+        ],
+        "requests": [
+          {
+            "id": "rr1",
+            "taskId": "t1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "componentId": null,
+            "points": 100,
+            "reason": "fixture reason",
+            "status": "PENDING",
+            "refundLedgerId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "D02_D03_D04",
+      "options": {
+        "scope": "WORKSPACE"
+      },
+      "parallelRequests": 8,
+      "writes": [],
+      "requestReads": 0,
+      "assets": {
+        "wallet": "0",
+        "pool": "0",
+        "grants": [
+          {
+            "id": "source",
+            "scope": "WORKSPACE",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "remaining": "0"
+          }
+        ],
+        "ledger": [
+          {
+            "id": "consume",
+            "direction": "OUT",
+            "type": "CONSUME",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WORKSPACE",
+            "points": "100",
+            "grantId": "source",
+            "componentId": null,
+            "idempotencyKey": "TASK:t1#1"
+          }
+        ],
+        "requests": [
+          {
+            "id": "rr1",
+            "taskId": "t1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "componentId": null,
+            "points": 100,
+            "reason": "fixture reason",
+            "status": "PENDING",
+            "refundLedgerId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "D02_D03_D04",
+      "options": {
+        "scope": "WORKSPACE",
+        "automaticallyRefunded": true
+      },
+      "parallelRequests": 8,
+      "writes": [],
+      "requestReads": 0,
+      "assets": {
+        "wallet": "0",
+        "pool": "100",
+        "grants": [
+          {
+            "id": "source",
+            "scope": "WORKSPACE",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "remaining": "100"
+          }
+        ],
+        "ledger": [
+          {
+            "id": "consume",
+            "direction": "OUT",
+            "type": "CONSUME",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WORKSPACE",
+            "points": "100",
+            "grantId": "source",
+            "componentId": null,
+            "idempotencyKey": "TASK:t1#1"
+          },
+          {
+            "id": "auto-refund",
+            "direction": "IN",
+            "type": "REFUND",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WORKSPACE",
+            "points": "100",
+            "grantId": "source",
+            "idempotencyKey": "REFUND_MODEL_FAILURE:t1:0"
+          }
+        ],
+        "requests": [
+          {
+            "id": "rr1",
+            "taskId": "t1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "componentId": null,
+            "points": 100,
+            "reason": "fixture reason",
+            "status": "PENDING",
+            "refundLedgerId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "D02_D03_D04",
+      "options": {
+        "scope": "WALLET",
+        "automaticallyRefunded": true
+      },
+      "parallelRequests": 8,
+      "writes": [],
+      "requestReads": 0,
+      "assets": {
+        "wallet": "100",
+        "pool": "0",
+        "grants": [
+          {
+            "id": "source",
+            "scope": "WALLET",
+            "userId": "u1",
+            "workspaceId": null,
+            "remaining": "100"
+          }
+        ],
+        "ledger": [
+          {
+            "id": "consume",
+            "direction": "OUT",
+            "type": "CONSUME",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WALLET",
+            "points": "100",
+            "grantId": "source",
+            "componentId": null,
+            "idempotencyKey": "TASK:t1#1"
+          },
+          {
+            "id": "auto-refund",
+            "direction": "IN",
+            "type": "REFUND",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "WALLET",
+            "points": "100",
+            "grantId": "source",
+            "idempotencyKey": "REFUND_MODEL_FAILURE:t1:0"
+          }
+        ],
+        "requests": [
+          {
+            "id": "rr1",
+            "taskId": "t1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "componentId": null,
+            "points": 100,
+            "reason": "fixture reason",
+            "status": "PENDING",
+            "refundLedgerId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "D02_D03_D04",
+      "options": {
+        "scope": "PERSONAL_GIFT"
+      },
+      "parallelRequests": 8,
+      "writes": [],
+      "requestReads": 0,
+      "assets": {
+        "wallet": "0",
+        "pool": "0",
+        "grants": [
+          {
+            "id": "source",
+            "scope": "PERSONAL_GIFT",
+            "userId": "u1",
+            "workspaceId": null,
+            "remaining": "0"
+          }
+        ],
+        "ledger": [
+          {
+            "id": "consume",
+            "direction": "OUT",
+            "type": "CONSUME",
+            "userId": "u1",
+            "taskId": "t1",
+            "workspaceId": "w1",
+            "scope": "PERSONAL_GIFT",
+            "points": "100",
+            "grantId": "source",
+            "componentId": null,
+            "idempotencyKey": "TASK:t1#1"
+          }
+        ],
+        "requests": [
+          {
+            "id": "rr1",
+            "taskId": "t1",
+            "userId": "u1",
+            "workspaceId": "w1",
+            "componentId": null,
+            "points": 100,
+            "reason": "fixture reason",
+            "status": "PENDING",
+            "refundLedgerId": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "D05",
+      "statuses": [
+        200,
+        409,
+        409,
+        409
+      ],
+      "status": "REJECTED",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "updateMany",
+          "where": {
+            "id": "rr1",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "updateMany",
+          "where": {
+            "id": "rr1",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "updateMany",
+          "where": {
+            "id": "rr1",
+            "status": "PENDING"
+          }
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "updateMany",
+          "where": {
+            "id": "rr1",
+            "status": "PENDING"
+          }
+        }
+      ]
+    },
+    {
+      "id": "D06",
+      "userGet": 200,
+      "adminGet": 200,
+      "withdraw": 200,
+      "capabilities": {
+        "manualApprovalPaused": true,
+        "manualApprovalCode": "MANUAL_REFUND_APPROVAL_PAUSED",
+        "manualApprovalMessage": "人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包",
+        "pointsAreReferenceOnly": true
+      },
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "delete"
+        }
+      ]
+    }
+  ],
+  "snapshots": [
+    {
+      "file": "src/app/api/admin/refund-requests/[id]/resolve/route.ts",
+      "startMatchesPrior": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/admin/refund-requests/route.ts",
+      "startMatchesPrior": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/admin/finance/refund-requests/page.tsx",
+      "startMatchesPrior": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/app/api/user/refund-requests/route.ts",
+      "startMatchesPrior": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    },
+    {
+      "file": "src/components/UserRefundRequests.tsx",
+      "startMatchesPrior": true,
+      "startMatchesManifest": true,
+      "endMatchesManifest": true,
+      "currentMatchesEnd": true
+    }
+  ],
+  "protectedChecks": [
+    {
+      "file": "src/lib/credit-service.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment/seat-addon-fulfill.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment/fulfill.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/payment-cashier-display.ts",
+      "unchanged": true
+    },
+    {
+      "file": "src/lib/order-expiry.ts",
+      "unchanged": true
+    }
+  ],
+  "isolation": "Actual resolve POST, user GET/POST/DELETE, admin GET; full unchanged credit-service available as real dependency. Closed persistence, identity/permission and notification/audit IO fixtures. No actual business data, money or source swapping.",
+  "limits": "Controlled permission keys, not deployed RBAC. In-memory conditional updates are not MySQL concurrency proof. Page checks run separately in VM, not browser DOM. Full refund engine remains outside this stop-loss acceptance.",
+  "sha256": {
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/app/api/user/refund-requests/route.ts": "ab996378759b65b9fe23267fc86d8903f4c8716b049d9328b5e79f445bdc9f82",
+    "src/app/api/admin/refund-requests/[id]/resolve/route.ts": "3bc318e1f5345b37215ebf8c7e8dee988d1285f9cc8c766deb371e4947380ce3",
+    "src/app/api/admin/refund-requests/route.ts": "76f3a31b70f70d9c9d7d6dca7bb9d51e92b40c2fa7faa9e9787975822ae33188",
+    "docs/reviews/R0-D-fix-snapshot/manifest.json": "9c0ee583aea983beb9f522effc7ed7f28cec6b428b2db08c192af574c70260a2",
+    "docs/reviews/R0-C-independent-review/next-refund-verification.json": "8e275e75ec0325894ec202557ca9d87867e180a2dbb0cc38e006477487ac1324",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/src__app__api__admin__refund-requests__[id]__resolve__route.ts.frozen": "61c31ee193dc189ae98e2bb4d9b8d478302cc968b551079d8ced3c61aa3e9a2b",
+    "docs/reviews/R0-D-fix-snapshot/end-source/src__app__api__admin__refund-requests__[id]__resolve__route.ts.frozen": "3bc318e1f5345b37215ebf8c7e8dee988d1285f9cc8c766deb371e4947380ce3",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/src__app__api__admin__refund-requests__route.ts.frozen": "24c2fc56bdcf80eef5c26d6a7108170df872ac71731595ff5ca62e57306312cd",
+    "docs/reviews/R0-D-fix-snapshot/end-source/src__app__api__admin__refund-requests__route.ts.frozen": "76f3a31b70f70d9c9d7d6dca7bb9d51e92b40c2fa7faa9e9787975822ae33188",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/src__app__admin__finance__refund-requests__page.tsx.frozen": "a9e97fb623a44cfcb78f3764c666d84ccdf4aa918471abb79cc6ab871b26d623",
+    "docs/reviews/R0-D-fix-snapshot/end-source/src__app__admin__finance__refund-requests__page.tsx.frozen": "d224befcd96dfbb401b7317863a0f29f842b48cb2368320ac43de1a5b0de7c72",
+    "src/app/admin/finance/refund-requests/page.tsx": "d224befcd96dfbb401b7317863a0f29f842b48cb2368320ac43de1a5b0de7c72",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/src__app__api__user__refund-requests__route.ts.frozen": "b9513aff0e422794710fc2fab600b6aa0c6807e05e748fd2b8aec074739dc04c",
+    "docs/reviews/R0-D-fix-snapshot/end-source/src__app__api__user__refund-requests__route.ts.frozen": "ab996378759b65b9fe23267fc86d8903f4c8716b049d9328b5e79f445bdc9f82",
+    "docs/reviews/R0-D-fix-snapshot/frozen-source/src__components__UserRefundRequests.tsx.frozen": "b51c14ad9be5bff5f75084ac1ed4a254378215c707ac5915f5988c5d8867bfae",
+    "docs/reviews/R0-D-fix-snapshot/end-source/src__components__UserRefundRequests.tsx.frozen": "583d3bee77d466b9f28aa135048407f9af9210a9fcccb0a527e79665eb3d7c6a",
+    "src/components/UserRefundRequests.tsx": "583d3bee77d466b9f28aa135048407f9af9210a9fcccb0a527e79665eb3d7c6a",
+    "docs/reviews/R0-C-independent-review/verification.json": "d67375ea3e1d72eea970df495b1d67975fcb01eb08ae0dadf181a183885b493d",
+    "src/lib/payment/seat-addon-fulfill.ts": "a680ceb22a195c4c2e479f47ec8095b13f3e50d18784ba69ad8a46411f5a6ccb",
+    "src/lib/payment/fulfill.ts": "2fde40303d455f18d735dfcc52887d8c448ac970affcbb0409ab0997456160f8",
+    "src/lib/payment-cashier-display.ts": "541726f85585fc590179a3c6766d9cb60b2785818caf0a0d3052d1c9dc86db11",
+    "src/lib/order-expiry.ts": "15b9395be80377201fdf2fbf6f589e7750543f5e116e19fa31ec7e76a54b85e5",
+    "src/app/api/__tests__/r0d-refund-approval.test.ts": "d32817e22cd0fab20d877b3543aaeaf1e447be73728f04a7651882589e653252",
+    "docs/reviews/R0-D-fix-report.md": "c59f3ff99720f419c728c37af17f908ebf46ca65d8a556fc6b0c93cad946a741",
+    "docs/reviews/R0-D-fix-snapshot/verify-r0d-pages.cjs": "13eb07f680b152433800edf4053b8becacba4598d6e4d3ba24b177208ba8e4ff"
+  }
+}

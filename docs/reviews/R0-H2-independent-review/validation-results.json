@@ -1,0 +1,30 @@
+{
+  "verifiedAt": "2026-11-07T09:08:17.584Z",
+  "sourceHashesChecked": 25,
+  "sourceChangesDuringReview": [],
+  "formal": {
+    "files": 11,
+    "tests": 381,
+    "exitCode": 0
+  },
+  "independent": {
+    "tests": 6,
+    "handlerScenarios": 27,
+    "exitCode": 0
+  },
+  "typeCheck": {
+    "exitCode": 0
+  },
+  "componentChecks": [
+    10,
+    5,
+    24,
+    18,
+    21
+  ],
+  "studioCallbackScenarios": 2,
+  "f12OfflineArithmetic": {
+    "exitCode": 0
+  },
+  "scope": "No business-source changes. Isolated IO only. No real DB, model, payment, secrets or deployment."
+}

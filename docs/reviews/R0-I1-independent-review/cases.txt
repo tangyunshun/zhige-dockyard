@@ -1,0 +1,21 @@
+
+import {afterAll,afterEach} from 'vitest';
+import fs from 'node:fs';
+import {checkAndResetQuotaCycle as realCycle} from '@/lib/quota-cycle';
+const evidence:any[]=[];
+beforeEach(()=>{vi.stubEnv('NODE_ENV','test');vi.stubEnv('TEST_TOKEN_SETTLEMENT_ENABLED','false');vi.stubEnv('MODEL_MAX_OUTPUT_TOKENS','2000');});afterEach(()=>vi.unstubAllEnvs());
+function fixture(resetAt:Date|null,used:number){seed();h.tables.workspace.set('w1',{id:'w1',type:'ENTERPRISE',ownerId:'u1',name:'Synthetic enterprise',plan:'STANDARD'});h.tables.workspacemember=new Map([['m1',{id:'m1',userId:'u1',workspaceId:'w1',role:'OWNER',monthlyTokenLimit:1000n,monthlyTokenUsed:BigInt(used),quotaResetAt:resetAt,tokenBalance:10000n}]]);const deps=makeDeps();(deps.checkAndResetQuotaCycle as any).mockImplementation(realCycle);return deps;}
+function obs(label:string,r:any,deps:StudioExecutionDeps){return {label,status:r.status,code:r.body.code??null,cycleCalls:(deps.checkAndResetQuotaCycle as any).mock.calls.length,consume:fx.consumeCalls.length,hold:fx.holdCalls.length,execute:fx.adapterExecuteCalls.length,tasks:[...h.tables.componenttask.values()].map(t=>t.status),member:h.tables.workspacemember.get('m1'),writes:[...h.writes]};}
+describe('R0-I1 independent existing-fix acceptance',()=>{
+ it('J01 baseline/current contrast: expired old full usage now resets and executes',async()=>{
+  const old=await import('./baseline-handler');let deps=fixture(new Date('2000-01-01T00:00:00Z'),1000);const response=await old.runStudioPost(makeReq({}),deps);let r={status:response.status,body:await response.json()};expect(r.status).toBe(400);expect(deps.checkAndResetQuotaCycle).not.toHaveBeenCalled();const rows=[obs('R0-I snapshot',r,deps)];
+  deps=fixture(new Date('2000-01-01T00:00:00Z'),1000);r=await call({},deps);expect(r.status).toBe(200);expect(h.tables.workspacemember.get('m1').monthlyTokenUsed).toBe(0n);expect(fx.consumeCalls[0].points).toBe(100);expect(fx.adapterExecuteCalls).toHaveLength(1);rows.push(obs('current fixed',r,deps));evidence.push({case:'J01-expired',rows});
+ });
+ it('J01 missing reset date is maintained; same month counters remain valid',async()=>{
+  const rows=[];for(const [label,date,used,status,after]of [['missing',null,1000,200,0],['same month exhausted',new Date('2099-01-01T00:00:00Z'),1000,400,1000],['same month remaining',new Date('2099-01-01T00:00:00Z'),500,200,500]] as const){const deps=fixture(date,used);const r=await call({},deps);expect(r.status,label).toBe(status);expect(h.tables.workspacemember.get('m1').monthlyTokenUsed).toBe(BigInt(after));expect(fx.adapterExecuteCalls.length).toBe(status===200?1:0);rows.push(obs(label,r,deps));}evidence.push({case:'J01-J02-limits',rows});
+ });
+ it('J02 explicit/default/final-switched BYOK preempts expired full-month quota without maintenance',async()=>{
+  const rows=[];for(const mode of ['explicit','default','switched']){const deps=fixture(new Date('2000-01-01T00:00:00Z'),1000);const byok={deploymentId:'byo:w1',providerId:'p1',modelId:'m1',contextLimit:128000,pricing:trustedPricing()};if(mode==='default')(deps.resolveDefaultDeployment as any).mockResolvedValue(byok);if(mode==='switched')(deps.resolveDefaultDeployment as any).mockResolvedValueOnce({deploymentId:'dep-1',providerId:'p1',modelId:'m1',contextLimit:128000,pricing:trustedPricing()}).mockResolvedValue(byok);const r=await call(mode==='explicit'?{deploymentId:'byo:w1'}:{deploymentId:'auto'},deps);expect(r.status).toBe(409);expect(r.body.code).toBe('BYOK_BILLING_POLICY_UNCONFIRMED');expect(deps.checkAndResetQuotaCycle).not.toHaveBeenCalled();expect(deps.getOrCreateQuota).not.toHaveBeenCalled();expect(h.tables.workspacemember.get('m1').monthlyTokenUsed).toBe(1000n);expect(fx.consumeCalls).toHaveLength(0);expect(fx.holdCalls).toHaveLength(0);expect(fx.adapterExecuteCalls).toHaveLength(0);expect(h.tables.componenttask.size).toBe(0);rows.push(obs(mode,r,deps));}evidence.push({case:'J02-BYOK',rows});
+ });
+});
+afterAll(()=>{if(evidence.length!==3)throw Error('Incomplete evidence');fs.writeFileSync('docs/reviews/R0-I1-independent-review/handler-verification.json',JSON.stringify({capturedAt:new Date().toISOString(),evidence},(_,v)=>typeof v==='bigint'?v.toString():v,2));});

@@ -38,6 +38,7 @@ import {
 import { useToast } from "@/components/Toast";
 import { useAppContext } from "@/contexts/AppContext";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 
 interface MyTestimonial {
   id: string;
@@ -206,6 +207,8 @@ export default function UserReviewsPage() {
   } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [previewRow, setPreviewRow] = useState<MyTestimonial | null>(null);
+  useEscapeKey(!!previewRow, () => setPreviewRow(null));
+  useEscapeKey(!!deleteConfirm, () => setDeleteConfirm(null));
 
   const authHeaders = useCallback((): HeadersInit => {
     const token = getAuthToken();

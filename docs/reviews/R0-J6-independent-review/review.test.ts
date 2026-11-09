@@ -1,0 +1,604 @@
+/**
+ * R0-J3 正向验收：完成原 F13 剩余四组（J-RELEASE/J-UPLOAD/J-CLEAR/J-KEYS）
+ * 覆盖 IDE-R0-J3-PROMPT.md §五 表格场景（真实 handler/service，DB/fs 夹具真实求值）：
+ * - 容量不变量：物理未确认删除 → 占用保持计量 → 下一笔上传被准入拒绝
+ * - 认领失败/无依据状态、清空提交故障恢复重试、共享保留如实提示
+ * - 上传对象键预绑定、保存后响应丢失进入稳定待核实、确认+文档清理组合故障可恢复
+ * - delegate 未就绪 503、P2002 不同主体冲突、多候选歧义、根/空间越界拒绝
+ */
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { NextRequest } from "next/server";
+
+// ══════════════ 内存 Prisma（真实条件求值 + 唯一约束 + 行级事务回滚） ══════════════
+
+const h = vi.hoisted(() => {
+  const tables: Record<string, Map<string, any>> = {};
+  const writes: string[] = [];
+  const unlinkFail = new Set<string>();
+  const createFail = new Map<string, Error>();
+  const deleteFail = new Map<string, Error>();
+  const updateFail = new Map<string, Error>();
+  let hideOpDelegate = false;
+  let rawGate: ((sql: string) => Promise<void>) | null = null;
+  let rawGateVal: ((sql: string) => Promise<void>) | null = null;
+  const setRawGate = (g: ((sql: string) => Promise<void>) | null) => { rawGateVal = g; };
+  let commitFailures = 0;
+  return {
+    tables, writes, unlinkFail, createFail, deleteFail, updateFail, beforeUnlink:null as any, afterDocDelete:null as any, beforeOpRead:null as any, beforeOpFirst:null as any, beforeOpMany:null as any, beforeOpCreate:null as any,
+    setHideOpDelegate: (v: boolean) => { hideOpDelegate = v; },
+    isOpDelegateHidden: () => hideOpDelegate,
+    setRawGate, getRawGate: () => rawGateVal,
+    setCommitFailures: (n: number) => { commitFailures = n; },
+    takeCommitFailure: () => (commitFailures > 0 ? (commitFailures--, true) : false),
+  };
+});
+
+function getTable(name: string): Map<string, any> {
+  if (!h.tables[name]) h.tables[name] = new Map();
+  return h.tables[name];
+}
+
+function matchRow(row: any, where: any): boolean {
+  for (const [k, v] of Object.entries(where || {})) {
+    if(k==="userId_workspaceId" && v && typeof v==="object"){for(const[f,fv]of Object.entries(v))if(row[f]!==fv)return false;continue;}
+    if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v)) {
+      for (const [op, ov] of Object.entries(v)) {
+        const rv = row[k];
+        if (op === "not") { if (rv === ov) return false; }
+        else if (op === "notIn") { if (Array.isArray(ov) && ov.includes(rv)) return false; }
+        else if (op === "in") { if (!Array.isArray(ov) || !ov.includes(rv)) return false; }
+        else if (op === "gt") { if (!(rv > ov)) return false; }
+        else if (op === "lt") { if (!(rv < ov)) return false; }
+        else return false;
+      }
+    } else if (row[k] !== v) return false;
+  }
+  return true;
+}
+
+function evalRaw(sql: string, values: any[]): number {
+  const norm = sql.replace(/\s+/g, " ");
+  const wsId = values.find((v) => typeof v === "string");
+  const byteVal = (values.find((v) => typeof v === "bigint") ?? BigInt(0)) as bigint;
+  const row = [...getTable("workspacequota").values()].find((r) => r.workspaceId === wsId);
+  if (!row) return 0;
+  const used = row.storageUsed as bigint;
+  const limit = row.storageLimit as bigint;
+  if (norm.includes("storageUsed` = `storageUsed` +") && norm.includes("`storageLimit` = -1")) {
+    if (limit === BigInt(-1) && used >= BigInt(0)) { row.storageUsed = used + byteVal; return 1; }
+    return 0;
+  }
+  if (norm.includes("storageUsed` = `storageUsed` +") && norm.includes("<= `storageLimit`")) {
+    if (used >= BigInt(0) && used + byteVal <= limit) { row.storageUsed = used + byteVal; return 1; }
+    return 0;
+  }
+  if (norm.includes("storageUsed` = `storageUsed` -") && norm.includes("storageUsed` >= ")) {
+    if (used >= byteVal) { row.storageUsed = used - byteVal; return 1; }
+    return 0;
+  }
+  throw new Error("[r0j3-mock] 未识别的 raw 语句: " + norm.slice(0, 120));
+}
+
+function baseModel(name: string) {
+  const rows = () => [...getTable(name).values()];
+  const findRow = (where: any) => rows().find((r) => matchRow(r, where)) ?? null;
+  const applyData = (row: any, data: any) => {
+    const next = { ...row };
+    for (const [k, v] of Object.entries(data || {})) {
+      if (v !== null && typeof v === "object" && !(v instanceof Date) && !Array.isArray(v) && "set" in v) {
+        next[k] = (v as any).set;
+      } else {
+        next[k] = v;
+      }
+    }
+    return next;
+  };
+  return {
+    findUnique: async ({ where, select }: any) => { if(name==="storageoperation" && h.beforeOpRead)await h.beforeOpRead(where);
+      const row = findRow(where);
+      if (!row) return null;
+      if (!select) return { ...row };
+      const out: any = {};
+      for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+      return out;
+    },
+    findFirst: async ({ where, select }: any) => { if(name==="storageoperation" && h.beforeOpFirst)await h.beforeOpFirst(where);
+      const row = rows().find((r) => matchRow(r, where)) ?? null;
+      if (!row) return null;
+      if (!select) return { ...row };
+      const out: any = {};
+      for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+      return out;
+    },
+    findMany: async ({ where, select }: any) => { if(name==="storageoperation" && h.beforeOpMany)await h.beforeOpMany(where);return rows().filter((r)=>matchRow(r,where)).map((r)=>(select?selectFields(r,select):{...r})); },
+    count: async ({ where }: any) => rows().filter((r) => matchRow(r, where)).length,
+    create: async ({ data }: any) => { if(name==="storageoperation" && h.beforeOpCreate)await h.beforeOpCreate(data);
+      const injected = h.createFail.get(name);
+      if (injected) throw injected;
+      if (name === "storageoperation" && data?.opId) {
+        const dup = rows().find((r) => r.opId === data.opId);
+        if (dup) { const e: any = new Error("Unique constraint failed"); e.code = "P2002"; throw e; }
+      }
+      const row = { ...data };
+      if (!row.id) row.id = `auto_${Math.random().toString(36).slice(2)}`;
+      getTable(name).set(row.id, row);
+      return { ...row };
+    },
+    update: async ({ where, data }: any) => {
+      // updateFail 支持按目标状态精确注入（如仅让 CONFIRMED 失败，mark PENDING_CLEANUP 不受影响）
+      const injected = h.updateFail.get(name) ?? h.updateFail.get(name + ":" + String(data?.status ?? ""));
+      if (injected) throw injected;
+      const row = findRow(where);
+      if (!row) { const e: any = new Error(`P2025:${name}`); e.code = "P2025"; throw e; }
+      const next = applyData(row, data);
+      getTable(name).set(row.id ?? where.id, next);
+      return { ...next };
+    },
+    updateMany: async ({ where, data }: any) => {
+      const injected = h.updateFail.get(name);
+      if (injected) throw injected;
+      let count = 0;
+      for (const row of rows()) {
+        if (matchRow(row, where)) { getTable(name).set(row.id, applyData(row, data)); count++; }
+      }
+      return { count };
+    },
+    delete: async ({ where }: any) => {
+      const row = findRow(where);
+      if (!row) { const e: any = new Error(`P2025:${name}`); e.code = "P2025"; throw e; }
+      getTable(name).delete(row.id ?? where.id);
+      return { ...row };
+    },
+    deleteMany: async ({ where }: any) => {
+      const injected = h.deleteFail.get(name);
+      if (injected) throw injected;
+      let count = 0;
+      for (const row of rows()) {
+        if (matchRow(row, where)) { getTable(name).delete(row.id); count++; }
+      }
+      if(name==="document" && h.afterDocDelete)await h.afterDocDelete({where,count});
+      return { count };
+    },
+    upsert: async ({ where, create, update }: any) => {
+      const row = findRow(where);
+      if (row) {
+        const next = applyData(row, update);
+        getTable(name).set(row.id, next);
+        return { ...next };
+      }
+      const created = { ...create };
+      if (!created.id) created.id = `auto_${Math.random().toString(36).slice(2)}`;
+      getTable(name).set(created.id, created);
+      return { ...created };
+    },
+  };
+}
+
+const selectFields = (row: any, select: any) => {
+  if (!select) return { ...row };
+  const out: any = {};
+  for (const k of Object.keys(select)) if (select[k]) out[k] = row[k];
+  return out;
+};
+
+/** [§五] 事务内写操作撤销日志：仅回滚本事务的写（并发对方已提交写不受影响，与真实 MySQL 一致） */
+function txModel(name: string, undo: Array<() => void>) {
+  const m: any = baseModel(name);
+  return {
+    ...m,
+    create: async (args: any) => {
+      const row = await m.create(args);
+      undo.push(() => getTable(name).delete(row.id));
+      return row;
+    },
+    update: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.update(args);
+      if (prev) undo.push(() => getTable(name).set(prev.id, { ...prev }));
+      return row;
+    },
+    updateMany: async (args: any) => {
+      const prevRows = [...getTable(name).values()].filter((r) => matchRow(r, args.where)).map((r) => ({ ...r }));
+      const res = await m.updateMany(args);
+      if (prevRows.length) undo.push(() => { for (const r of prevRows) getTable(name).set(r.id, { ...r }); });
+      return res;
+    },
+    delete: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.delete(args);
+      if (prev) undo.push(() => getTable(name).set(prev.id, { ...prev }));
+      return row;
+    },
+    deleteMany: async (args: any) => {
+      const prevRows = [...getTable(name).values()].filter((r) => matchRow(r, args.where)).map((r) => ({ ...r }));
+      const res = await m.deleteMany(args);
+      if (prevRows.length) undo.push(() => { for (const r of prevRows) getTable(name).set(r.id, { ...r }); });
+      return res;
+    },
+    upsert: async (args: any) => {
+      const prev = [...getTable(name).values()].find((r) => matchRow(r, args.where));
+      const row = await m.upsert(args);
+      undo.push(() => {
+        if (prev) getTable(name).set(prev.id, { ...prev });
+        else getTable(name).delete(row.id);
+      });
+      return row;
+    },
+  };
+}
+
+function makePrisma() {
+  const clientProxy: any = new Proxy(
+    {},
+    {
+      get: (_t, prop: string) => {
+        // [§五] delegate 未生成：storageoperation 模型能力缺失 → ensureOpModel 稳定 503
+        if (prop === "storageoperation" && h.isOpDelegateHidden()) return undefined;
+        if (prop === "$executeRaw" || prop === "$executeRawUnsafe") {
+          return async (query: TemplateStringsArray | { sql?: string }, ...values: any[]) => {
+            const sql = typeof query === "string" ? query : (query as TemplateStringsArray).join("?");
+            const gate = h.getRawGate();
+            if (gate) await gate(sql);
+            return evalRaw(sql, values);
+          };
+        }
+        if (prop === "$queryRaw" || prop === "$queryRawUnsafe") return async () => [];
+        if (prop === "$transaction") {
+          return async (fn: (tx: any) => Promise<any>) => {
+            const undo: Array<() => void> = [];
+            const txProxy: any = new Proxy({}, {
+              get: (_t2, p2: string) => {
+                if (p2 === "storageoperation" && h.isOpDelegateHidden()) return undefined;
+                if (p2 === "$executeRaw" || p2 === "$executeRawUnsafe") {
+                  return async (query: TemplateStringsArray | { sql?: string }, ...values: any[]) => {
+                    const sql = typeof query === "string" ? query : (query as TemplateStringsArray).join("?");
+                    const gate = h.getRawGate();
+                    if (gate) await gate(sql);
+                    const wsId = values.find((v) => typeof v === "string");
+                    const target = [...getTable("workspacequota").values()].find((r) => r.workspaceId === wsId);
+                    const prevUsed = target ? target.storageUsed : undefined;
+                    const n = evalRaw(sql, values);
+                    if (target && target.storageUsed !== prevUsed) {
+                      const row = target;
+                      undo.push(() => { row.storageUsed = prevUsed; });
+                    }
+                    return n;
+                  };
+                }
+                if (p2 === "$queryRaw" || p2 === "$queryRawUnsafe") return async () => [];
+                return txModel(p2, undo);
+              },
+            });
+            let result: any;
+            try {
+              result = await fn(txProxy);
+            } catch (e) {
+              for (const u of undo.reverse()) u();
+              throw e;
+            }
+            if (h.takeCommitFailure()) {
+              for (const u of undo.reverse()) u();
+              throw new Error("COMMIT_FAILED_INJECTED");
+            }
+            return result;
+          };
+        }
+        return baseModel(prop);
+      },
+    },
+  );
+  return clientProxy;
+}
+
+vi.mock("@/lib/prisma", () => ({ prisma: makePrisma() }));
+
+// 文件 IO：内存文件表
+const memFiles = new Map<string, Buffer>();
+vi.mock("fs/promises", () => {
+  const impl = {
+    mkdir: async () => {},
+    writeFile: async (p: string, data: Buffer) => { memFiles.set(p, data); },
+    readFile: async (p: string) => {
+      const d = memFiles.get(p);
+      if (!d) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      return d;
+    },
+    unlink: async (p: string) => { if(h.beforeUnlink)await h.beforeUnlink(p);
+      if (h.unlinkFail.has(p)) { const e: any = new Error("EACCES: permission denied"); e.code = "EACCES"; throw e; }
+      if (!memFiles.has(p)) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      memFiles.delete(p);
+    },
+    stat: async (p: string) => {
+      const d = memFiles.get(p);
+      if (!d) { const e: any = new Error("ENOENT: no such file"); e.code = "ENOENT"; throw e; }
+      return { size: d.length, isFile: () => true };
+    },
+    rm: async () => {},
+  };
+  return { ...impl, default: impl };
+});
+
+// [§五] file-store 包装：注入"写入已产生对象后响应丢失"与"对象删除失败"场景
+const fileFlags = vi.hoisted(() => ({ failSaveAfterWrite: false, failDelete: false }));
+vi.mock("@/lib/file-store", async (importOriginal) => {
+  const actual: any = await importOriginal();
+  return {
+    ...actual,
+    saveAssetFileToKey: async (...args: any[]) => {
+      const r = await actual.saveAssetFileToKey(...args);
+      if (fileFlags.failSaveAfterWrite) throw new Error("保存响应丢失（注入：写入已产生对象）");
+      return r;
+    },
+    deleteAssetFile: async (...args: any[]) => {
+      if (fileFlags.failDelete) return { ok: false, notExists: false, error: "注入删除失败" };
+      return actual.deleteAssetFile(...args);
+    },
+  };
+});
+
+vi.mock("@/lib/text-extract", () => ({
+  extractTextFromBufferWithTimeout: vi.fn(async () => "提取的文本内容"),
+}));
+vi.mock("@/lib/smart-summary", () => ({ generateSmartSummary: vi.fn(() => ({ overview: "智能摘要" })) }));
+vi.mock("@/lib/audit", () => ({ writeAuditLog: vi.fn(async () => {}) }));
+vi.mock("@/lib/notifications-store", () => ({ addNotification: vi.fn(async () => {}) }));
+vi.mock("@/lib/credit-service", () => ({
+  grantNewUserGift: vi.fn(async () => ({})),
+  consumePoints: vi.fn(async () => ({})),
+  refundConsumedPoints: vi.fn(async () => ({ ok: true })),
+}));
+vi.mock("@/lib/auth", () => ({
+  validateUser: vi.fn(async () => ({ valid: true, user: { id: "u1" } })),
+}));
+vi.mock("@/lib/workspace-readonly-guard", () => ({
+  assertWorkspaceWritable: vi.fn(async () => {}),
+}));
+vi.mock("@/lib/workspaceInit", () => ({ ensureDefaultComponents: vi.fn(async () => {}) }));
+vi.mock("@/lib/serverCache", () => ({ clearServerCache: vi.fn(() => {}) }));
+
+import type { StudioExecutionDeps } from "@/app/api/studio/handler";
+import { prisma as mockedPrisma } from "@/lib/prisma";
+
+function makeDeps(): StudioExecutionDeps {
+  return {
+    prisma: mockedPrisma as any,
+    getUserId: vi.fn(async () => "u1"),
+    createModelAdapter: vi.fn(async () => ({} as any)),
+    getActiveContractSnapshot: vi.fn(async () => ({} as any)),
+    requireWorkspaceMembership: vi.fn(async () => true),
+    requireWorkspacePermission: vi.fn(async () => true),
+    getRestrictedComponentIds: vi.fn(async () => [] as string[]),
+    getOrCreateQuota: vi.fn(async () => ({ id: "q1", workspaceId: "w1" })),
+    checkAndResetQuotaCycle: vi.fn(async () => {}),
+    resolveDefaultDeployment: vi.fn(async () => ({} as any)),
+    touchComponentUsage: vi.fn(async () => {}),
+    writeAuditLog: vi.fn(async () => {}),
+    creditService: {
+      consumePoints: vi.fn(async () => ({} as any)),
+      consumeAndCreateSettlementHold: vi.fn(async () => ({} as any)),
+      refundConsumedPoints: vi.fn(async () => ({ ok: true })),
+    },
+    refundService: { enqueueRefundRecovery: vi.fn(async () => ({ ok: true })) },
+    settlementService: {
+      releaseSettlementHold: vi.fn(async () => ({ ok: true })),
+      completeSettlement: vi.fn(async () => ({ ok: true })),
+      enqueueSettlementRecovery: vi.fn(async () => ({ ok: true })),
+    },
+  } as unknown as StudioExecutionDeps;
+}
+
+function multipartReq(body: Record<string, string>, file: { name: string; type: string; content: string } | null) {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(body)) fd.append(k, v);
+  if (file) fd.append("file", new Blob([file.content], { type: file.type }), file.name);
+  return new NextRequest("http://localhost/api/studio", {
+    method: "POST",
+    headers: { authorization: "Bearer test-token" },
+    body: fd,
+  });
+}
+
+function seedWorkspace() {
+  h.tables.workspace = new Map([
+    ["w1", { id: "w1", type: "PERSONAL", ownerId: "u1", name: "空间", plan: "STANDARD" }],
+    ["w2", { id: "w2", type: "PERSONAL", ownerId: "u2", name: "空间2", plan: "STANDARD" }],
+  ]);
+  h.tables.workspacemember = new Map([
+    ["wm1", { id: "wm1", userId: "u1", workspaceId: "w1", role: "OWNER", monthlyTokenLimit: null, monthlyTokenUsed: 0, tokenBalance: 10000 }],
+  ]);
+  h.tables.user = new Map([
+    ["u1", { id: "u1", name: "用户", membershipLevel: "FREE" }],
+    ["u2", { id: "u2", name: "用户2", membershipLevel: "FREE" }],
+  ]);
+  h.tables.postmember = new Map();
+  h.tables.operationlog = new Map();
+  h.tables.componenttask = new Map();
+  h.tables.componentusage = new Map();
+  h.tables.tenant = new Map();
+  h.tables.document = new Map();
+  h.tables.documentremoval = new Map();
+  h.tables.workspacequota = new Map();
+  h.tables.storageoperation = new Map();
+}
+
+function seedQuota(wsId: string, used: bigint, limit: bigint) {
+  h.tables.workspacequota.set(`q-${wsId}`, { id: `q-${wsId}`, workspaceId: wsId, storageUsed: used, storageLimit: limit });
+}
+
+beforeEach(() => {
+  h.tables = {};
+  h.writes.length = 0;
+  h.setRawGate(null);
+  h.unlinkFail.clear();
+  h.createFail.clear();
+  h.deleteFail.clear();
+  h.updateFail.clear();
+  h.setHideOpDelegate(false);
+  h.setCommitFailures(0);
+  fileFlags.failSaveAfterWrite = false;
+  fileFlags.failDelete = false;
+  memFiles.clear();
+  h.beforeUnlink=null;h.afterDocDelete=null;h.beforeOpRead=null;h.beforeOpFirst=null;h.beforeOpMany=null;h.beforeOpCreate=null;
+  seedWorkspace();
+});
+// Previous defects are now positive acceptance checks. Additional bounded cases identify current behavior.
+import {afterAll} from 'vitest';
+const observations:any[]=[];
+function observe(name:string,facts:any){observations.push({name,...facts});}
+function doc(id='d1',key='w1/x.bin',bytes:number|null=30){const row={id,workspaceId:'w1',title:id,status:'APPROVED',visibility:'PRIVATE',filePath:key,fileSize:bytes,uploaderId:'u1',type:'doc'};h.tables.document.set(id,row);return row;}
+function abs(key='w1/x.bin'){return require('node:path').join(process.cwd(),'uploads','assets',key);}
+function removeReq(id='d1'){return new NextRequest('http://localhost/api/studio',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer test-token'},body:JSON.stringify({action:'remove_asset',workspaceId:'w1',assetId:id,reasonCode:'VIOLATION'})});}
+function clearReq(){return new NextRequest('http://localhost/api/workspace/clear-data',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer test-token'},body:JSON.stringify({workspaceId:'w1',confirmText:'确认删除'})});}
+function pending(key='w1/x.bin',bytes=30,extra:any={}){const opId='del-w1-'+key;h.tables.storageoperation.set('claim',{id:'claim',opId,workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:key,documentId:'d1',bytes,...extra});return opId;}
+function latch(){let resolve!:()=>void;const promise=new Promise<void>(r=>resolve=r);return {promise,resolve};}
+describe('R0-J5 independent original-scope verification',()=>{
+ it('positive J3-01: clear recovery preserves shared aliases',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','assets/w1/x.bin');doc('d2');pending();memFiles.set(abs(),Buffer.alloc(30));
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.document.size).toBe(2);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(body.message).not.toContain('纯净出厂状态');
+  observe('clear-shared-positive',{status:res.status,body,docs:2,files:1,used:30});
+ });
+ it('positive J3-02: two remove requests interleave without cancelling winner',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));
+  const enterA=latch(),enterB=latch(),allowA=latch(),allowB=latch(),row=latch(),finish=latch();let calls=0;
+  h.beforeUnlink=async()=>{calls++;if(calls===1){enterA.resolve();await allowA.promise;}else if(calls===2){enterB.resolve();await allowB.promise;}};
+  h.afterDocDelete=async({count}:any)=>{if(count===1){row.resolve();await finish.promise;}};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const a=runStudioPost(removeReq(),makeDeps());await enterA.promise;const b=runStudioPost(removeReq(),makeDeps());await enterB.promise;
+  allowA.resolve();await row.promise;allowB.resolve();const rb=await b;expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');finish.resolve();const ra=await a;
+  expect([ra.status,rb.status]).toEqual([200,404]);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);expect([...h.tables.storageoperation.values()][0].status).toBe('RELEASED');
+  observe('remove-remove-concurrency-positive',{a:ra.status,b:rb.status,used:0,docs:h.tables.document.size,files:memFiles.size});
+ });
+ it('positive J3-03: single removal blocks null and pending size conflict before deletion',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',null);memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const r1=await runStudioPost(removeReq(),makeDeps());expect(r1.status).toBe(500);expect(memFiles.size).toBe(1);
+  h.tables.document.get('d1').fileSize=50;pending();const r2=await runStudioPost(removeReq(),makeDeps());expect(r2.status).toBe(500);expect(h.tables.document.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  observe('single-size-protection-positive',{nullStatus:r1.status,conflictStatus:r2.status,used:30,docs:1,files:1});
+ });
+ it('positive J3-04: repeated recovery commit failures stay pending, then finish once',async()=>{
+  seedQuota('w1',30n,30n);pending();h.setCommitFailures(2);const {POST}=await import('@/app/api/workspace/clear-data/route');const bodies:any[]=[];
+  for(let i=0;i<2;i++){const r=await POST(clearReq());const b=await r.json();bodies.push(b);expect(b.storage.pendingStill).toBe(1);expect(b.message).not.toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);}
+  const success=await POST(clearReq());const body=await success.json();expect(body.storage.pendingRecovered).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('recovery-commit-positive',{failures:bodies,success:body,used:0});
+ });
+ it('positive J3-05: real deletion commit failure recovers on same request without clearing other documents',async()=>{
+  seedQuota('w1',50n,50n);doc();doc('other','w1/other.bin',20);memFiles.set(abs(),Buffer.alloc(30));memFiles.set(abs('w1/other.bin'),Buffer.alloc(20));h.setCommitFailures(1);
+  const {runStudioPost}=await import('@/app/api/studio/handler');const first=await runStudioPost(removeReq(),makeDeps());expect(first.status).toBe(500);
+  const retry=await runStudioPost(removeReq(),makeDeps());const body=await retry.json();expect(body.data.pendingCleared).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);expect(h.tables.document.has('other')).toBe(true);expect(memFiles.has(abs('w1/other.bin'))).toBe(true);
+  const again=await runStudioPost(removeReq(),makeDeps());expect(again.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);
+  observe('same-delete-retry-positive',{first:first.status,retry:retry.status,body,again:again.status,used:20,otherPreserved:true});
+ });
+ it('positive J3-06: actual P2002 branch rejects RELEASE and ordinary valid RESERVE replays',async()=>{
+  seedQuota('w1',30n,-1n);let injected=false;let creates=0;
+  h.beforeOpCreate=async(data:any)=>{creates++;if(!injected&&data.opType==='RESERVE'){injected=true;h.tables.storageoperation.set('race',{id:'race',opId:data.opId,workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',bytes:30,filePath:'w1/x.bin'});}};
+  const {reserveStorageBytes}=await import('@/lib/storage-quota');await expect(reserveStorageBytes('w1',30,'type-race','u1')).rejects.toMatchObject({status:409,code:'STORAGE_OP_CONFLICT'});expect(creates).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  h.beforeOpCreate=null;await reserveStorageBytes('w1',10,'valid','u1');const replay=await reserveStorageBytes('w1',10,'valid','u1');expect(replay.deduped).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(40n);
+  observe('type-and-unique-race-positive',{P2002Triggered:injected,creates,used:40,replay});
+ });
+ for(const action of ['upload_doc','upload_knowledge_attachment'])it('positive J3-07: missing column returns stable 503 before upload '+action,async()=>{
+  seedQuota('w1',0n,30n);doc('kn-1',null as any,null);h.tables.document.get('kn-1').type='knowledge';h.beforeOpRead=async()=>{const e:any=new Error('The column is missing');e.code='P2022';throw e;};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(multipartReq({action,workspaceId:'w1',knowledgeId:'kn-1',title:'x',visibility:'PRIVATE'},{name:'x.pdf',type:'application/pdf',content:'123'}),makeDeps());const body=await res.json();
+  expect(res.status).toBe(503);expect(body.code).toBe('STORAGE_OP_UNAVAILABLE');expect(memFiles.size).toBe(0);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('missing-column-upload-positive-'+action,{status:res.status,body,used:0,files:0});
+ });
+ it('positive repaired J3-01/J3-05: single deletion recovery deletes object referenced by another document',async()=>{
+  seedQuota('w1',30n,30n);doc('remaining','assets/w1/x.bin');pending();memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());const body=await res.json();
+  expect(res.status).toBe(200);expect(body.data.pendingCleared).toBe(false);expect(h.tables.document.has('remaining')).toBe(true);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  observe('single-recovery-shared-repaired',{status:res.status,body,docs:[...h.tables.document.values()],files:1,used:30});
+ });
+ it('R0-J5 positive repaired J3-05 case 1',async()=>{
+  h.tables.workspace.get('w1').type='ENTERPRISE';h.tables.workspacemember.set('wm2',{id:'wm2',workspaceId:'w1',userId:'u2',role:'MEMBER'});
+  seedQuota('w1',30n,30n);doc();h.tables.document.get('d1').uploaderId='u2';memFiles.set(abs(),Buffer.alloc(30));pending('w1/x.bin',30,{userId:'u2'});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const live=await runStudioPost(removeReq(),makeDeps());expect(live.status).toBe(403);
+  h.tables.document.delete('d1');const recovery=await runStudioPost(removeReq(),makeDeps());const body=await recovery.json();expect(recovery.status).toBe(403);expect(body.data?.pendingCleared).not.toBe(true);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);const asU2=makeDeps();asU2.getUserId=vi.fn(async()=> 'u2');const ownerRetry=await runStudioPost(removeReq(),asU2);expect(ownerRetry.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('private-recovery-authority-repaired',{normal:live.status,recovery:recovery.status,body,op:[...h.tables.storageoperation.values()][0],used:0,files:0});
+ });
+ it('R0-J5 positive repaired J3-03 case 2',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',null);memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.message).not.toContain('纯净出厂状态');expect(h.tables.document.size).toBe(1);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(h.tables.storageoperation.size).toBe(0);
+  observe('clear-unknown-size-repaired',{status:res.status,body,used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-03 case 3',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',50);pending();memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.document.size).toBe(1);expect(memFiles.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(body.storage.failedCount).toBe(1);
+  observe('clear-blocked-ignored-repaired',{status:res.status,body,used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-03 case 4',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','w1/x.bin',50);pending('w1/x.bin',30,{status:'CANCELLED'});memFiles.set(abs(),Buffer.alloc(30));
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());expect(res.status).toBe(500);expect(memFiles.size).toBe(1);expect(h.tables.document.size).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect([...h.tables.storageoperation.values()][0].status).toBe('CANCELLED');
+  observe('cancelled-size-conflict-repaired',{status:res.status,body:await res.json(),used:30,docs:h.tables.document.size,files:memFiles.size,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-02 case 5',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));const enterA=latch(),enterB=latch(),allowA=latch(),allowB=latch(),row=latch(),finish=latch();let calls=0;
+  h.beforeUnlink=async()=>{calls++;if(calls===1){enterA.resolve();await allowA.promise;}else if(calls===2){enterB.resolve();await allowB.promise;}};
+  h.afterDocDelete=async({count}:any)=>{if(count===1){row.resolve();await finish.promise;}};
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const {runStudioPost}=await import('@/app/api/studio/handler');const a=POST(clearReq());await enterA.promise;const b=runStudioPost(removeReq(),makeDeps());await enterB.promise;
+  allowB.resolve();await row.promise;allowA.resolve();const ra=await a;const ba=await ra.json();expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');finish.resolve();const rb=await b;
+  expect(rb.status).toBe(200);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);expect(memFiles.size).toBe(0);expect(h.tables.document.size).toBe(0);expect(ba.message).not.toContain('纯净出厂状态');
+  observe('clear-remove-concurrency-repaired',{clear:ra.status,clearBody:ba,remove:rb.status,used:0,docs:0,files:0,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-02 case 6',async()=>{
+  seedQuota('w1',30n,30n);const opId=pending();const {finalizeObjectCleanup}=await import('@/lib/storage-quota');const first=await finalizeObjectCleanup('w1',opId,30);const replay=await finalizeObjectCleanup('w1',opId,30);
+  expect(first.finalized).toBe(true);expect(replay.drift).toBe(false);expect(replay.alreadyReleased).toBe(true);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('released-replay-repaired',{first,replay,used:0,op:[...h.tables.storageoperation.values()][0]});
+ });
+ it('R0-J5 positive repaired J3-04 case 7',async()=>{
+  seedQuota('w1',0n,30n);h.beforeOpMany=async()=>{throw new Error('query failed, count unknown');};const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(h.tables.storageoperation.size).toBe(0);expect(body.storage.pendingStill).toBe(0);expect(body.storage.pendingCount).toBe(null);expect(body.storage.recoveryCheckFailed).toBe(true);expect(body.message).not.toContain('1 条历史待清理认领仍未完成');
+  observe('unknown-count-repaired',{status:res.status,body,actualPendingInFixture:0});
+ });
+ for(const code of ['P2021','P2022'])it('R0-J5 positive repaired J3-07 case 8'+code+' escapes stable schema error mapping',async()=>{
+  seedQuota('w1',30n,30n);pending();memFiles.set(abs(),Buffer.alloc(30));h.beforeOpFirst=async()=>{const e:any=new Error('missing schema column/table');e.code=code;throw e;};
+  const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());const body=await res.json();expect(res.status).toBe(503);expect(body.code).toBe(code==='P2021'?'STORAGE_QUOTA_NOT_READY':'STORAGE_OP_UNAVAILABLE');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);expect(memFiles.size).toBe(1);
+  observe('missing-schema-recovery-repaired-'+code,{status:res.status,body,used:30,files:1});
+ });
+ it('positive: physical failure retains quota; path ambiguity and cross-scope requests remain refused',async()=>{
+  seedQuota('w1',30n,30n);doc();memFiles.set(abs(),Buffer.alloc(30));h.unlinkFail.add(abs());const {runStudioPost}=await import('@/app/api/studio/handler');const res=await runStudioPost(removeReq(),makeDeps());expect(res.status).toBe(500);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(30n);
+  h.unlinkFail.clear();memFiles.set(abs('assets/w1/x.bin'),Buffer.alloc(30));const fs=await import('@/lib/file-store');const ambiguous=await fs.deleteAssetFile('w1/x.bin','w1');expect(ambiguous.ambiguous).toBe(true);expect(memFiles.size).toBe(2);expect(()=>fs.resolveAssetAbsolute('w1/../../outside.txt')).toThrow();const cross=await fs.deleteAssetFile('w2/x.bin','w1');expect(cross.ok).toBe(false);
+  observe('capacity-paths-positive',{status:res.status,used:30,ambiguous,cross,files:2});
+ });
+});
+afterAll(()=>require('node:fs').writeFileSync(require('node:path').join(process.cwd(),'docs/reviews/R0-J6-independent-review/handler-verification.json'),JSON.stringify({capturedAt:new Date().toISOString(),mode:'actual current handlers/services; memory Prisma/fs; explicit IO and post-delete barriers; no live database/cloud/model/fees',observations},(_k,v)=>typeof v==='bigint'?v.toString():v,2)));
+
+describe('Original F13 same-object concurrency and pending accounting boundaries',()=>{
+ it('acceptance: two actual deletion recovery requests read PENDING; second reports drift after first commits RELEASED',async()=>{
+  seedQuota('w1',30n,30n);pending();memFiles.set(abs(),Buffer.alloc(30));const firstReached=latch(),bothRead=latch(),finishSecond=latch();let arrivals=0;
+  h.setRawGate(async(sql:string)=>{if(sql.includes('storageUsed` = `storageUsed` -')){arrivals++;if(arrivals===1){firstReached.resolve();await bothRead.promise;}else if(arrivals===2){bothRead.resolve();await finishSecond.promise;}}});
+  const {runStudioPost}=await import('@/app/api/studio/handler');const a=runStudioPost(removeReq(),makeDeps());await firstReached.promise;const b=runStudioPost(removeReq(),makeDeps());const ra=await a;const ba=await ra.json();finishSecond.resolve();const rb=await b;const bb=await rb.json();
+  expect(ra.status).toBe(200);expect(ba.data.pendingCleared).toBe(true);expect(rb.status).toBe(200);expect(bb.data.pendingCleared).toBe(true);expect(bb.code).toBeUndefined();expect([...h.tables.storageoperation.values()][0].status).toBe('RELEASED');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('overlapping-finalizers-positive',{a:{status:ra.status,body:ba},b:{status:rb.status,body:bb},used:0,op:[...h.tables.storageoperation.values()][0],limits:'Actual requests both read old PENDING; final database writes are serialized by the barrier, no concurrent rollback is simulated.'});
+ });
+ it('acceptance: shared pending claim is retained but structured pendingCount says known zero',async()=>{
+  seedQuota('w1',30n,30n);doc('d1','assets/w1/x.bin');doc('d2');pending();memFiles.set(abs(),Buffer.alloc(30));const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(1);expect([...h.tables.storageoperation.values()].filter((o:any)=>o.status==='PENDING_CLEANUP').length).toBe(1);
+  observe('shared-pending-count-positive',{status:res.status,body,actualPendingClaims:1,used:30});
+ });
+ it('acceptance: real unresolved usage drift also returns known zero pendingCount',async()=>{
+  seedQuota('w1',10n,30n);pending();const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.driftSkipped).toBe(1);expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(1);expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(10n);
+  observe('drift-pending-count-positive',{status:res.status,body,actualPendingClaims:1,used:10});
+ });
+});
+
+describe('R0-J6 independent final-count failure and mixed state acceptance',()=>{
+ it('final count failure returns unknown without changing unresolved claim or its quota',async()=>{
+  seedQuota('w1',10n,30n);pending();let calls=0;h.beforeOpMany=async()=>{calls++;if(calls===2)throw new Error('final pending count unavailable');};
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(calls).toBe(2);expect(body.storage.pendingCountKnown).toBe(false);expect(body.storage.pendingCount).toBe(null);expect(body.storage.recoveryCheckFailed).toBe(true);expect(body.message).not.toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(10n);expect([...h.tables.storageoperation.values()][0].status).toBe('PENDING_CLEANUP');
+  observe('final-count-failure-positive',{status:res.status,body,used:10,calls});
+ });
+ it('mixed success and shared retention count one unique remaining claim, scoped to current workspace',async()=>{
+  seedQuota('w1',50n,50n);seedQuota('w2',10n,10n);pending();memFiles.set(abs(),Buffer.alloc(30));
+  doc('s1','assets/w1/shared.bin',20);doc('s2','w1/shared.bin',20);memFiles.set(abs('w1/shared.bin'),Buffer.alloc(20));
+  h.tables.storageoperation.set('shared',{id:'shared',opId:'del-w1-w1/shared.bin',workspaceId:'w1',userId:'u1',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:'w1/shared.bin',documentId:'s1',bytes:20});
+  h.tables.storageoperation.set('foreign',{id:'foreign',opId:'del-w2-w2/foreign.bin',workspaceId:'w2',userId:'u2',opType:'RELEASE',status:'PENDING_CLEANUP',filePath:'w2/foreign.bin',documentId:'foreign',bytes:10});memFiles.set(abs('w2/foreign.bin'),Buffer.alloc(10));
+  const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingRecovered).toBe(1);expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(1);expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(20n);expect(h.tables.workspacequota.get('q-w2').storageUsed).toBe(10n);expect(h.tables.document.size).toBe(2);expect(memFiles.has(abs('w1/shared.bin'))).toBe(true);expect(memFiles.has(abs('w2/foreign.bin'))).toBe(true);expect(h.tables.storageoperation.get('foreign').status).toBe('PENDING_CLEANUP');
+  observe('mixed-count-scoped-positive',{status:res.status,body,used:20,otherWorkspaceUsed:10});
+ });
+ it('normal empty collection yields known zero and preserves normal reset response',async()=>{
+  seedQuota('w1',0n,30n);const {POST}=await import('@/app/api/workspace/clear-data/route');const res=await POST(clearReq());const body=await res.json();
+  expect(body.storage.pendingCountKnown).toBe(true);expect(body.storage.pendingCount).toBe(0);expect(body.storage.recoveryCheckFailed).toBe(false);expect(body.message).toContain('纯净出厂状态');expect(h.tables.workspacequota.get('q-w1').storageUsed).toBe(0n);
+  observe('empty-count-positive',{status:res.status,body,used:0});
+ });
+});

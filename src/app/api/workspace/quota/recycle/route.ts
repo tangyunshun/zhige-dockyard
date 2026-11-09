@@ -4,16 +4,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { validateUser } from "@/lib/auth";
-import { requireWorkspaceMembership, writeAuditLog } from "@/lib/security";
-import { addNotification } from "@/lib/notifications-store";
-import { recycleEnterprisePool } from "@/lib/credit-service";
-import { resolvePoolLowThreshold } from "@/constants/workspace-plans";
+import { requireWorkspaceMembership } from "@/lib/security";
+import {
+  recycleEnterprisePool,
+  ENTERPRISE_POOL_RECYCLE_DISABLED,
+  ENTERPRISE_POOL_RECYCLE_MESSAGE,
+} from "@/lib/credit-service";
 
 /**
  * POST /api/workspace/quota/recycle
- * 企业空间所有者/管理员将企业共享池的算力点余额回收至个人钱包。
- * 约束：仅 ENTERPRISE 空间、且操作为所有者或管理员时允许；无限额度空间或余额不足禁止。
- * 全程单事务记账：企业池递减 + 个人钱包递增 + 新建 WALLET 分桶（保证点数可正常花费）+ 双向流水。
+ * [R0-C / 原方案 F06 止损] 企业共享池 → 个人钱包转移已暂停。
+ * 身份边界（未登录 401、非成员/普通成员 403、非企业空间 400）保持不变；
+ * 原本有资格的 OWNER / 空间 ADMIN 也收到 409 非成功暂停响应，不产生任何账务写或成功通知。
+ * 服务层 recycleEnterprisePool 另有兜底，直接导入调用同样拒绝。
  */
 export async function POST(request: NextRequest) {
   try {
@@ -51,60 +54,50 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "仅企业空间的共享池支持回收至个人钱包" }, { status: 400 });
     }
 
-    const result = await recycleEnterprisePool({
-      workspaceId,
-      userId: auth.user.id,
-      points: amount,
-      operatorId: auth.user.id,
-    });
-
-    // 审计留痕：企业池回收操作（非阻断式，失败不影响主流程）
-    await writeAuditLog(
-      auth.user.id,
-      "workspace:pool_recycle",
-      {
+    // [R0-C] 身份门禁通过后仍统一暂停：保留真实服务调用作为兜底链路，
+    // recycleEnterprisePool 在事务/业务写前抛出稳定错误，绝不产生扣池、加钱包、
+    // 分桶、流水、成功账单或"回收成功"通知。
+    try {
+      await recycleEnterprisePool({
         workspaceId,
-        workspaceName: ws?.name,
+        userId: auth.user.id,
         points: amount,
-        poolBalance: result.poolBalance,
-        walletBalance: result.walletBalance,
-        role: isOwner ? "OWNER" : "ADMIN",
-      },
-      workspaceId,
-      null,
-      request
-    ).catch((e) => console.warn("[审计] 企业池回收日志写入失败:", e));
-
-    // 取空间级阈值覆盖（NULL 时继承套餐默认），决定是否需要补充提醒
-    const quotaThreshold = await prisma.workspacequota
-      .findUnique({ where: { workspaceId }, select: { poolLowThreshold: true } })
-      .then((q) => (q?.poolLowThreshold != null ? Number(q.poolLowThreshold) : null))
-      .catch(() => null);
-
-    // 回收后企业池余额偏低：自动提醒空间所有者及时补充
-    const POOL_LOW_THRESHOLD = resolvePoolLowThreshold(ws?.plan, quotaThreshold);
-    if (result.poolBalance < POOL_LOW_THRESHOLD && ws?.ownerId) {
-      try {
-        await addNotification(
-          ws.ownerId,
-          "企业池算力点余额偏低",
-          `「${ws.name || "企业空间"}」的共享池算力点剩余 ${result.poolBalance.toLocaleString()} 点，已低于预警阈值 ${POOL_LOW_THRESHOLD.toLocaleString()} 点，请及时补充。`,
-          "asset",
-          `/workspace/${workspaceId}/billing`
+        operatorId: auth.user.id,
+      });
+    } catch (recycleError: any) {
+      if (recycleError?.message === ENTERPRISE_POOL_RECYCLE_DISABLED) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: ENTERPRISE_POOL_RECYCLE_DISABLED,
+            error: ENTERPRISE_POOL_RECYCLE_MESSAGE,
+          },
+          { status: 409 },
         );
-      } catch (notifyErr) {
-        console.warn("[回收提醒] 通知空间所有者失败:", notifyErr);
       }
+      throw recycleError;
     }
-
-    return NextResponse.json({
-      success: true,
-      message: `已成功回收 ${amount.toLocaleString()} 算力点至您的个人钱包`,
-      recycledPoints: amount,
-      walletBalance: result.walletBalance,
-      poolBalance: result.poolBalance,
-    });
+    // 服务未抛出（不应发生）也绝不进入成功账务：同样按暂停诚实拒绝
+    return NextResponse.json(
+      {
+        success: false,
+        code: ENTERPRISE_POOL_RECYCLE_DISABLED,
+        error: ENTERPRISE_POOL_RECYCLE_MESSAGE,
+      },
+      { status: 409 },
+    );
   } catch (error: any) {
+    // 稳定暂停错误不得被通用 catch 包装成 500
+    if (error?.message === ENTERPRISE_POOL_RECYCLE_DISABLED) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: ENTERPRISE_POOL_RECYCLE_DISABLED,
+          error: ENTERPRISE_POOL_RECYCLE_MESSAGE,
+        },
+        { status: 409 },
+      );
+    }
     if (error?.message === "UNLIMITED") {
       return NextResponse.json({ error: "该空间为无限额度，无需回收" }, { status: 400 });
     }

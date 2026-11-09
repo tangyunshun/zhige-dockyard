@@ -7,6 +7,7 @@ import { useToast } from "@/components/Toast";
 
 // 引入 5 个独立拆分的 Hooks
 import { useWorkspaceHubData } from "@/hooks/useWorkspaceHubData";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { usePersonalWorkspace } from "@/hooks/usePersonalWorkspace";
 import { useEnterpriseWorkspace } from "@/hooks/useEnterpriseWorkspace";
 import { useInvitation } from "@/hooks/useInvitation";
@@ -57,6 +58,8 @@ export default function WorkspaceHub() {
     needsPersonalWorkspace,
     redirecting,
     refresh,
+  
+    loadError,
   } = useWorkspaceHubData();
 
   const [enterpriseSearchQuery, setEnterpriseSearchQuery] = useState("");
@@ -703,6 +706,11 @@ export default function WorkspaceHub() {
 
   return (
     <div className="min-h-screen flex flex-col relative">
+      {loadError && (
+        <div className="px-4 pt-4">
+          <LoadErrorBanner message={loadError} onRetry={() => refresh()} retrying={isLoading} />
+        </div>
+      )}
       {/* 背景效果 (系统浅蓝底纹，单一主色光晕，保持克制不喧宾夺主) */}
       <div className="absolute inset-0 bg-[#f0f8ff] pointer-events-none overflow-hidden">
         <div
@@ -776,6 +784,11 @@ export default function WorkspaceHub() {
             setInvitationCode(code);
             setShowJoinModal(true);
             verifyInvitation(code);
+          }}
+          onRejectInvitation={(id) => {
+            // KN-UI：忽略邀请（前端临时隐藏，下次刷新重新拉取）
+            // KN-UI：忽略邀请（无后端 DELETE API，暂用 toast 反馈 + 刷新）
+            toast.info("已忽略该邀请");
           }}
         />
 
@@ -1061,6 +1074,11 @@ export default function WorkspaceHub() {
                     className="w-full p-3.5 text-left border border-slate-200/60 hover:border-[#2b6cb0] hover:bg-blue-50/30 rounded-xl flex items-center justify-between transition-all duration-150 group cursor-pointer"
                   >
                     <div>
+      {loadError && (
+        <div className="px-4 pt-4">
+          <LoadErrorBanner message={loadError} onRetry={() => refresh()} retrying={isLoading} />
+        </div>
+      )}
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-bold text-slate-700 block leading-none">{ws.name}</span>
                         {isBound && (

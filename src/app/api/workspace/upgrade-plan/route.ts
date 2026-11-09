@@ -1,17 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { assertWorkspaceWritable } from "@/lib/workspace-readonly-guard";
 import { prisma } from "@/lib/prisma";
 import { isAdminRole, validateUser } from "@/lib/auth";
-import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
 import {
   getWorkspacePlans,
   getWorkspacePlanByKey,
 } from "@/lib/workspace-plan-service";
-import { mergeLimits } from "@/lib/limit-utils";
 import { resolveEffectiveWorkspacePlan } from "@/lib/user-entitlement";
-
-const generateId = (prefix: string) =>
-  `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
 
 /**
  * GET /api/workspace/upgrade-plan?workspaceId=xxx
@@ -282,8 +276,9 @@ export async function GET(request: NextRequest) {
 }
 
 /**
- * POST /api/workspace/upgrade-plan
- * 升级空间套餐：同步更新 workspace.plan、workspace.quota 与 workspacequota 限额
+ * [R0-A] POST /api/workspace/upgrade-plan
+ * 空间套餐在线购买入口暂未开放：阻断直接开通套餐、改变配额或生成成功账单，避免绕过付款。
+ * GET（只读展示）保持不变；本批仅拦截写入，不新建支付体系。
  */
 export async function POST(request: NextRequest) {
   try {
@@ -294,218 +289,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: authResult.error }, { status: 401 });
     }
 
-    const userId = authResult.user!.id;
-    const body = await request.json();
-    const { workspaceId, targetPlan, billingCycle } = body as {
-      workspaceId?: string;
-      targetPlan?: string;
-      billingCycle?: "MONTH" | "YEAR";
-    };
-
-    if (!workspaceId) {
-      return NextResponse.json({ error: "缺少工作空间 ID" }, { status: 400 });
-    }
-    // 归档 / 停用空间禁止写入（硬只读）
-    await assertWorkspaceWritable(workspaceId);
-    if (!targetPlan) {
-      return NextResponse.json({ error: "缺少目标套餐" }, { status: 400 });
-    }
-
-    const cycle: "MONTH" | "YEAR" = billingCycle === "YEAR" ? "YEAR" : "MONTH";
-    const targetConfig = await getWorkspacePlanByKey(targetPlan);
-    if (!targetConfig.purchasable) {
-      return NextResponse.json(
-        { error: "该套餐为线下定制方案，请联系专属架构师" },
-        { status: 400 }
-      );
-    }
-
-    const workspace = await prisma.workspace.findUnique({
-      where: { id: workspaceId },
-      select: {
-        id: true,
-        name: true,
-        ownerId: true,
-        type: true,
-        plan: true,
-        workspacequotaId: true,
+    // [R0-A] 空间套餐在线购买入口暂未开放：拒绝直接开通套餐、变更配额或生成成功账单。
+    // 保留身份/归属校验，但未确认收款的升级一律拒绝，不修改 workspace.plan、配额、有效期，
+    // 不创建成功账单或无法履约的待支付订单。
+    return NextResponse.json(
+      {
+        error: "WORKSPACE_PLAN_CHECKOUT_UNAVAILABLE",
+        message: "该套餐的在线购买流程尚未开放，本次未扣款、未变更套餐。",
+        success: false,
       },
-    });
-
-    if (!workspace) {
-      return NextResponse.json({ error: "工作空间不存在" }, { status: 404 });
-    }
-    // 套餐仅面向企业/团队空间：个人空间不可在线购买或升级套餐
-    if (workspace.type !== "ENTERPRISE") {
-      return NextResponse.json(
-        { error: "套餐仅面向企业/团队空间，个人空间不支持购买" },
-        { status: 400 }
-      );
-    }
-    if (workspace.ownerId !== userId) {
-      return NextResponse.json({ error: "仅空间所有者可升级空间套餐" }, { status: 403 });
-    }
-
-    const currentConfig = await getWorkspacePlanByKey(workspace.plan);
-    const currentPlan = currentConfig.key;
-    if (currentPlan === targetConfig.key) {
-      return NextResponse.json({ error: "当前已是该套餐" }, { status: 400 });
-    }
-    if (currentConfig.sortOrder >= targetConfig.sortOrder) {
-      return NextResponse.json(
-        { error: "不支持降级，如需调整请联系专属架构师" },
-        { status: 400 }
-      );
-    }
-
-    // 订阅周期金额与到期时间
-    const cycleAmount = cycle === "YEAR" ? targetConfig.priceYearly : targetConfig.priceMonthly;
-    const expiresAt = new Date(
-      Date.now() + (cycle === "YEAR" ? 365 : 30) * 24 * 60 * 60 * 1000
+      { status: 403 },
     );
-
-    // 1~4. 原子化写入：套餐/配额/日志/账单要么全部成功、要么全部回滚。
-    const logId = generateId("op");
-    await prisma.$transaction(async (tx) => {
-      // 1. 更新空间套餐与配额快照，并写入订阅生命周期（生效起止时间 / 计费周期）
-      await tx.workspace.update({
-        where: { id: workspaceId },
-        data: {
-          plan: targetConfig.key,
-          planStartedAt: new Date(),
-          planBillingCycle: cycle,
-          planExpiresAt: expiresAt,
-          quota: {
-            maxComponents: targetConfig.maxComponents,
-            maxMembers: targetConfig.maxMembers,
-            maxStorage: targetConfig.maxStorage,
-            maxApiCalls: targetConfig.maxApiCalls,
-            features: targetConfig.features,
-          },
-          updatedAt: new Date(),
-        },
-      });
-
-      // 2. 同步 workspacequota 的硬性限额（存储单位由 MB 转换为字节）
-      //    扩容包不附赠月算力：tokenBalance 保持不变，算力统一由「会员等级(月度保底) + 算力加油包(即时充值)」提供。
-      //    存储/调用上限 = max(扩容包额度, 该空间绑定的会员等级基础保底)，两类权益叠加且互不缩水。
-      const existingWsq = workspace.workspacequotaId
-        ? await tx.workspacequota.findUnique({ where: { id: workspace.workspacequotaId } })
-        : null;
-
-      let baseLevel:
-        | { maxStorage: bigint; maxApiCalls: bigint; tokenLimit: bigint }
-        | null = null;
-      if (existingWsq?.membershipLevelId) {
-        baseLevel = await tx.membershiplevel.findFirst({
-          where: {
-            OR: [
-              { id: existingWsq.membershipLevelId },
-              { name: existingWsq.membershipLevelId },
-            ],
-          },
-          select: { maxStorage: true, maxApiCalls: true, tokenLimit: true },
-        });
-      }
-
-      const planStorageBytes = storageMbToBytes(targetConfig.maxStorage);
-      const finalStorageLimit = baseLevel
-        ? mergeLimits(planStorageBytes, baseLevel.maxStorage)
-        : planStorageBytes;
-      const finalApiCallsLimit = baseLevel
-        ? mergeLimits(targetConfig.maxApiCalls, baseLevel.maxApiCalls)
-        : targetConfig.maxApiCalls;
-
-      if (workspace.workspacequotaId) {
-        await tx.workspacequota.update({
-          where: { id: workspace.workspacequotaId },
-          data: {
-            storageLimit: BigInt(finalStorageLimit),
-            apiCallsLimit: BigInt(finalApiCallsLimit),
-            // 订阅套餐自带的席位上限（席位增购会在此基础上叠加）
-            enterpriseSlots: BigInt(targetConfig.maxMembers),
-            updatedAt: new Date(),
-          },
-        });
-      } else {
-        // 历史空间可能缺失配额记录，此处仅做结构性补齐：余额一律 0 起步，不赠送任何免费算力
-        //（免费额度只来自注册福利按月 100 或充值/购买；会员升级后也不自动发放等级 tokenLimit）
-        const user = await tx.user.findUnique({
-          where: { id: userId },
-          select: { membershipLevel: true },
-        });
-        await tx.workspacequota.create({
-          data: {
-            id: generateId("wsq"),
-            workspaceId,
-            membershipLevelId: user?.membershipLevel || "FREE",
-            tokenBalance: BigInt(0),
-            storageLimit: BigInt(finalStorageLimit),
-            apiCallsLimit: BigInt(finalApiCallsLimit),
-            updatedAt: new Date(),
-          },
-        });
-      }
-
-      // 3. 记录操作日志，便于审计与运营追溯
-      await tx.operationlog.create({
-        data: {
-          id: logId,
-          userId,
-          workspaceId,
-          action: "UPGRADE_WORKSPACE_PLAN",
-          resource: "Workspace",
-          details: {
-            workspaceName: workspace.name,
-            fromPlan: currentPlan,
-            toPlan: targetConfig.key,
-            planName: targetConfig.name,
-          },
-        },
-      });
-
-      // 4. 写入账单流水，使计费中心可查询到真实交易记录（金额单位：分）
-      // 注：当前为系统内即时开通，未接入支付网关，故直接记为 SUCCESS；
-      // 接入真实支付后应改为 PENDING，并由支付回调改为 SUCCESS。
-      await tx.billingrecord.create({
-        data: {
-          id: generateId("bil"),
-          userId,
-          workspaceId,
-          type: "PLAN_UPGRADE",
-          title: `空间「${workspace.name}」订阅${targetConfig.name}（${cycle === "YEAR" ? "年付" : "月付"}）`,
-          amount: cycleAmount,
-          currency: "CNY",
-          status: "SUCCESS",
-          channel: "SYSTEM",
-          referenceId: logId,
-          metadata: {
-            workspaceName: workspace.name,
-            fromPlan: currentPlan,
-            toPlan: targetConfig.key,
-            planName: targetConfig.name,
-            billingModel: cycle === "YEAR" ? "YEARLY" : "MONTHLY", // 订阅制：月付 / 年付
-            billingCycle: cycle,
-            expiresAt: expiresAt.toISOString(),
-          },
-          updatedAt: new Date(),
-        },
-      });
-    });
-
-    return NextResponse.json({
-      success: true,
-      message: `已为空间「${workspace.name}」开通${targetConfig.name}订阅（${cycle === "YEAR" ? "年付，有效期 1 年" : "月付，有效期 30 天"}，到期需续费）`,
-      data: {
-        plan: targetConfig,
-        previousPlan: currentConfig,
-      },
-    });
   } catch (error) {
     console.error("Upgrade workspace plan error:", error);
     return NextResponse.json(
       { error: "升级空间套餐失败", details: error instanceof Error ? error.message : error },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

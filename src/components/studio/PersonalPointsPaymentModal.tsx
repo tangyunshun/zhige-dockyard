@@ -1,6 +1,8 @@
 "use client";
 
 import { AlertCircle } from "lucide-react";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { formatNumber } from "@/utils/format";
 
 interface PersonalPointsPaymentModalProps {
   open: boolean;
@@ -30,6 +32,8 @@ export default function PersonalPointsPaymentModal({
   availablePoints,
 }: PersonalPointsPaymentModalProps) {
   if (!open) return null;
+  useEscapeKey(true, onClose);
+
 
   return (
     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -40,8 +44,8 @@ export default function PersonalPointsPaymentModal({
         </h3>
         <p className="text-xs text-slate-500 leading-relaxed">
           当前企业空间的共享算力点不够运行组件 <strong>[{componentName}]</strong>
-          {taskName ? `（任务 [${taskName}]）` : ""}（本次需要约 <strong>{requiredPoints}</strong> 点）。
-          你个人账户里还有 <strong>{availablePoints}</strong> 点，是否用<strong>你个人的算力点</strong>来支付本次任务？
+          {taskName ? `（任务 [${taskName}]）` : ""}（本次需要约 <strong>{formatNumber(requiredPoints)}</strong> 点）。
+          你个人账户里还有 <strong>{formatNumber(availablePoints)}</strong> 点，是否用<strong>你个人的算力点</strong>来支付本次任务？
         </p>
         <p className="text-[11px] text-slate-400 leading-relaxed">
           说明：这会用你自己的点直接买单，属于一次性个人支付，不会事后从企业空间补扣，也不会自动归还。

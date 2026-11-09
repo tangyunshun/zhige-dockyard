@@ -11,6 +11,13 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getAuthToken } from "@/utils/auth";
+import {
+  resolveCashierStatusView,
+  resolveCashierSuccessView,
+  resolveCashierCompletion,
+  isConfirmedSuccessResponse,
+  type CashierStatusView,
+} from "@/lib/payment-cashier-display";
 import { AlertTriangle, CheckCircle2, CreditCard, Loader2 } from "lucide-react";
 
 interface OrderInfo {
@@ -37,8 +44,10 @@ function MockCashierInner() {
   const [order, setOrder] = useState<OrderInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
-  const [result, setResult] = useState<string | null>(null);
+  // [R0-B1 F4] 结果区携带语气：仅明确成功显示完成；过期/失败/退款/未知分别诚实呈现
+  const [result, setResult] = useState<{ message: string; tone: CashierStatusView["tone"] } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [modeBlocked, setModeBlocked] = useState(false);
 
   const authFetch = useCallback(async (url: string, init?: RequestInit) => {
     const res = await fetch(url, {
@@ -64,8 +73,24 @@ function MockCashierInner() {
     void (async () => {
       try {
         const res = await authFetch(`/api/payments/mock/confirm?orderNo=${encodeURIComponent(orderNo)}`);
+        if (res.status === 403) {
+          // KN-SEC：REAL 模式下模拟收银台被后端拒绝，页面降级为不可用且不渲染支付按钮
+          setError(res.message || "当前为真实支付模式，模拟收银台不可用");
+          setModeBlocked(true);
+          return;
+        }
         setOrder(res.data);
-        if (res.data.status !== "PENDING") setResult("该订单已完成支付并入账");
+        // [R0-B2-3] 切换订单时清空上一单残留结果，避免跨订单污染
+        setResult(null);
+        // 以业务状态（SUCCESS）决定完成分支：直接打开/刷新成功订单也展示完成结果与入口；
+        // 非完成终态（过期/失败/退款/未知）按状态视图呈现，不伪称成功。
+        const view = resolveCashierStatusView(res.data?.status);
+        if (view.isCompleted) {
+          const sv = resolveCashierSuccessView(res.data?.type, res.data?.seats);
+          setResult({ message: sv.message, tone: "success" });
+        } else if (view.kind !== "pending") {
+          setResult({ message: view.resultMessage, tone: view.tone });
+        }
       } catch (e) {
         setError((e as Error)?.message || "加载订单失败");
       } finally {
@@ -75,6 +100,7 @@ function MockCashierInner() {
   }, [orderNo, authFetch]);
 
   const pay = async () => {
+    if (modeBlocked) return; // KN-SEC：REAL 模式双保险
     setPaying(true);
     setError(null);
     try {
@@ -82,14 +108,31 @@ function MockCashierInner() {
         method: "POST",
         body: JSON.stringify({ orderNo }),
       });
-      setResult(res.message || "模拟收款成功");
-      setOrder((prev) => (prev ? { ...prev, status: "SUCCESS" } : prev));
+      // [R0-B2-3] 仅「2xx 且 success 且携带明确完成证据（席位/点数/空间/已处理）」才展示完成结果；
+      // 2xx 但 success:false、缺完成证据、非2xx、网络失败，都不伪装成功，保留原订单状态并提示核查。
+      const completedNow = isConfirmedSuccessResponse(res);
+      if (completedNow) {
+        setResult({
+          message: res.message || "模拟收款成功",
+          tone: res.alreadyProcessed ? "neutral" : "success",
+        });
+        setOrder((prev) => (prev ? { ...prev, status: "SUCCESS" } : prev));
+      } else {
+        setResult({
+          message: res.message || "订单未完成入账，请刷新页面或凭订单号联系客服核实，请勿重复支付",
+          tone: "neutral",
+        });
+      }
     } catch (e) {
       setError((e as Error)?.message || "模拟支付失败");
     } finally {
       setPaying(false);
     }
   };
+
+  // [R0-B2-3] 完成分支由业务状态（SUCCESS）决定，不依赖颜色 tone；中性提示（已处理）仍属已完成订单
+  const completion = resolveCashierCompletion(order?.type, order?.seats, order?.status);
+  const resultView = resolveCashierStatusView(order?.status);
 
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
@@ -149,42 +192,69 @@ function MockCashierInner() {
                 <div>支付方式：{order.channel === "ALIPAY" ? "支付宝" : "微信支付"}（模拟）</div>
                 <div>
                   状态：
-                  <span className={order.status === "SUCCESS" ? "text-emerald-600 font-bold" : "text-amber-600 font-bold"}>
-                    {order.status === "SUCCESS" ? "已支付并入账" : "等待支付"}
+                  <span
+                    className={
+                      resultView.tone === "success"
+                        ? "text-emerald-600 font-bold"
+                        : resultView.tone === "error"
+                          ? "text-rose-600 font-bold"
+                          : resultView.tone === "neutral"
+                            ? "text-slate-500 font-bold"
+                            : "text-amber-600 font-bold"
+                    }
+                  >
+                    {resultView.statusLabel}
                   </span>
                 </div>
               </div>
 
-              {result ? (
+              {completion.completed ? (
                 <div className="space-y-3">
+                  {/* [R0-B2-3] 直接打开/刷新成功订单、正常确认、重复确认，统一进入完成分支并展示对应入口 */}
                   <div className="flex items-center gap-2 justify-center text-sm text-emerald-700 font-bold">
                     <CheckCircle2 className="w-4 h-4" />
-                    {result}
+                    {result?.message || completion.message}
                   </div>
                   <div className="flex gap-2">
-                    {order?.type === "PLAN_UPGRADE" ? (
+                    {/* 按商品类型给对应入口：席位成功不显示算力到账/点数流水 */}
+                    {resolveCashierSuccessView(order?.type, order?.seats).entries.map((e) => (
                       <Link
-                        href="/workspace-hub"
-                        className="flex-1 text-center px-4 py-2.5 bg-[#3182ce] text-white rounded-lg text-sm font-black hover:bg-[#2b6cb0]"
+                        key={e.href}
+                        href={e.href}
+                        className="flex-1 text-center px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-black hover:bg-indigo-700"
                       >
-                        返回工作台
+                        {e.label}
                       </Link>
-                    ) : (
-                      <>
-                        <Link
-                          href="/user/billing-center"
-                          className="flex-1 text-center px-4 py-2.5 bg-indigo-600 text-white rounded-lg text-sm font-black hover:bg-indigo-700"
-                        >
-                          查看我的算力账单
-                        </Link>
-                        <Link
-                          href="/user/points"
-                          className="flex-1 text-center px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-black hover:bg-slate-50"
-                        >
-                          前往算力中心
-                        </Link>
-                      </>
-                    )}
+                    ))}
+                  </div>
+                </div>
+              ) : result ? (
+                <div className="space-y-3">
+                  <div
+                    className={`flex items-center gap-2 justify-center text-sm font-bold ${
+                      result.tone === "error"
+                        ? "text-rose-600"
+                        : result.tone === "neutral"
+                          ? "text-slate-600"
+                          : "text-amber-600"
+                    }`}
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    {result.message}
+                  </div>
+                  <div className="flex gap-2">
+                    <Link
+                      href="/user/billing-center"
+                      className="flex-1 text-center px-4 py-2.5 border border-slate-200 rounded-lg text-sm font-black hover:bg-slate-50"
+                    >
+                      查看账单记录
+                    </Link>
+                    <button
+                      onClick={() => router.back()}
+                      className="flex-1 text-center px-4 py-2.5 bg-slate-100 rounded-lg text-sm font-black hover:bg-slate-200 cursor-pointer"
+                    >
+                      返回
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -194,7 +264,7 @@ function MockCashierInner() {
                   onClick={() => void pay()}
                 >
                   {paying ? <Loader2 className="w-4 h-4 animate-spin" /> : <CreditCard className="w-4 h-4" />}
-                  {paying ? "处理中…" : "模拟支付成功"}
+                  {modeBlocked ? "模拟支付不可用" : paying ? "处理中…" : "模拟支付成功"}
                 </button>
               )}
             </>

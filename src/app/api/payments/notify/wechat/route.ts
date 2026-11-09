@@ -38,13 +38,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(NOTIFY_RESPONSE.success);
     }
 
+    // [R1] 收款事实必需字段必须来自验签解密后的密文：交易号与实付金额缺一不可，
+    // 缺失则拒绝入账（杜绝以 null 绕过金额核验）。
+    const gatewayTransactionId = transaction_id ?? null;
+    const gatewayAmountCents = typeof amount?.total === "number" ? amount.total : null;
+    if (!gatewayTransactionId || gatewayAmountCents == null) {
+      console.warn(`[wxpay-notify] 收款事实不完整（transaction_id=${gatewayTransactionId}, amount=${gatewayAmountCents}），拒绝入账`);
+      return NextResponse.json({ code: "FAIL", message: "回调缺少交易号或金额" }, { status: 400 });
+    }
+
     const fulfillment = await fulfillPaidOrder({
       orderNo: out_trade_no,
       paymentMethod: "WECHAT_PAY",
       paymentMode: "REAL",
       remark: "微信支付入账（Native 扫码，回调验签通过）",
-      gatewayTransactionId: transaction_id ?? null,
-      gatewayAmountCents: amount?.total ?? null,
+      gatewayTransactionId,
+      gatewayAmountCents,
     });
 
     if (!fulfillment.ok) {

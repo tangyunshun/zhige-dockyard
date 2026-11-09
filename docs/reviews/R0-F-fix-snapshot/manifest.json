@@ -1,0 +1,67 @@
+{
+  "capturedAt": "2026-11-07T02:45:00+08:00",
+  "purpose": "R0-F：原方案 F09 公开维护查询只读、维护写操作授权与审计",
+  "note": "开始态真实副本在 frozen-source/（含 .frozen 后缀以退出 tsconfig **/*.ts(x) 收集），结束态在 end-source/。frozen-source 的 9 个文件 SHA256 与 R0-E 独立审核 next-maintenance-verification.json 的 sha256 字段逐项一致（含 targets 与 consumers），证明开始态即被审核的原始状态。上一批（R0-E）曾因 swap 脚本以文件名 route.ts 互相覆盖而临时损坏路由；本批未替换共享源码，旧版对照仅用内存隔离脚本，快照命名保留完整相对路径（无同名覆盖）。历史 verify-next-maintenance.cjs 与 next-maintenance-verification.json 未改动（JSON 哈希前后一致）。",
+  "startSource": "docs/reviews/R0-F-fix-snapshot/frozen-source/",
+  "endSource": "docs/reviews/R0-F-fix-snapshot/end-source/",
+  "files": [
+    { "path": "src/lib/maintenance.ts", "startSha256": "3c9ea09d82f1b96b0ac8b2640f7af02b0ca708400d52f00b6a9fb1a719a23911", "endSha256": "29ff06b7de04166f1ebdb348474f70ba84408e179ddd9f4ca238b3851b75d269", "diff": "+53 / -0" },
+    { "path": "src/app/api/system/maintenance/route.ts", "startSha256": "bfbb49ff3950e506e7f148122eef363e7ae96e375d1d40605318b7c8fbb0520d", "endSha256": "06746ea03abbd1b8e547354550a564d7667a53f2ef5a5efb65d086c34e5f2ac8", "diff": "+259 / -184" },
+    { "path": "src/app/admin/maintenance/page.tsx", "startSha256": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da", "endSha256": "97ea049c682097489a0266d95037a9521e26fb407f636e7c6c39ed05610b31da", "diff": "0（零改动，既有接线已满足 F07）" }
+  ],
+  "protectedUnchangedSha256": {
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "src/middleware.ts": "d1741435f109ac05d96f54aa147560fe2ce3c2d6866cbd07758ea06b5a7c43d6",
+    "src/components/MaintenanceUpcomingBanner.tsx": "faa7458c9c2c7f9cd18a0c430ecb9ad15a10a5d48375e8ea06021024b8269b05",
+    "src/app/releases/page.tsx": "327e4b3e73c1794bd206663ff18c09a6fc887823f9303ac6e949d76c4cdb40ab",
+    "src/app/maintenance/page.tsx": "7094cc2c122cc80dfb52ea9c7b101886a5d2d07632ff5e651e417ab194b43f88",
+    "src/app/api/admin/permissions/route.ts": "00c72e11da2a2f8eaa3c5deac6829f9a38e11d1834234c3b521b58e6db81f8e2"
+  },
+  "newFiles": [
+    "src/app/api/__tests__/r0f-maintenance-readonly.test.ts",
+    "docs/reviews/R0-F-fix-report.md",
+    "docs/reviews/R0-F-fix-snapshot/manifest.json",
+    "docs/reviews/R0-F-fix-snapshot/verify-r0f-repro.cjs",
+    "docs/reviews/R0-F-fix-snapshot/verify-r0f-pages.cjs",
+    "docs/reviews/R0-F-fix-snapshot/frozen-source/*",
+    "docs/reviews/R0-F-fix-snapshot/end-source/*"
+  ],
+  "errorContract": {
+    "publicGetEmergencyDisable": { "httpStatus": 400, "code": "MAINTENANCE_DISABLE_REQUIRES_AUTH", "message": "维护变更须通过授权写操作" },
+    "unauthenticatedWrite": { "httpStatus": 401, "error": "UNAUTHORIZED" },
+    "authenticatedNoPermission": { "httpStatus": 403, "error": "FORBIDDEN", "required": ["..."] },
+    "unknownAction": { "httpStatus": 400, "code": "UNKNOWN_ACTION", "message": "未知的操作类型" },
+    "transactionFailure": { "httpStatus": 500, "message": "操作处理失败，请稍后重试", "guarantee": "配置/审计/会话整体回滚，缓存不刷新，不假成功" }
+  },
+  "permissionMatrix": {
+    "GET维护状态公告版本": "无需登录（公开只读）",
+    "POST基础维护开关(enabled/message/estimatedMinutes)": "system:maintenance_toggle",
+    "DELETE解除维护": "system:maintenance_toggle",
+    "POST维护计划增删改": "maintenance:publish；syncMaintenanceMode 改变维护模式时另需 system:maintenance_toggle（分别校验=AND）",
+    "POST公告增删改与公示开关": "maintenance:publish",
+    "POST展示配置保存": "maintenance:publish",
+    "未知非空action": "400 拒绝，不落默认维护切换"
+  },
+  "transactionGuarantee": "withMaintenanceAudit：prisma.$transaction(async tx => { await writes(tx); await tx.operationlog.create({...}) })。writes 回调内所有持久化必须使用 tx，禁止逃逸根客户端。审计写与配置写同事务；审计失败或任一写入失败→整体回滚并抛错→路由 catch 返回 500，绝不留下无审计的成功变更。setMaintenanceCache 仅在事务提交成功后调用，回滚时缓存不刷新。开启维护的普通用户会话清理 updateMany 在同一事务内，回滚时不残留。",
+  "historicalCounterexample": {
+    "script": "docs/reviews/R0-E-independent-review/verify-next-maintenance.cjs",
+    "notModified": true,
+    "jsonSha256Before": "d3dd11228c8a33872163dcb007f6aa8321bbae2987b5dbc7044c0f71fee37138",
+    "jsonSha256After": "d3dd11228c8a33872163dcb007f6aa8321bbae2987b5dbc7044c0f71fee37138",
+    "result": "exit 1：加载期失败（修复后路由新引入 @/lib/security，历史 stub 列表缺失），并非漏洞仍存在；其 JSON 未被写回",
+    "equivalentReplay": "docs/reviews/R0-F-fix-snapshot/verify-r0f-repro.cjs（同结构+补齐 security stub）12/12 通过"
+  },
+  "commands": [
+    { "cmd": "node docs/reviews/R0-E-independent-review/verify-next-maintenance.cjs", "result": "加载期失败（@/lib/security 未 stub），JSON 未改写", "exit": 1 },
+    { "cmd": "node docs/reviews/R0-F-fix-snapshot/verify-r0f-repro.cjs", "result": "12/12", "exit": 0 },
+    { "cmd": "npx vitest run src/app/api/__tests__/r0f-maintenance-readonly.test.ts", "result": "19 passed", "exit": 0 },
+    { "cmd": "npx vitest run <9 个指定隔离文件> --reporter=dot", "result": "9 files / 272 tests passed（253 既有冻结 + 19 新增）", "exit": 0 },
+    { "cmd": "node docs/reviews/R0-C-fix-snapshot/verify-r0c-pages.cjs", "result": "18/18", "exit": 0 },
+    { "cmd": "node docs/reviews/R0-B2-fix-snapshot/verify-b2-cashier.cjs", "result": "21/21", "exit": 0 },
+    { "cmd": "node docs/reviews/R0-D-fix-snapshot/verify-r0d-pages.cjs", "result": "24/24", "exit": 0 },
+    { "cmd": "node docs/reviews/R0-E-fix-snapshot/verify-r0e-pages.cjs", "result": "5/5", "exit": 0 },
+    { "cmd": "node docs/reviews/R0-F-fix-snapshot/verify-r0f-pages.cjs", "result": "10/10", "exit": 0 },
+    { "cmd": "npx tsc --noEmit --incremental false -p tsconfig.json", "result": "无诊断输出", "exit": 0 }
+  ],
+  "isolation": "内存 Prisma（含 $transaction 快照回滚与故障注入）/ 权限内存模型（严格复刻多键 OR、超管放行）/ 审计持久化内存记录；环境、凭证、渠道、数据库均隔离；零真实库写入/迁移/seed、零真实支付/模型/短信邮件、零部署、零密钥读取、零真实维护配置或会话操作。"
+}

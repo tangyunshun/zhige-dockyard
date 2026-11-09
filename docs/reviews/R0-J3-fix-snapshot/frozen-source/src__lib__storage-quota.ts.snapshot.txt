@@ -1,0 +1,723 @@
+import crypto from "crypto";
+import { prisma } from "@/lib/prisma";
+
+/**
+ * 空间文件存储配额（真实记账，原子占用闭环）——原方案 F13 / R0-J → R0-J1 → R0-J2。
+ *
+ * 统计口径：知识库/资料上传的真实物理文件（document.fileSize = 服务端收到的实际字节），
+ * 物理载体为服务器本地磁盘 uploads/assets/{workspaceId}/ 或 S3 私有桶。
+ * 配额数据落在 workspacequota.storageUsed / storageLimit（单位：字节，BigInt）。
+ *
+ * [R0-J S01] 配额语义（不得默认无限）：
+ *  - 配额行缺失 / limit=0 / limit 非法（< -1）/ usage 非法（负数）→ 新增物理文件前明确拒绝（稳定 code）；
+ *  - limit = 0：不允许新增正字节文件；
+ *  - limit = -1：唯一表示不限（服务端既有事实），仍如实记录真实占用；
+ *  - 判定与增减全程 BigInt，不接受 number 精度绕过；
+ *  - JSON 文本兼容上传没有物理文件 → 不计入物理占用，也不按客户端伪造 fileSize 入账。
+ *
+ * [R0-J S02 + R0-J1/R0-J2 J-UPLOAD/J-WRITE-BOUND] 原子占用与写边界：
+ *  - 预留 = 数据库级条件 UPDATE（核验+预留同一语句），不依赖进程内锁或先读后无条件累加；
+ *  - [-1 不限] 分支同样在写边界核验（WHERE storageLimit = -1 AND storageUsed >= 0），
+ *    限额收紧或用量变负后不再按旧快照放行；
+ *  - 预留与操作记录在同一事务提交（原子），P2002 唯一冲突 → 幂等去重并按最新事实分类；
+ *  - opId 去重核验空间/操作者/字节/状态，不只是 opId 字符串匹配；
+ *  - userId 来自服务端身份，不写空字符串。
+ *
+ * [R0-J1/R0-J2 J-RELEASE] 释放与文档删除在事务中原子绑定；物理删除先核验，释放失败不假报成功；
+ * 历史漂移（used < bytes）保留差异并阻断危险释放（不自动清零）；共享引用仍存在时不释放底层文件。
+ */
+
+export const STORAGE_QUOTA_CODES = {
+  NOT_READY: "STORAGE_QUOTA_NOT_READY",
+  LIMIT_ZERO: "STORAGE_LIMIT_ZERO",
+  LIMIT_INVALID: "STORAGE_LIMIT_INVALID",
+  USAGE_INVALID: "STORAGE_USAGE_INVALID",
+  EXCEEDED: "STORAGE_QUOTA_EXCEEDED",
+  BYTES_INVALID: "STORAGE_BYTES_INVALID",
+  OP_CONFLICT: "STORAGE_OP_CONFLICT",
+  OP_PENDING: "STORAGE_OP_PENDING",
+  CONFIRM_FAILED: "STORAGE_CONFIRM_FAILED",
+  RELEASE_DRIFT: "STORAGE_RELEASE_DRIFT",
+  SHARED_REF_EXISTS: "STORAGE_SHARED_REF_EXISTS",
+} as const;
+
+export class StorageQuotaError extends Error {
+  code: string;
+  status: number;
+  opId?: string;
+  constructor(code: string, message: string, status = 403, opId?: string) {
+    super(message);
+    this.name = "StorageQuotaError";
+    this.code = code;
+    this.status = status;
+    this.opId = opId;
+  }
+}
+
+function normalizeBytes(raw: number | bigint | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  const n = typeof raw === "bigint" ? Number(raw) : Number(raw);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
+function resolveQuotaRow(row: {
+  storageUsed: unknown;
+  storageLimit: unknown;
+} | null): { used: bigint; limit: bigint } {
+  if (!row) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.NOT_READY,
+      "空间存储配额尚未初始化，暂无法上传文件。请联系管理员完成空间初始化后重试（本次未扣点、未写入任何文件）。",
+      503,
+    );
+  }
+  const used = typeof row.storageUsed === "bigint" ? row.storageUsed : BigInt(Math.trunc(Number(row.storageUsed ?? 0)));
+  const limitRaw = typeof row.storageLimit === "bigint" ? row.storageLimit : BigInt(Math.trunc(Number(row.storageLimit ?? 0)));
+  if (used < BigInt(0)) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.USAGE_INVALID,
+      "空间存储用量数据异常（负值），暂无法上传文件。请联系管理员核对存储计量数据。",
+      503,
+    );
+  }
+  if (limitRaw < BigInt(-1)) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.LIMIT_INVALID,
+      "空间存储上限数据异常（小于 -1），暂无法上传文件。请联系管理员核对存储配额配置。",
+      503,
+    );
+  }
+  return { used, limit: limitRaw };
+}
+
+function formatGb(bytes: bigint): string {
+  return (Number(bytes) / 1073741824).toFixed(2);
+}
+function formatMb(bytes: bigint | number): string {
+  return (Number(bytes) / 1048576).toFixed(2);
+}
+
+function exceededError(used: bigint, limit: bigint, incoming: bigint): StorageQuotaError {
+  return new StorageQuotaError(
+    STORAGE_QUOTA_CODES.EXCEEDED,
+    `空间文件存储空间不足：已用 ${formatGb(used)}GB / 上限 ${formatGb(limit)}GB，无法再上传 ${formatMb(incoming)}MB 的文件。请先清理不需要的资料（删除后容量会释放），或联系空间管理员提升存储额度。`,
+    403,
+  );
+}
+
+// ---- [R0-J2] storageoperation 持久化（离线 schema 草案；迁移未执行时诚实拒绝） ----
+
+function opModel(client?: unknown): any {
+  const c = (client ?? prisma) as any;
+  return c.storageoperation;
+}
+
+async function findStorageOp(client: any, opId: string): Promise<any | null> {
+  try {
+    return await opModel(client).findUnique({ where: { opId } });
+  } catch (e: any) {
+    if (String(e?.code) === "P2021" || String(e?.message || "").includes("does not exist")) {
+      throw new StorageQuotaError(
+        STORAGE_QUOTA_CODES.NOT_READY,
+        "存储操作记录表未就绪（需先执行数据库迁移），暂无法上传文件。请联系管理员完成部署。",
+        503,
+      );
+    }
+    throw e;
+  }
+}
+
+/** [R0-J2] 原子预留 + 操作记录创建在同一事务提交；P2002 → 已有操作按最新事实分类 */
+async function reserveAtomic(client: any, workspaceId: string, bytes: bigint, opId: string, userId: string): Promise<{ unlimited: boolean; deduped: boolean; conflict: boolean }> {
+  // 步骤 1：-1 不限条件预留（含 usage >= 0 写边界核验）
+  const unlimitedOk = await client.$executeRaw`
+    UPDATE \`workspacequota\`
+    SET \`storageUsed\` = \`storageUsed\` + ${bytes}
+    WHERE \`workspaceId\` = ${workspaceId}
+      AND \`storageLimit\` = -1
+      AND \`storageUsed\` >= 0
+  `;
+  if (unlimitedOk === 1) {
+    // 步骤 2：操作记录在同一事务创建（原子提交）
+    await opModel(client).create({
+      data: { opId, workspaceId, userId, opType: "RESERVE", status: "RESERVED", bytes: Number(bytes), updatedAt: new Date() },
+    });
+    return { unlimited: true, deduped: false, conflict: false };
+  }
+  // 步骤 3：有限上限条件预留（核验 + 预留同一语句）
+  const finiteOk = await client.$executeRaw`
+    UPDATE \`workspacequota\`
+    SET \`storageUsed\` = \`storageUsed\` + ${bytes}
+    WHERE \`workspaceId\` = ${workspaceId}
+      AND \`storageLimit\` >= 0
+      AND \`storageUsed\` >= 0
+      AND \`storageUsed\` + ${bytes} <= \`storageLimit\`
+  `;
+  if (finiteOk === 1) {
+    await opModel(client).create({
+      data: { opId, workspaceId, userId, opType: "RESERVE", status: "RESERVED", bytes: Number(bytes), updatedAt: new Date() },
+    });
+    return { unlimited: false, deduped: false, conflict: false };
+  }
+  return { unlimited: false, deduped: false, conflict: true };
+}
+
+async function updateStorageOpStatus(client: any, opId: string, status: string, extra?: { filePath?: string | null; documentId?: string | null; note?: string }): Promise<boolean> {
+  try {
+    const result = await opModel(client).update({
+      where: { opId },
+      data: { status, updatedAt: new Date(), ...(extra?.filePath !== undefined ? { filePath: extra.filePath } : {}), ...(extra?.documentId !== undefined ? { documentId: extra.documentId } : {}), ...(extra?.note ? { note: extra.note } : {}) },
+    });
+    return Boolean(result);
+  } catch (e: any) {
+    if (String(e?.code) === "P2025") return false;
+    throw e;
+  }
+}
+
+/**
+ * [R0-J1/R0-J2 J-UPLOAD] 确认操作：对象定位与文档 ID 回填，状态 → CONFIRMED。
+ * 确认失败/记录未找到不吞掉（不得返回完整成功）：抛出让调用方走清理协议如实返回。
+ */
+export async function confirmStorageOperation(opId: string, filePath: string | null, documentId: string | null): Promise<void> {
+  const ok = await updateStorageOpStatus(prisma, opId, "CONFIRMED", { filePath, documentId });
+  if (!ok) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.CONFIRM_FAILED,
+      "存储操作确认失败（操作记录未找到或更新未生效），请稍后重试。",
+      500,
+      opId,
+    );
+  }
+}
+
+/**
+ * [R0-J1 J-UPLOAD] 待清理标记：未知保存结果 / 清理删除失败 → 持久化 PENDING_CLEANUP 状态。
+ */
+export async function markStorageOperationPendingCleanup(opId: string, note: string, filePath?: string | null): Promise<void> {
+  const ok = await updateStorageOpStatus(prisma, opId, "PENDING_CLEANUP", { note, filePath: filePath ?? undefined });
+  if (!ok) {
+    console.error("[storage-op] 待清理标记失败（需人工核对）:", opId);
+  }
+}
+
+/**
+ * [R0-J2 J-RELEASE/J-CLEAR] 孤儿对象恢复线索：文档已删/占用已释放但物理文件清理失败 →
+ * 持久化一条 PENDING_CLEANUP 释放记录（不扣量、不重放），保留对象定位供人工核实。
+ * 记录写入失败不阻断主流程（差异可由对账呈现），但必须落错误日志。
+ */
+export async function persistOrphanCleanupLead(
+  workspaceId: string,
+  filePath: string | null,
+  bytes: number | null,
+  note: string,
+): Promise<void> {
+  try {
+    // 经 opModel 访问（结构未迁移时 delegate 为空 → 捕获并明确记录，不影响主流程返回）
+    const delegate = opModel(prisma);
+    if (!delegate?.create) {
+      console.error(`[storage-op] 孤儿对象恢复线索写入失败：storageoperation 表未就绪（需迁移），请人工核对 filePath=${filePath ?? "null"}`);
+      return;
+    }
+    await delegate.create({
+      data: {
+        opId: `orphan-${crypto.randomUUID()}`,
+        workspaceId,
+        userId: "system",
+        opType: "RELEASE",
+        status: "PENDING_CLEANUP",
+        filePath: filePath ?? null,
+        bytes: Math.max(0, Math.round(bytes ?? 0)),
+        note,
+      },
+    });
+  } catch (e) {
+    console.error(`[storage-op] 孤儿对象恢复线索写入失败（需人工核对）: ${(e as Error)?.message} filePath=${filePath ?? "null"}`);
+  }
+}
+
+// ---- [R0-J S01/S02 + R0-J1/R0-J2 J-WRITE-BOUND] 存储预留 ----
+
+/**
+ * 存储预留：操作身份认领 + 容量预留 + 操作记录创建在同一事务提交。
+ * - opId 去重核验空间/操作者/字节/状态（不只是 opId 字符串匹配）；
+ * - [-1 不限] 分支同样在写边界核验（WHERE storageLimit = -1 AND storageUsed >= 0）；
+ * - 有限上限 → 原子条件 UPDATE（核验+预留同一语句）；count=0 时重读分类；
+ * - 预留与操作记录在同一事务（原子提交），P2002 → 已有操作按事实分类。
+ */
+export async function reserveStorageBytes(
+  workspaceId: string,
+  incomingBytes: number,
+  opId: string,
+  userId?: string,
+): Promise<{ unlimited: boolean; deduped: boolean; opConflict: boolean }> {
+  if (!workspaceId) {
+    throw new StorageQuotaError(STORAGE_QUOTA_CODES.NOT_READY, "缺少工作空间，无法核定存储配额。", 400, opId);
+  }
+  if (!opId) {
+    throw new StorageQuotaError(STORAGE_QUOTA_CODES.NOT_READY, "操作身份不能为空。", 400, opId);
+  }
+  const bytes = normalizeBytes(incomingBytes);
+  if (bytes === null) {
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.BYTES_INVALID,
+      "上传文件字节数非法，无法核定存储占用。请重新上传；若反复出现请联系管理员。",
+      400,
+      opId,
+    );
+  }
+  const serverUserId = userId || "";
+
+  // opId 幂等去重：核验空间/操作者/字节/状态（不只是 opId 字符串匹配）
+  const existingOp = await findStorageOp(prisma, opId);
+  if (existingOp) {
+    const sameWorkspace = existingOp.workspaceId === workspaceId;
+    const sameUser = existingOp.userId === serverUserId;
+    const sameBytes = Number(existingOp.bytes) === bytes;
+    const activeStatus = ["RESERVED", "CONFIRMED", "PENDING_CLEANUP"].includes(existingOp.status);
+    if (sameWorkspace && sameUser && sameBytes && activeStatus) {
+      // 同一操作重放：返回原结果，不重复占用
+      // [R0-J2 §2.1] storageoperation 模型无 storageLimit 列，不读不存在字段；调用方仅消费 deduped/opConflict
+      return { unlimited: false, deduped: true, opConflict: false };
+    }
+    // 跨空间/不同载荷/已释放状态 → 冲突，不得 dedup 后继续创建新对象
+    throw new StorageQuotaError(
+      STORAGE_QUOTA_CODES.OP_CONFLICT,
+      "操作身份冲突（不同空间/载荷/已释放状态），请使用新的操作 ID。",
+      409,
+      opId,
+    );
+  }
+
+  // 原子预留 + 操作记录创建在同一事务
+  try {
+    const result = await prisma.$transaction(async (tx: any) => {
+      const r = await reserveAtomic(tx, workspaceId, BigInt(bytes), opId, serverUserId);
+      return r;
+    });
+    if (result.conflict) {
+      // [R0-J2 §7 J-WRITE-BOUND] 冲突必须按最新配额事实分类并明确拒绝（不得静默放行未预留上传）：
+      // 重读配额行 → LIMIT_ZERO / LIMIT_INVALID / USAGE_INVALID / EXCEEDED，零副作用（未入账）
+      const row = await prisma.workspacequota.findUnique({
+        where: { workspaceId },
+        select: { storageUsed: true, storageLimit: true },
+      });
+      const q = resolveQuotaRow(row); // 缺行/负用量/非法限额 → NOT_READY/USAGE_INVALID/LIMIT_INVALID
+      if (q.limit === BigInt(0)) {
+        throw new StorageQuotaError(
+          STORAGE_QUOTA_CODES.LIMIT_ZERO,
+          "空间存储上限为 0，无法上传文件。请联系空间管理员配置存储额度。",
+          403,
+          opId,
+        );
+      }
+      throw exceededError(q.used, q.limit, BigInt(bytes));
+    }
+    return { unlimited: result.unlimited, deduped: result.deduped, opConflict: result.conflict };
+  } catch (e: any) {
+    // P2002 = opId 唯一约束冲突（并发同 opId）→ 按已有操作事实分类
+    if (String(e?.code) === "P2002") {
+      const existing = await findStorageOp(prisma, opId);
+      if (existing && existing.workspaceId === workspaceId && Number(existing.bytes) === bytes) {
+        return { unlimited: false, deduped: true, opConflict: false };
+      }
+      throw new StorageQuotaError(
+        STORAGE_QUOTA_CODES.OP_CONFLICT,
+        "并发操作身份冲突（不同空间/载荷），请使用新的操作 ID。",
+        409,
+        opId,
+      );
+    }
+    if (e instanceof StorageQuotaError) throw e;
+    // 模型/表未就绪
+    if (String(e?.code) === "P2021" || String(e?.message || "").includes("does not exist")) {
+      throw new StorageQuotaError(
+        STORAGE_QUOTA_CODES.NOT_READY,
+        "存储操作记录表未就绪（需先执行数据库迁移），暂无法上传文件。请联系管理员完成部署。",
+        503,
+        opId,
+      );
+    }
+    throw e;
+  }
+}
+
+// ---- [R0-J S05 + R0-J1/R0-J2 J-RELEASE] 释放 ----
+
+/**
+ * 释放：原子条件扣减。无 drift SET 0 后备；
+ * used < bytes → 不释放并返回 drift=true（调用方阻断危险释放，保留差异）。
+ * [R0-J2 J-WRITE-BOUND] WHERE 同时包含 storageUsed >= 0 核验。
+ */
+async function releaseBytesOnClient(
+  client: any,
+  workspaceId: string,
+  bytes: bigint,
+): Promise<{ released: boolean; drift: boolean }> {
+  const released = await client.$executeRaw`
+    UPDATE \`workspacequota\`
+    SET \`storageUsed\` = \`storageUsed\` - ${bytes}
+    WHERE \`workspaceId\` = ${workspaceId}
+      AND \`storageUsed\` >= ${bytes}
+      AND \`storageUsed\` >= 0
+  `;
+  if (released === 1) return { released: true, drift: false };
+  // used < bytes：历史漂移 → 不清零、不假报成功；调用方阻断并保留差异
+  return { released: false, drift: true };
+}
+
+export async function releaseStorageBytes(
+  workspaceId: string,
+  bytes: number,
+): Promise<{ released: boolean; drift: boolean }> {
+  const n = normalizeBytes(bytes);
+  if (!workspaceId || n === null || n <= 0) return { released: false, drift: false };
+  return releaseBytesOnClient(prisma, workspaceId, BigInt(n));
+}
+
+/**
+ * [R0-J2] 规范化对象键（唯一对象身份去重用；大小写敏感，不合并 A.txt 和 a.txt）
+ */
+function normalizeObjectKeyForDedup(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
+  return filePath
+    .replace(/\\/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/^(?:uploads\/)?(?:assets\/)?/, "")
+    .replace(/^(\.\.[\/\\])+/, "");
+}
+
+/**
+ * [R0-J1→R0-J2 J-RELEASE] 按已删除文档集合释放占用（唯一对象去重 + 原子扣减）。
+ * 移除 drift SET 0 后备：used < 待释放总量 → 返回 drift=true，由调用方阻断/保留差异。
+ */
+export async function releaseStorageForDeletedDocuments(
+  workspaceId: string,
+  docs: Array<{ filePath?: string | null; fileSize?: number | null }>,
+): Promise<{ releasedBytes: number; drift: boolean; dedupedKeys: number }> {
+  const keyMap = new Map<string, number>();
+  for (const d of docs || []) {
+    if (!d || !d.filePath) continue;
+    const n = normalizeBytes(d.fileSize);
+    if (n === null || n <= 0) continue;
+    const key = normalizeObjectKeyForDedup(d.filePath);
+    if (!key) continue;
+    keyMap.set(key, n);
+  }
+  let total = 0;
+  for (const n of keyMap.values()) total += n;
+  if (total <= 0) return { releasedBytes: 0, drift: false, dedupedKeys: 0 };
+  const r = await releaseBytesOnClient(prisma, workspaceId, BigInt(total));
+  if (r.drift) {
+    console.error(`[storage] 释放漂移阻断：空间 ${workspaceId} used < 待释放 ${total}，需人工核对`);
+    return { releasedBytes: 0, drift: true, dedupedKeys: keyMap.size };
+  }
+  return { releasedBytes: total, drift: false, dedupedKeys: keyMap.size };
+}
+
+/**
+ * [R0-J1→R0-J2 J-RELEASE] 事务内原子绑定：条件删除文档行（count=0 → alreadyGone）+
+ * 唯一对象去重后条件扣减（漂移 → 抛错回滚，保留差异）。
+ * [R0-J2] 使用实际删除成功的文档（count=1）决定释放字节，不信任过期调用参数；
+ * 共享引用（同 key 仍有其他文档引用）→ 不释放该对象的字节，保护仍被引用的文件。
+ */
+export async function deleteDocumentsAndReleaseStorage(
+  workspaceId: string,
+  docs: Array<{ id: string; filePath?: string | null; fileSize?: number | null }>,
+): Promise<{ releasedBytes: number; drift: boolean; alreadyGone: boolean; dedupedKeys: number; sharedRefsBlocked: number }> {
+  return prisma.$transaction(async (tx: any) => {
+    // 1. 条件删除文档行（并发同文档：后到者 count=0 → alreadyGone，不释放）
+    const deletedDocs: Array<{ id: string; filePath: string | null; fileSize: number | null }> = [];
+    for (const d of docs) {
+      // [R0-J2 J-RELEASE] 删除前读取最新记录事实（不信任过期调用参数的 filePath/fileSize）
+      const fresh = await tx.document.findFirst({ where: { id: d.id, workspaceId }, select: { id: true, filePath: true, fileSize: true } });
+      if (!fresh) continue; // 已不存在（并发后到者）：不参与释放
+      const del = await tx.document.deleteMany({ where: { id: d.id, workspaceId } });
+      if (del.count === 1) {
+        deletedDocs.push({ id: fresh.id, filePath: fresh.filePath ?? null, fileSize: fresh.fileSize ?? null });
+      }
+    }
+    if (deletedDocs.length === 0) {
+      return { releasedBytes: 0, drift: false, alreadyGone: true, dedupedKeys: 0, sharedRefsBlocked: 0 };
+    }
+    // 2. 检查共享引用：同一 filePath 仍有其他文档引用 → 不释放该对象的字节
+    const filePathSet = new Set(deletedDocs.map(d => d.filePath).filter(Boolean) as string[]);
+    const sharedRefsBlocked = new Set<string>();
+    for (const fp of filePathSet) {
+      const key = normalizeObjectKeyForDedup(fp);
+      if (!key) continue;
+      const stillReferenced = await tx.document.count({
+        where: { workspaceId, filePath: fp, id: { notIn: deletedDocs.map(d => d.id) } },
+      });
+      if (stillReferenced > 0) sharedRefsBlocked.add(key);
+    }
+    // 3. 唯一对象去重后条件扣减（跳过仍被引用的对象）
+    const keyMap = new Map<string, number>();
+    for (const d of deletedDocs) {
+      if (!d.filePath) continue;
+      const key = normalizeObjectKeyForDedup(d.filePath);
+      if (!key || sharedRefsBlocked.has(key)) continue;
+      const n = normalizeBytes(d.fileSize);
+      if (n === null || n <= 0) continue;
+      keyMap.set(key, n);
+    }
+    let total = 0;
+    for (const n of keyMap.values()) total += n;
+    if (total <= 0) {
+      return { releasedBytes: 0, drift: false, alreadyGone: false, dedupedKeys: keyMap.size, sharedRefsBlocked: sharedRefsBlocked.size };
+    }
+    const rel = await releaseBytesOnClient(tx, workspaceId, BigInt(total));
+    if (rel.drift) {
+      // [R0-J2 J-RELEASE] 漂移 → 抛错回滚整个事务（文档/占用不变），保留差异阻断危险释放
+      throw new StorageQuotaError(
+        STORAGE_QUOTA_CODES.RELEASE_DRIFT,
+        `存储历史漂移：配额占用不足以扣减待释放 ${formatMb(total)}MB，已回滚删除与释放操作。请人工核对后处理。`,
+        500,
+      );
+    }
+    return { releasedBytes: total, drift: false, alreadyGone: false, dedupedKeys: keyMap.size, sharedRefsBlocked: sharedRefsBlocked.size };
+  });
+}
+
+// ---- [R0-J S06 + R0-J1/R0-J2 J-RECONCILE] 只读对账 ----
+
+export interface StorageReconcileDocRow {
+  id: string;
+  title?: string | null;
+  status?: string | null;
+  visibility?: string | null;
+  filePath?: string | null;
+  fileSize?: number | null;
+}
+
+export interface StorageReconcileReport {
+  quota: { present: boolean; used: string | null; limit: string | null; kind: "unlimited" | "finite" | "invalid" | "missing" };
+  docs: {
+    totalRows: number;
+    uniqueObjects: number;
+    duplicateRefs: Array<{ key: string; refs: number }>;
+    physicalBytesSum: string;
+    softDeletedWithFile: number;
+    sizeUnknownOrInvalid: Array<{ id: string; title: string | null; reason: string }>;
+    conflictingSizes: Array<{ key: string; sizes: string }>;
+  };
+  operations: {
+    reserved: number;
+    pendingCleanup: number;
+    confirmed: number;
+    reservedBytes: string;
+    pendingCleanupBytes: string;
+    items: Array<{ opId: string; status: string; filePath: string | null; bytes: number }>;
+  };
+  physical: {
+    checked: boolean;
+    missingFiles: Array<{ key: string }>;
+    orphanObjects: Array<{ key: string; size: string }>;
+    sizeMismatches: Array<{ key: string; recorded: string; actual: string }>;
+  };
+  usageDrift: { quotaUsed: string; uniqueObjectBytesSum: string; diff: string; inFlightBytes: string } | null;
+  notes: string[];
+  coverage: {
+    physicalVerified: boolean;
+    objectListProvided: boolean;
+    operationStatesIncluded: boolean;
+    caseSensitive: boolean;
+  };
+}
+
+/**
+ * [R0-J S06 + R0-J1/R0-J2 J-RECONCILE] 只读对账（唯一对象计量 + 在途/待清理 + 未核实标注）。
+ * 对象身份保留大小写敏感（不合并 A.txt 和 a.txt）；空文档集合+非零用量仍参与核对；
+ * 独立 listObjects 清单被使用（不要求额外传 fileExists）；coverage 区分核验范围。
+ * 绝不改库、不删文件、不释放。
+ */
+export async function reconcileWorkspaceStorage(
+  workspaceId: string,
+  opts?: {
+    docRows?: StorageReconcileDocRow[];
+    quotaRow?: { storageUsed: unknown; storageLimit: unknown } | null;
+    fileExists?: (filePath: string) => Promise<boolean>;
+    listObjects?: () => Promise<Array<{ key: string; size: number | null }>>;
+  },
+): Promise<StorageReconcileReport> {
+  const notes: string[] = [];
+  let quota: StorageReconcileReport["quota"];
+  let quotaUsed: bigint | null = null;
+  if (opts?.quotaRow !== undefined) {
+    try {
+      const q = resolveQuotaRow(opts.quotaRow);
+      quotaUsed = q.used;
+      quota = { present: true, used: q.used.toString(), limit: q.limit.toString(), kind: q.limit === BigInt(-1) ? "unlimited" : "finite" };
+    } catch (e) {
+      const code = (e as StorageQuotaError).code;
+      quota = { present: opts.quotaRow !== null, used: null, limit: null, kind: code === STORAGE_QUOTA_CODES.NOT_READY ? "missing" : "invalid" };
+      notes.push(`配额行异常（${code}），占用无法与记录核对`);
+    }
+  } else {
+    const row = await prisma.workspacequota.findUnique({
+      where: { workspaceId },
+      select: { storageUsed: true, storageLimit: true },
+    });
+    if (!row) {
+      quota = { present: false, used: null, limit: null, kind: "missing" };
+      notes.push("配额行缺失，占用无法与记录核对");
+    } else {
+      try {
+        const q = resolveQuotaRow(row);
+        quotaUsed = q.used;
+        quota = { present: true, used: q.used.toString(), limit: q.limit.toString(), kind: q.limit === BigInt(-1) ? "unlimited" : "finite" };
+      } catch (e) {
+        quota = { present: true, used: String(row.storageUsed ?? ""), limit: String(row.storageLimit ?? ""), kind: "invalid" };
+        notes.push(`配额行数值异常（${(e as StorageQuotaError).code}）`);
+      }
+    }
+  }
+
+  const docRows: StorageReconcileDocRow[] = opts?.docRows ?? (await prisma.document.findMany({
+    where: { workspaceId },
+    select: { id: true, title: true, status: true, visibility: true, filePath: true, fileSize: true },
+  }) as any[]);
+
+  // [R0-J2 J-RECONCILE] 唯一对象身份去重（大小写敏感，不合并 A.txt 和 a.txt）
+  const objectMap = new Map<string, { sizes: Set<number>; refs: number; softDeleted: number; docIds: Set<string> }>();
+  const sizeUnknownOrInvalid: Array<{ id: string; title: string | null; reason: string }> = [];
+  let withPhysicalFile = 0;
+  let softDeletedWithFile = 0;
+  for (const d of docRows) {
+    if (!d.filePath) continue;
+    withPhysicalFile++;
+    const isSoftDeleted = d.status === "REMOVED" || d.status === "deleted";
+    if (isSoftDeleted) softDeletedWithFile++;
+    const key = normalizeObjectKeyForDedup(d.filePath);
+    if (!key) continue;
+    const n = normalizeBytes(d.fileSize);
+    let entry = objectMap.get(key);
+    if (!entry) { entry = { sizes: new Set(), refs: 0, softDeleted: 0, docIds: new Set() }; objectMap.set(key, entry); }
+    entry.refs++;
+    entry.docIds.add(d.id);
+    if (isSoftDeleted) entry.softDeleted++;
+    if (n === null) {
+      sizeUnknownOrInvalid.push({ id: d.id, title: d.title ?? null, reason: "有物理文件路径但 fileSize 缺失或非法，占用待核实" });
+      continue;
+    }
+    entry.sizes.add(n);
+  }
+  let physicalBytesSum = BigInt(0);
+  const duplicateRefs: Array<{ key: string; refs: number }> = [];
+  const conflictingSizes: Array<{ key: string; sizes: string }> = [];
+  for (const [key, entry] of objectMap) {
+    if (entry.refs > 1) duplicateRefs.push({ key, refs: entry.refs });
+    if (entry.sizes.size > 1) conflictingSizes.push({ key, sizes: [...entry.sizes].join(",") });
+    const sz = entry.sizes.size === 1 ? [...entry.sizes][0] : null;
+    if (sz !== null && sz > 0) physicalBytesSum += BigInt(sz);
+  }
+
+  // [R0-J2] 操作记录（在途预留/待清理，含字节合计）
+  let opItems: Array<{ opId: string; status: string; filePath: string | null; bytes: number }> = [];
+  let opReserved = 0, opPendingCleanup = 0, opConfirmed = 0;
+  let opReservedBytes = BigInt(0), opPendingCleanupBytes = BigInt(0);
+  try {
+    const ops = await opModel(prisma).findMany({ where: { workspaceId } });
+    for (const op of ops) {
+      const opBytes = BigInt(op.bytes ?? 0);
+      opItems.push({ opId: op.opId, status: op.status, filePath: op.filePath ?? null, bytes: Number(op.bytes ?? 0) });
+      if (op.status === "RESERVED") { opReserved++; opReservedBytes += opBytes; }
+      else if (op.status === "PENDING_CLEANUP") { opPendingCleanup++; opPendingCleanupBytes += opBytes; }
+      else if (op.status === "CONFIRMED") opConfirmed++;
+    }
+    if (opReserved > 0 || opPendingCleanup > 0) {
+      notes.push(`存在 ${opReserved} 个在途预留（${opReservedBytes} 字节）/ ${opPendingCleanup} 个待清理操作（${opPendingCleanupBytes} 字节）`);
+    }
+  } catch {
+    notes.push("存储操作记录不可读（可能未迁移），在途/待清理状态未纳入核对");
+  }
+
+  // [R0-J2] 物理核验：listObjects 独立使用（不要求额外传 fileExists）
+  const physical = { checked: false, missingFiles: [] as Array<{ key: string }>, orphanObjects: [] as Array<{ key: string; size: string }>, sizeMismatches: [] as Array<{ key: string; recorded: string; actual: string }> };
+  if (opts?.fileExists) {
+    physical.checked = true;
+    for (const [key] of objectMap) {
+      const exists = await opts.fileExists(key);
+      if (!exists) physical.missingFiles.push({ key });
+    }
+  }
+  if (opts?.listObjects) {
+    physical.checked = true;
+    const objList = await opts.listObjects();
+    const docKeys = new Set(objectMap.keys());
+    for (const obj of objList) {
+      const objKey = normalizeObjectKeyForDedup(obj.key);
+      if (!objKey || docKeys.has(objKey)) continue;
+      physical.orphanObjects.push({ key: obj.key, size: obj.size === null ? "未知" : String(obj.size) });
+    }
+    for (const [key, entry] of objectMap) {
+      if (entry.sizes.size !== 1) continue;
+      const actual = objList.find((o) => normalizeObjectKeyForDedup(o.key) === key);
+      if (actual && actual.size !== null && actual.size !== [...entry.sizes][0]) {
+        physical.sizeMismatches.push({ key, recorded: String([...entry.sizes][0]), actual: String(actual.size) });
+      }
+    }
+  } else if (!opts?.fileExists) {
+    notes.push("物理存在性未核实（未提供 fileExists/listObjects），占用与记录一致性仅限数据库层面");
+  }
+
+  let usageDrift: StorageReconcileReport["usageDrift"] = null;
+  if (quotaUsed !== null) {
+    const inFlightBytes = opReservedBytes;
+    const diff = quotaUsed - physicalBytesSum;
+    usageDrift = { quotaUsed: quotaUsed.toString(), uniqueObjectBytesSum: physicalBytesSum.toString(), diff: diff.toString(), inFlightBytes: inFlightBytes.toString() };
+    if (diff !== BigInt(0)) {
+      const explained = diff === inFlightBytes ? "（可由在途预留解释）" : "";
+      notes.push(`配额占用与唯一对象记录求和不一致（diff=${diff.toString()} 字节）${explained}，需人工核实`);
+    }
+    // 空文档集合但非零占用：objectMap.size === 0 → physicalBytesSum = 0 → diff = quotaUsed，
+    // 由上方同一分支输出差异说明（可解释预留 / 真实差异），无需单独分支。
+  }
+  if (sizeUnknownOrInvalid.length > 0) notes.push(`存在 ${sizeUnknownOrInvalid.length} 条大小未知/非法记录，未按 0 处理`);
+  if (duplicateRefs.length > 0) notes.push(`存在 ${duplicateRefs.length} 个重复引用对象`);
+
+  return {
+    quota,
+    docs: {
+      totalRows: docRows.length,
+      uniqueObjects: objectMap.size,
+      duplicateRefs,
+      physicalBytesSum: physicalBytesSum.toString(),
+      softDeletedWithFile,
+      sizeUnknownOrInvalid,
+      conflictingSizes,
+    },
+    operations: {
+      reserved: opReserved,
+      pendingCleanup: opPendingCleanup,
+      confirmed: opConfirmed,
+      reservedBytes: opReservedBytes.toString(),
+      pendingCleanupBytes: opPendingCleanupBytes.toString(),
+      items: opItems,
+    },
+    physical,
+    usageDrift,
+    notes,
+    coverage: {
+      physicalVerified: physical.checked,
+      objectListProvided: Boolean(opts?.listObjects),
+      operationStatesIncluded: opItems.length > 0,
+      caseSensitive: true,
+    },
+  };
+}
+
+// ---- 兼容旧调用名 ----
+
+export async function addStorageUsed(workspaceId: string, deltaBytes: number): Promise<void> {
+  await reserveStorageBytes(workspaceId, deltaBytes, `legacy_add_${Date.now()}`);
+}
+
+export async function subtractStorageUsed(workspaceId: string, deltaBytes: number): Promise<void> {
+  try {
+    await releaseStorageBytes(workspaceId, deltaBytes);
+  } catch {
+    // 由对账报告呈现差异
+  }
+}

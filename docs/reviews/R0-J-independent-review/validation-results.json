@@ -1,0 +1,103 @@
+{
+  "reviewedAt": "2026-11-07T16:54:05.2143698Z",
+  "clientDate": "2026-11-08 Asia/Shanghai",
+  "verdict": "R0_J_NOT_ACCEPTED",
+  "scope": "Original F13 S01-S08 only; no F14",
+  "functionalFindings": [
+    {
+      "id": "J-UPLOAD",
+      "priority": "P1"
+    },
+    {
+      "id": "J-RELEASE",
+      "priority": "P1"
+    },
+    {
+      "id": "J-CLEAR",
+      "priority": "P1"
+    },
+    {
+      "id": "J-PRIVATE",
+      "priority": "P1"
+    },
+    {
+      "id": "J-KEYS",
+      "priority": "P1"
+    },
+    {
+      "id": "J-WRITE-BOUND",
+      "priority": "P1"
+    },
+    {
+      "id": "J-PARTIAL",
+      "priority": "P2"
+    },
+    {
+      "id": "J-RECONCILE",
+      "priority": "P2"
+    }
+  ],
+  "evidenceCorrection": "Preflight manifest overwritten with current hashes while retaining old reproduction claims; 4 reference mismatches captured",
+  "hashVerification": {
+    "matchedEntries": 39,
+    "startCopies": 4,
+    "deliveryFiles": 5,
+    "protectedFiles": 30,
+    "reference": "manifest-verification.json"
+  },
+  "checks": [
+    {
+      "kind": "formal targeted regression",
+      "files": 13,
+      "passed": 433,
+      "exitCode": 0,
+      "commandPrefix": ".\\node_modules\\.bin\\vitest.cmd run --no-color",
+      "fileDirectory": "src/app/api/__tests__/",
+      "fileList": [
+        "r0j-storage.test.ts",
+        "r0h-cost-admission.test.ts",
+        "r0i2-cold-quote.test.ts",
+        "r0g-cron-subscription-expire.test.ts",
+        "r0f-maintenance-readonly.test.ts",
+        "r0e-production-mock.test.ts",
+        "r0d-refund-approval.test.ts",
+        "r0c-pool-recycle.test.ts",
+        "r0b-seat-addon.test.ts",
+        "r0a-business-boundary.test.ts",
+        "r0a2-real-combo.test.ts",
+        "r0a3-combo-regression.test.ts",
+        "r0a4-combo-regression.test.ts"
+      ]
+    },
+    {
+      "kind": "independent defect reproductions",
+      "command": ".\\node_modules\\.bin\\vitest.cmd run --no-color --config docs/reviews/R0-J-independent-review/vitest.review.config.ts",
+      "files": 2,
+      "passed": 15,
+      "exitCode": 0,
+      "interpretation": "Tests assert observed existing failures; not acceptance"
+    },
+    {
+      "kind": "typecheck",
+      "command": ".\\node_modules\\.bin\\tsc.cmd --noEmit --incremental false -p tsconfig.json",
+      "exitCode": 0
+    },
+    {
+      "kind": "actual partial-response UI callbacks",
+      "command": "node docs/reviews/R0-J-independent-review/verify-ui.cjs",
+      "reproductions": 2,
+      "exitCode": 0,
+      "browserDOM": false
+    }
+  ],
+  "auditMutationScope": "New files in docs/reviews/R0-J-independent-review only; no formal source/test or old evidence writes",
+  "realDatabaseAccess": false,
+  "realStorageOrCloudAccess": false,
+  "realModelOrPaymentCalls": false,
+  "limitations": [
+    "Prisma/fs/AWS transport are offline fixtures; no real MySQL isolation or locking verified",
+    "Two UI callbacks executed independently; no browser DOM",
+    "Current driver, real objects, quota drift or actual production data loss not inspected"
+  ],
+  "nextPrompt": "IDE-R0-J1-PROMPT.md"
+}

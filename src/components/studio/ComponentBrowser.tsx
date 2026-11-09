@@ -395,10 +395,15 @@ export default function ComponentBrowser({
     localStorage.setItem("studio_search_history", JSON.stringify(history));
   };
 
+  // KN-UI：搜索历史改为 Enter 提交时写入，防止每键污染历史（自查清单指令五）
   const handleSearch = (query: string) => {
     setSearchQuery(query);
-    if (query.trim() && !searchHistory.includes(query.trim())) {
-      const newHistory = [query.trim(), ...searchHistory].slice(0, 10);
+  };
+
+  const commitSearchToHistory = () => {
+    const trimmed = searchQuery.trim();
+    if (trimmed && !searchHistory.includes(trimmed)) {
+      const newHistory = [trimmed, ...searchHistory].slice(0, 10);
       setSearchHistory(newHistory);
       saveSearchHistory(newHistory);
     }
@@ -1337,8 +1342,9 @@ export default function ComponentBrowser({
                     value={searchQuery}
                     onChange={(e) => handleSearch(e.target.value)}
                     onFocus={() => setShowSearchHistory(true)}
+                    onBlur={() => { commitSearchToHistory(); }}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter") setShowSearchHistory(false);
+                      if (e.key === "Enter") { commitSearchToHistory(); setShowSearchHistory(false); }
                       if (e.key === "Escape") setShowSearchHistory(false);
                     }}
                     className="w-full h-10 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50/50 text-xs text-slate-800 focus:outline-none focus:border-[#3182ce] focus:bg-white transition-all font-extrabold"
@@ -1627,7 +1633,7 @@ export default function ComponentBrowser({
                                     {comp.isPremium && (
                                       <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
                                         <Award className="w-2.5 h-2.5" />
-                                        <span>PREMIUM</span>
+                                        <span>旗舰</span>
                                       </span>
                                     )}
                                     {isLoggedIn ? (
@@ -1818,7 +1824,7 @@ export default function ComponentBrowser({
                                       <span className="text-xs font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono">{comp.id}</span>
                                       <span className="text-xs font-black text-slate-800 truncate">{comp.name}</span>
                                       {comp.isPremium && (
-                                        <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black">PREMIUM</span>
+                                        <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black">旗舰</span>
                                       )}
                                       {isLoggedIn ? (
                                         <>
@@ -2223,7 +2229,7 @@ export default function ComponentBrowser({
                                 {comp.isPremium && (
                                   <span className="px-1.5 py-0.5 bg-gradient-to-r from-amber-500 to-amber-500 text-white rounded text-xs font-black flex items-center gap-0.5 shadow-sm">
                                     <Award className="w-2.5 h-2.5" />
-                                    <span>PREMIUM</span>
+                                    <span>旗舰</span>
                                   </span>
                                 )}
                                 {isRestricted ? (

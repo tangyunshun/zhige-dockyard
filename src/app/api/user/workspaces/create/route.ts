@@ -4,7 +4,7 @@ import { generateEnterpriseWorkspaceName } from "@/lib/workspace-naming";
 import { validateUser } from "@/lib/auth";
 import { ensureDefaultComponents } from "@/lib/workspaceInit";
 import { storageMbToBytes, type WorkspacePlanKey } from "@/constants/workspace-plans";
-import { getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
+import { verifyEnterprisePlanForCreation, getWorkspacePlanByKey } from "@/lib/workspace-plan-service";
 import { mergeLimits } from "@/lib/limit-utils";
 
 /**
@@ -80,30 +80,37 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 套餐与配额：个人空间固定 STANDARD，企业空间取请求指定的套餐
+    // 个人空间固定 STANDARD（非套餐购买行为，恢复本批前既有初始化语义，不新增企业购买门禁）；
+    // 企业空间取请求指定的套餐，并执行严格核验（仅真实配置一致的免费基础档可直接创建）。
     const planKey: WorkspacePlanKey =
       type === "ENTERPRISE" ? ((plan || "STANDARD").toString().toUpperCase() as WorkspacePlanKey) : "STANDARD";
-    const planConfig = await getWorkspacePlanByKey(planKey);
 
-    // 企业空间套餐可用性校验：已停用 / 仅限线下定制的套餐不得用于创建空间
-    //（个人空间固定 STANDARD、非套餐购买行为，不在此拦截）
+    let planConfig: any;
     if (type === "ENTERPRISE") {
-      const planRow = await prisma.workspaceplan
-        .findUnique({
-          where: { key: planKey },
-          select: { name: true, isActive: true, purchasable: true },
-        })
-        .catch(() => null);
-      if (planRow && (!planRow.isActive || !planRow.purchasable)) {
+      // [R0-A] 企业创建入口：严格核验目标套餐，仅真实配置一致的免费基础档可直接创建；
+      // 付费档/异常配置拒绝，且不回退常量授予企业权益。门禁仅作用于 ENTERPRISE。
+      const planVerify = await verifyEnterprisePlanForCreation(planKey);
+      if (planVerify.status === "REJECT") {
         return NextResponse.json(
-          {
-            message: planRow.isActive
-              ? `套餐「${planRow.name}」为线下定制套餐，不可在线创建空间，请更换套餐`
-              : `套餐「${planRow.name}」已停用，不可用于创建空间，请更换套餐`,
-          },
-          { status: 400 },
+          { error: planVerify.code, message: planVerify.message },
+          { status: planVerify.httpStatus },
         );
       }
+      if (planVerify.status === "PAID") {
+        return NextResponse.json(
+          {
+            error: "PAID_PLAN_REQUIRES_CHECKOUT",
+            message: "该套餐为付费套餐，需先完成在线购买流程，本次未创建空间、未产生扣款",
+            success: false,
+          },
+          { status: 402 },
+        );
+      }
+      planConfig = planVerify.plan;
+    } else {
+      // 个人分支：沿用本批前既有配置读取语义（含常量兼容回退），不新增企业付费门禁；
+      // 即便 STANDARD 配置缺失也按常量基线创建，保持个人空间初始化行为不变。
+      planConfig = await getWorkspacePlanByKey(planKey);
     }
 
     // 创建工作空间（同步写入套餐快照与空间配额记录）

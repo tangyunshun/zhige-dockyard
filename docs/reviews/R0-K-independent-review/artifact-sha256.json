@@ -1,0 +1,24 @@
+{
+  "capturedAt": "2026-11-08T09:14:00.545Z",
+  "artifacts": {
+    "admission-evidence.json": "4cc00783d801e2065345d4402348405372775d70dc1c16197565bf904b23ba21",
+    "admission-review.test.ts": "af778e28a4f1190a64d8eea8b3cf313d1942774b2b42355be314672e62f19d49",
+    "build-review.cjs": "5afb169a46c37d697bf9934b5d06a7ef87fc67033f94052b70124521d8882caf",
+    "finalize-review.cjs": "832976e57e29513ef265045de79dcfc60d6c1924e7bb8e24885192280ba2442b",
+    "formal-copy.test.ts": "a106c0b0a1e9a709a24d166bcbb58ba2e33bb12d7e2d58681b3c023e3da3b5a0",
+    "formal-results.json": "896d54582f4c21b38ef3f0e6496e88880d0874a057b9bfeddda3ac39587aa455",
+    "handler-cases.txt": "6adb8e88a73b7662e8cae907b60ec009d438fb70981876dddf2e7bb630ed75ff",
+    "handler-evidence.json": "2cd8e1db39ab5fa827a5d954f2a709aff9d00274314cfffc75c2170782a82b40",
+    "handler-review.test.ts": "f445e89dd993dfc58cde3b3d6867340d4d1f3be6746f99238c24a6d57d6326b6",
+    "IDE-R0-K1-PROMPT.md": "325b8dddaa8ada655509c8ed7a063f8a8c322bda43b2d5457dec1bfdc2c5d10f",
+    "independent-results.json": "d029fc2b306d3231846b15fd76902d1d12447ccd68f32e4b94a2425673331757",
+    "independent-summary.json": "eaec87311e4a87fcabf16fada29fa61e878d1e88e4232bc06e88d0b74a949159",
+    "manifest-verification.json": "e8f63e610c743e60df7e1f2f8a30f0d3988816cdae78eadf964cd5197b1ae3c5",
+    "parser-evidence.json": "01850c76f8bdbc8f75ca35b0b1cb81554ce84392493da62fe1c6e9ace0a0706d",
+    "parser-final-results.json": "0a09bd47b8d0a76c7e2763a6cd99cbd835dca96e40c64580da5f2d2329f6ade5",
+    "parser-review.test.ts": "e96244cef60006a8797ea00489d3deacef1ba9956848381b64b953c977d38579",
+    "REVIEW.md": "afd5048818827ce79714d993657073bccb3174472b40210199fb90912b0f0426",
+    "validation-results.json": "0b96938d69a5b27faea97c69709d26ee7844896a9d4e7b37f6729f18d55d3235",
+    "vitest.review.config.ts": "742e2a40573ae4711135f1f1e30b32854fbd306ec2fe19f45ede998aa200e5f3"
+  }
+}

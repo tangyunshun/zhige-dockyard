@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import React from "react";
 import { 
   Terminal, 
@@ -32,7 +33,7 @@ export default function QuickActions(_props: QuickActionsProps) {
       {/* 辅助链接 */}
       <div className="space-y-2">
         {/* 1. API 文档 */}
-        <a
+        <Link
           href="/docs"
           className="flex items-center justify-between p-2.5 bg-white hover:bg-slate-50 border border-slate-200/50 rounded-lg text-left transition-all duration-300 group"
         >
@@ -46,10 +47,10 @@ export default function QuickActions(_props: QuickActionsProps) {
             </div>
           </div>
           <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-500 transition-colors shrink-0 ml-2" />
-        </a>
+        </Link>
 
         {/* 2. Webhooks 订阅 */}
-        <a
+        <Link
           href="/settings/webhooks"
           className="flex items-center justify-between p-2.5 bg-white hover:bg-slate-50 border border-slate-200/50 rounded-lg text-left transition-all duration-300 group"
         >
@@ -63,7 +64,7 @@ export default function QuickActions(_props: QuickActionsProps) {
             </div>
           </div>
           <ExternalLink className="w-3.5 h-3.5 text-slate-400 group-hover:text-indigo-500 transition-colors shrink-0 ml-2" />
-        </a>
+        </Link>
       </div>
     </div>
   );

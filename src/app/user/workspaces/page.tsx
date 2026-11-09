@@ -30,6 +30,7 @@ import {
   Settings,
 } from "lucide-react";
 import { getAuthToken } from "@/utils/auth";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
 import { useToast } from "@/components/Toast";
 import StepUpAuthModal from "@/components/StepUpAuthModal";
 import { DissolveWorkspaceCheckModal } from "@/components/workspace/DissolveWorkspaceCheckModal";
@@ -146,12 +147,15 @@ export default function UserWorkspacesPage() {
 
   // 编辑模态框状态
   const [showEditModal, setShowEditModal] = useState(false);
+  useEscapeKey(showEditModal, () => setShowEditModal(false));
   // 删除确认与前置合规盘点模态框状态
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  useEscapeKey(showDeleteConfirm, () => setShowDeleteConfirm(false));
   const [dissolveCheckEnterprise, setDissolveCheckEnterprise] = useState<Workspace | null>(null);
   const [dissolveCheckPersonal, setDissolveCheckPersonal] = useState<Workspace | null>(null);
   // 删除空间二次身份验证（后端 delete_workspace 场景强制校验）
   const [showDeleteStepUp, setShowDeleteStepUp] = useState(false);
+  useEscapeKey(showDeleteStepUp, () => setShowDeleteStepUp(false));
   const [selectedWorkspace, setSelectedWorkspace] = useState<Workspace | null>(null);
   const [editFormData, setEditFormData] = useState({ name: "", description: "" });
   const [editNameError, setEditNameError] = useState<string | null>(null);

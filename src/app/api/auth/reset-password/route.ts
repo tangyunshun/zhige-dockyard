@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { hashPassword } from "@/lib/auth";
 import { jwtVerify } from "jose";
 import { consumeSmsCode } from "@/lib/sms-store";
+import { consumeEmailCode } from "@/lib/email-code-store";
 import { getJwtSecretKey } from "@/lib/jwt-config";
 
 /**
@@ -80,8 +81,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. 消费验证码（一次性，防止 token 被复制后重复使用）
-    const codeKey = (phone || email) as string;
-    consumeSmsCode(codeKey);
+    if (phone) {
+      await consumeSmsCode(phone, "reset-password");
+    } else if (email) {
+      await consumeEmailCode(email, "reset-password");
+    }
 
     // 5. 更新密码 + 失效所有会话（强制重新登录）
     const hashedPassword = await hashPassword(newPassword);

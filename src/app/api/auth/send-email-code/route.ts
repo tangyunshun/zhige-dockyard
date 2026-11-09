@@ -1,56 +1,77 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
+import { generateEmailCode, storeEmailCode } from "@/lib/email-code-store";
+import { sendMail, buildVerificationEmailHtml } from "@/lib/mailer";
+import { getVerificationBackend } from "@/lib/verification-backend";
+import type { VerifyPurpose } from "@/lib/verification-backend";
 
 /**
- * 发送邮箱验证码（用于找回密码等场景）
- * 当前为开发环境模拟实现：日志输出 + 返回 devCode。
- * 生产环境应接入真实邮件服务商。
+ * 发送邮箱验证码（注册 / 找回密码等场景复用）。
+ *
+ * F15 / L01 + L02：
+ * - 发送前先经共享后端裁决预算（admitSend）；未就绪（真实委托不可用）直接 503，绝不发生发送。
+ * - 验证码只以哈希存储，明文仅进入邮件正文（合法投递），绝不出现在日志/响应/调试码。
+ * - 不再返回任何 debugCode；SMTP 未配置或发送失败返回真实原因的稳定码（503/502）。
  */
 export async function POST(request: NextRequest) {
   try {
-    const { email } = await request.json();
+    const { email, type } = await request.json();
 
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return NextResponse.json(
         { message: "请输入正确的邮箱地址" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 校验邮箱是否对应真实用户（仅允许已注册邮箱发起找回密码）
-    const user = await prisma.user.findFirst({ where: { email } });
-    if (!user) {
+    const purpose: VerifyPurpose = type === "register" ? "register" : "reset-password";
+
+    // 1) 共享预算裁决 + 签发（预算/委托未就绪 -> 503，不发生任何发送）
+    const code = generateEmailCode();
+    const store = await storeEmailCode(email, code, purpose);
+    if (!store.ok) {
       return NextResponse.json(
-        { message: "该邮箱未注册" },
-        { status: 404 }
+        { message: store.error || "发送失败" },
+        { status: store.status ?? 429 },
       );
     }
 
-    // 生成 6 位数字验证码
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    // 复用 sms-store 的内存结构存储邮箱验证码（key=邮箱），含限流
-    const { storeSmsCode } = await import("@/lib/sms-store");
-    const sendResult = storeSmsCode(email, code);
+    // 2) 真实发送（明文仅进入邮件正文，不外泄）
+    const isRegister = purpose === "register";
+    const title = isRegister ? "注册验证码" : "重置密码验证码";
+    const scene = isRegister ? "注册知阁·舟坊账号" : "重置您的账号密码";
+    const subject = `【知阁·舟坊】${title}`;
+    const text = `您正在${scene}，验证码为 ${code}，5 分钟内有效，请勿泄露给他人。`;
+    const html = buildVerificationEmailHtml(title, code, scene);
+
+    const sendResult = await sendMail({ to: email, subject, text, html });
+
     if (!sendResult.ok) {
+      // 发送失败：返还本次预算，如实告知（不伪装已发送）
+      await getVerificationBackend().onSendResult(
+        { channel: "email", target: email, purpose },
+        "failed",
+      );
+      if (sendResult.reason === "SMTP_NOT_CONFIGURED") {
+        return NextResponse.json(
+          {
+            message: "邮件服务尚未配置，请联系平台管理员开启 SMTP 后重试",
+            code: "CHANNEL_NOT_READY",
+          },
+          { status: 503 },
+        );
+      }
       return NextResponse.json(
-        { message: sendResult.error || "发送失败" },
-        { status: 429 }
+        { message: "验证码邮件发送失败，请稍后重试", code: "SEND_FAILED" },
+        { status: 502 },
       );
     }
-
-    // TODO: 接入真实邮件服务商
-    console.log(`[邮箱验证码] 发送到 ${email}: ${code}（5分钟内有效）`);
 
     return NextResponse.json({
       success: true,
-      message: "验证码已发送",
-      devCode: process.env.NODE_ENV === "development" ? code : undefined,
+      message: "验证码已发送，请查收邮件（若收件箱无邮件，请检查垃圾邮件）",
     });
   } catch (error) {
     console.error("Send email code error:", error);
-    return NextResponse.json(
-      { message: "发送失败" },
-      { status: 500 }
-    );
+    return NextResponse.json({ message: "发送失败" }, { status: 500 });
   }
 }

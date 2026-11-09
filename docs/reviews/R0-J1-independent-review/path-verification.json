@@ -1,0 +1,54 @@
+{
+  "capturedAt": "2026-11-07T17:52:08.562Z",
+  "evidence": [
+    {
+      "case": "historical local fixed",
+      "accepted": true,
+      "result": {
+        "ok": true,
+        "notExists": false
+      },
+      "remainingObjects": 0
+    },
+    {
+      "case": "S3 key fixed",
+      "accepted": true,
+      "commands": [
+        {
+          "kind": "PutObjectCommand",
+          "key": "assets/w1/2758416e-c5c7-4122-8ea6-02646c9b82ce.txt"
+        },
+        {
+          "kind": "GetObjectCommand",
+          "key": "assets/w1/2758416e-c5c7-4122-8ea6-02646c9b82ce.txt"
+        },
+        {
+          "kind": "DeleteObjectCommand",
+          "key": "assets/w1/2758416e-c5c7-4122-8ea6-02646c9b82ce.txt"
+        }
+      ],
+      "remainingKeys": []
+    },
+    {
+      "case": "ambiguous candidates",
+      "result": {
+        "ok": true,
+        "notExists": false
+      },
+      "remaining": [
+        "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\assets\\assets\\w1\\same.txt"
+      ]
+    },
+    {
+      "case": "root containment absent",
+      "input": "w1/../../outside.txt",
+      "outside": "D:\\Project Development\\ZhiGe-Dockyard\\zhige-dockyard-web\\uploads\\outside.txt",
+      "result": {
+        "ok": true,
+        "notExists": false
+      },
+      "limits": "Synthetic stored path/helper contract test, not proof of a public API exploit or real user file access"
+    }
+  ],
+  "limits": "Actual file-store; fake fs and AWS SDK; dummy environment values; no real file/cloud access. Two positive acceptances and two defect reproductions."
+}

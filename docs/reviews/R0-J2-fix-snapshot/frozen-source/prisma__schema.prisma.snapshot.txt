@@ -1,0 +1,2159 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model componenttask {
+  id          String    @id
+  name        String
+  description String?
+  type        String
+  status      String    @default("pending")
+  progress    Int       @default(0)
+  config      Json?
+  result      Json?
+  userId      String?
+  tenantId    String?
+  workspaceId String?   @map("workspace_id")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+  icon        String?
+  isPublished Boolean   @default(false)
+  sortOrder   Int       @default(0)
+  tags        String?
+  usageCount  Int       @default(0)
+  tenant      tenant?   @relation(fields: [tenantId], references: [id], map: "ComponentTask_tenantId_fkey")
+  user        user?     @relation(fields: [userId], references: [id], map: "ComponentTask_userId_fkey")
+
+  @@index([status], map: "ComponentTask_status_idx")
+  @@index([isPublished], map: "ComponentTask_isPublished_idx")
+  @@index([type], map: "ComponentTask_type_idx")
+  @@index([sortOrder], map: "ComponentTask_sortOrder_idx")
+  @@index([tenantId], map: "ComponentTask_tenantId_idx")
+  @@index([userId], map: "ComponentTask_userId_idx")
+  @@index([workspaceId], map: "ComponentTask_workspaceId_idx")
+}
+
+model tenant {
+  id            String          @id
+  name          String
+  description   String?
+  logo          String?
+  status        String          @default("active")
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime
+  componenttask componenttask[]
+  user          user[]
+
+  @@index([name], map: "Tenant_name_idx")
+  @@index([status], map: "Tenant_status_idx")
+}
+
+model user {
+  id                                                       String                @id @default(cuid())
+  email                                                    String?               @unique(map: "User_email_key")
+  name                                                     String?
+  password                                                 String
+  avatar                                                   String?
+  role                                                     String                @default("user")
+  tenantId                                                 String?
+  createdAt                                                DateTime              @default(now())
+  updatedAt                                                DateTime              @updatedAt
+  lastWorkspaceId                                          String?               @map("last_workspace_id")
+  lockedUntil                                              DateTime?
+  loginAttempts                                            Int                   @default(0)
+  phone                                                    String?               @unique(map: "User_phone_key")
+  qqUnionId                                                String?               @unique(map: "User_qqUnionId_key")
+  refreshToken                                             String?
+  refreshTokenPrev                                         String?               @map("refresh_token_prev")
+  refreshTokenExpiresAt                                    DateTime?
+  status                                                   UserStatus            @default(active)
+  wechatUnionId                                            String?               @unique(map: "User_wechatUnionId_key")
+  membershipLevel                                          String                @default("FREE")
+  lastForcedLogoutAt                                       DateTime?             @map("last_forced_logout_at")
+  lastLoginAt                                              DateTime?             @map("last_login_at")
+  sessionExpiresAt                                         DateTime?             @map("session_expires_at")
+  sessionToken                                             String?               @map("session_token")
+  /// 会话策略：登录时勾选「7天内免登录」为 true。该会话豁免 10 分钟空闲超时（A-01），仅受 7 天绝对超时（A-02）约束
+  sessionRememberMe                                        Boolean               @default(false) @map("session_remember_me")
+  deletionRequestedAt                                      DateTime?             @map("deletion_requested_at")
+  /// 僵尸用户标记：每日定时扫描将「超 1 年未登录且从未产生有效数据」的用户置位，供后台筛选与清理
+  isZombie                                                 Boolean              @default(false) @map("is_zombie")
+  bannedUntil                                              DateTime?             @map("banned_until")
+  banReason                                                String?               @db.Text @map("ban_reason")
+  passwordChangedAt                                        DateTime?             @default(now()) @map("password_changed_at")
+  deviceLimit                                              Int                   @default(3) @map("device_limit")
+  allowMultiDevice                                         Boolean               @default(true) @map("allow_multi_device")
+  lastActivityAt                                           DateTime?             @map("last_activity_at")
+  lastLoginIp                                              String?               @map("last_login_ip")
+  lastLoginRegion                                          String?               @map("last_login_region")
+  lastLoginDevice                                          String?               @map("last_login_device")
+  passwordExpireDate                                       DateTime?             @map("password_expire_date")
+  ssoProvider                                              String?               @map("sso_provider")
+  ssoOpenid                                                String?               @map("sso_openid")
+  /// 个人签名/团队寄语（个人资料名片展示）
+  bio                                                      String?               @db.Text
+  apikey                                                   apikey[]
+  componentrating                                          componentrating[]
+  componentreview                                          componentreview[]
+  componenttask                                            componenttask[]
+  loginhistory                                             loginhistory[]
+  membershipchangelog_membershipchangelog_operatorIdTouser membershipchangelog[] @relation("membershipchangelog_operatorIdTouser")
+  membershipchangelog_membershipchangelog_userIdTouser     membershipchangelog[] @relation("membershipchangelog_userIdTouser")
+  membershiporder                                          membershiporder[]
+  operationlog                                             operationlog[]
+  postmember                                               postmember[]
+  systemdocument                                           systemdocument[]
+  systemdocumenthistory                                    systemdocumenthistory[]
+  upgradeapplication                                       upgradeapplication[]
+  userdevice                                               userdevice[]
+  workspacekickhistory                                     workspacekickhistory[]
+  accountappeal                                            accountappeal[]
+  userfeedback                                             userfeedback[]
+  tenant                                                   tenant?               @relation(fields: [tenantId], references: [id], map: "User_tenantId_fkey")
+  usernotification                                         usernotification?
+  notification                                             notification[]
+  userpreference                                           userpreference?
+  usersession                                              usersession[]
+  stepuptoken                                              stepuptoken[]
+  workspacemember                                          workspacemember[]
+
+  @@index([email], map: "User_email_idx")
+  @@index([phone], map: "User_phone_idx")
+  @@index([tenantId], map: "User_tenantId_idx")
+  @@index([status], map: "User_status_idx")
+  @@index([role], map: "User_role_idx")
+  @@index([lastWorkspaceId], map: "User_lastWorkspaceId_idx")
+  @@index([deletionRequestedAt], map: "User_deletionRequestedAt_idx")
+  @@index([isZombie], map: "User_isZombie_idx")
+}
+
+model apikey {
+  id          String    @id
+  userId      String
+  name        String
+  description String?
+  keyHash     String
+  keyPrefix   String
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime
+  user        user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ApiKey_userId_fkey")
+
+  @@index([keyPrefix], map: "ApiKey_keyPrefix_idx")
+  @@index([userId], map: "ApiKey_userId_idx")
+}
+
+model asset {
+  id          String   @id
+  workspaceId String
+  name        String
+  type        String
+  url         String?
+  metadata    Json?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([type], map: "Asset_type_idx")
+  @@index([workspaceId], map: "Asset_workspaceId_idx")
+}
+
+model componentfavorite {
+  id          String   @id
+  userId      String
+  componentId String
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, componentId], map: "ComponentFavorite_userId_componentId_key")
+  @@index([componentId], map: "ComponentFavorite_componentId_idx")
+  @@index([userId], map: "ComponentFavorite_userId_idx")
+}
+
+model componentrating {
+  id          String   @id
+  userId      String
+  componentId String
+  rating      Int
+  comment     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentRating_userId_fkey")
+
+  @@unique([userId, componentId], map: "ComponentRating_userId_componentId_key")
+  @@index([componentId], map: "ComponentRating_componentId_idx")
+  @@index([rating], map: "ComponentRating_rating_idx")
+}
+
+model componentreview {
+  id                    String            @id
+  userId                String
+  componentId           String
+  parentId              String?
+  content               String
+  rating                Int?
+  status                String            @default("active")
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime
+  componentreview       componentreview?  @relation("componentreviewTocomponentreview", fields: [parentId], references: [id], map: "ComponentReview_parentId_fkey")
+  other_componentreview componentreview[] @relation("componentreviewTocomponentreview")
+  user                  user              @relation(fields: [userId], references: [id], onDelete: Cascade, map: "ComponentReview_userId_fkey")
+
+  @@index([componentId], map: "ComponentReview_componentId_idx")
+  @@index([parentId], map: "ComponentReview_parentId_idx")
+  @@index([status], map: "ComponentReview_status_idx")
+  @@index([userId], map: "ComponentReview_userId_fkey")
+}
+
+model componentstats {
+  id             String    @id
+  componentId    String    @unique(map: "ComponentStats_componentId_key")
+  totalUses      Int       @default(0)
+  totalFavorites Int       @default(0)
+  averageRating  Float     @default(0)
+  ratingCount    Int       @default(0)
+  reviewCount    Int       @default(0)
+  dailyUses      Int       @default(0)
+  weeklyUses     Int       @default(0)
+  monthlyUses    Int       @default(0)
+  lastUsedAt     DateTime?
+  updatedAt      DateTime
+
+  @@index([averageRating], map: "ComponentStats_averageRating_idx")
+  @@index([componentId], map: "ComponentStats_componentId_idx")
+  @@index([totalUses], map: "ComponentStats_totalUses_idx")
+}
+
+model componentusage {
+  id          String   @id
+  userId      String
+  componentId String
+  workspaceId String?
+  usedAt      DateTime @default(now())
+  metadata    Json?
+
+  @@index([componentId], map: "ComponentUsage_componentId_idx")
+  @@index([usedAt], map: "ComponentUsage_usedAt_idx")
+  @@index([userId], map: "ComponentUsage_userId_idx")
+}
+
+model conversation {
+  id          String   @id
+  workspaceId String
+  userId      String
+  title       String?
+  messages    Json?
+  model       String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([userId], map: "Conversation_userId_idx")
+  @@index([workspaceId], map: "Conversation_workspaceId_idx")
+}
+
+model document {
+  id          String   @id
+  workspaceId String
+  title       String
+  content     String?  @db.Text
+  parentId    String?
+  type        String   @default("doc")
+  status      String   @default("active")
+  uploaderId  String?  @map("uploader_id")
+  visibility  String   @default("PUBLIC") @map("visibility")
+  // 管理员审核批示意见（驳回修改意见 / 通过批示）。
+  // 独立字段存储，严禁再写入 content，避免污染资料正文影响预览与「带入快速任务」。
+  reviewComment String? @map("review_comment") @db.Text
+  // 真实文件元信息：fileSize 为文件真实字节数（非 content 字符数估算），
+  // fileExt 为原始文件扩展名，用于精确判定格式类型。历史存量数据可为 null。
+  fileSize    Int?     @map("file_size")
+  fileExt     String?  @map("file_ext") @db.VarChar(32)
+  // 智能总结：导入/上传时基于真实原文生成并持久化，供列表与预览直接展示
+  summary     String?  @db.Text
+  // 原始文件存储：filePath 为 uploads/assets 下的相对路径，预览/下载一律经鉴权 API 读取
+  filePath    String?  @map("file_path")
+  mimeType    String?  @map("mime_type") @db.VarChar(128)
+  originalName String? @map("original_name") @db.VarChar(255)
+  /// 知识条目分类（KN-2：此前前端必填但后端丢弃、库中无字段可存）
+  category    String?
+  // KB-2：知识标签（最多 5 个，每个 1~20 字，存 JSON 字符串数组）
+  tags        Json?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([parentId], map: "Document_parentId_idx")
+  @@index([status], map: "Document_status_idx")
+  @@index([workspaceId], map: "Document_workspaceId_idx")
+}
+
+model integration {
+  id          String   @id
+  workspaceId String
+  provider    String
+  tokenHash   String
+  name        String?
+  configured  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@unique([workspaceId, provider], map: "Integration_workspaceId_provider_key")
+  @@index([workspaceId], map: "Integration_workspaceId_idx")
+}
+
+model loginhistory {
+  id        String   @id
+  userId    String
+  ipAddress String?
+  userAgent String?
+  location  String?
+  device    String?
+  loginAt   DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "LoginHistory_userId_fkey")
+
+  @@index([loginAt], map: "LoginHistory_loginAt_idx")
+  @@index([userId], map: "LoginHistory_userId_idx")
+}
+
+model membershipchangelog {
+  id                                        String           @id
+  userId                                    String
+  levelId                                   String?
+  operatorId                                String?
+  changeType                                String
+  oldValue                                  Json?
+  newValue                                  Json
+  reason                                    String?
+  createdAt                                 DateTime         @default(now())
+  membershiplevel                           membershiplevel? @relation(fields: [levelId], references: [id], map: "MembershipChangeLog_levelId_fkey")
+  user_membershipchangelog_operatorIdTouser user?            @relation("membershipchangelog_operatorIdTouser", fields: [operatorId], references: [id], map: "MembershipChangeLog_operatorId_fkey")
+  user_membershipchangelog_userIdTouser     user             @relation("membershipchangelog_userIdTouser", fields: [userId], references: [id], map: "MembershipChangeLog_userId_fkey")
+
+  @@index([changeType], map: "MembershipChangeLog_changeType_idx")
+  @@index([createdAt], map: "MembershipChangeLog_createdAt_idx")
+  @@index([levelId], map: "MembershipChangeLog_levelId_fkey")
+  @@index([operatorId], map: "MembershipChangeLog_operatorId_idx")
+  @@index([userId], map: "MembershipChangeLog_userId_idx")
+}
+
+model membershiplevel {
+  id                      String                @id
+  name                    String                @unique(map: "MembershipLevel_name_key")
+  nameZh                  String
+  icon                    String?
+  color                   String                @default("#94a3b8")
+  description             String?
+  maxPersonalWorkspaces   Int                   @default(1)
+  maxEnterpriseWorkspaces BigInt                @default(1)
+  maxComponents           BigInt                @default(100)
+  maxTeamSize             BigInt                @default(5)
+  maxStorage              BigInt                @default(1073741824)
+  maxApiCalls             BigInt                @default(1000)
+  /// 会员每月算力点额度上限（与"算力点/points"体系同币种；旧称 tokenLimit，待合并为用户级 pointwallet 唯一账本）
+  /// 默认值对齐 seed 免费版(100)，消除历史"10000"误导（历史口径残留）。算力点为余额制，创建空间不再按此字段白送额度。
+  tokenLimit              BigInt                @default(100)
+  /// 并发任务数上限（同一账号/空间同时运行的任务数）；默认 1
+  maxConcurrency          Int                   @default(1)
+  /// 单次上传文件大小上限（字节）；0 表示沿用合同默认上限
+  maxSingleFileBytes      BigInt                @default(0)
+  /// 可分配系统模型数量上限；0 表示不限制
+  maxModelAllocations     Int                   @default(0)
+  /// 自建模型（BYO）数量上限；0 表示不限制
+  maxByoModels            Int                   @default(0)
+  features                Json?
+  priceMonthly            Int                   @default(0)
+  priceYearly             Int                   @default(0)
+  // 购买算力加油包可享折扣（百分比，如 10=9 折、15=8.5 折、20=8 折；0 表示无折扣）
+  tokenPackDiscount       Int                   @default(0)
+  trialDays               Int                   @default(0)
+  sortOrder               Int                   @default(0)
+  isActive                Boolean               @default(true)
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime
+  isPopular               Boolean               @default(false)
+  isRecommended           Boolean               @default(false)
+  membershipchangelog     membershipchangelog[]
+  membershiporder         membershiporder[]
+  workspacequota          workspacequota[]
+
+  @@index([isActive], map: "MembershipLevel_isActive_idx")
+  @@index([name], map: "MembershipLevel_name_idx")
+  @@index([sortOrder], map: "MembershipLevel_sortOrder_idx")
+}
+
+model membershiporder {
+  id              String          @id
+  userId          String
+  levelId         String
+  orderType       String          @default("NEW")
+  paymentMethod   String?
+  amount          Int             @default(0)
+  currency        String          @default("CNY")
+  startDate       DateTime
+  endDate         DateTime
+  status          String          @default("PENDING")
+  transactionId   String?
+  metadata        Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime
+  membershiplevel membershiplevel @relation(fields: [levelId], references: [id], map: "MembershipOrder_levelId_fkey")
+  user            user            @relation(fields: [userId], references: [id], map: "MembershipOrder_userId_fkey")
+
+  @@index([createdAt], map: "MembershipOrder_createdAt_idx")
+  @@index([levelId], map: "MembershipOrder_levelId_idx")
+  @@index([status], map: "MembershipOrder_status_idx")
+  @@index([userId], map: "MembershipOrder_userId_idx")
+}
+
+model operationlog {
+  id          String   @id
+  userId      String
+  workspaceId String?
+  action      String
+  resource    String?
+  details     Json?
+  ipAddress   String?
+  createdAt   DateTime @default(now())
+  user        user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "OperationLog_userId_fkey")
+
+  @@index([action], map: "OperationLog_action_idx")
+  @@index([userId], map: "OperationLog_userId_idx")
+  @@index([workspaceId], map: "OperationLog_workspaceId_idx")
+}
+
+model project {
+  id          String   @id
+  workspaceId String
+  name        String
+  description String?
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime
+
+  @@index([status], map: "Project_status_idx")
+  @@index([workspaceId], map: "Project_workspaceId_idx")
+}
+
+model smscode {
+  id        String    @id
+  phone     String
+  code      String
+  type      String    @default("reset-password")
+  used      Boolean   @default(false)
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([code], map: "SmsCode_code_idx")
+  @@index([createdAt], map: "SmsCode_createdAt_idx")
+  @@index([phone], map: "SmsCode_phone_idx")
+  @@index([type], map: "SmsCode_type_idx")
+  @@index([used], map: "SmsCode_used_idx")
+}
+
+model systemdocument {
+  id           String   @id
+  title        String
+  content      String?   @db.Text
+  category     String
+  tags         String?
+  // 前台文档中心展示增强字段：摘要卡片/代码示例/关联跳转链接/有用点赞数
+  summary      String?   @db.Text
+  codeSample   String?   @db.Text
+  relatedLink  String?
+  helpfulCount Int      @default(0)
+  visibility   String   @default("PUBLIC")
+  isPublished  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  viewCount    Int      @default(0)
+  authorId     String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime
+  user        user?    @relation(fields: [authorId], references: [id], map: "SystemDocument_authorId_fkey")
+  history     systemdocumenthistory[]
+
+  @@unique([title, category], map: "SystemDocument_title_category_key")
+  @@index([authorId], map: "SystemDocument_authorId_fkey")
+  @@index([category], map: "SystemDocument_category_idx")
+  @@index([createdAt], map: "SystemDocument_createdAt_idx")
+  @@index([isPublished], map: "SystemDocument_isPublished_idx")
+  @@index([sortOrder], map: "SystemDocument_sortOrder_idx")
+}
+
+model systemdocumenthistory {
+  id           String   @id @default(cuid())
+  documentId   String?  @map("document_id")
+  title        String
+  content      String?  @db.Text
+  category     String
+  tags         String?
+  summary      String?  @db.Text
+  codeSample   String?  @db.Text
+  relatedLink  String?
+  helpfulCount Int      @default(0)
+  isPublished  Boolean  @default(false)
+  sortOrder    Int      @default(0)
+  editorId     String?  @map("editor_id")
+  note         String?  @map("note")
+  createdAt   DateTime @default(now())
+  document    systemdocument? @relation(fields: [documentId], references: [id], onDelete: SetNull, map: "SystemDocumentHistory_documentId_fkey")
+  user        user?    @relation(fields: [editorId], references: [id], onDelete: SetNull, map: "SystemDocumentHistory_editorId_fkey")
+
+  @@index([documentId], map: "SystemDocumentHistory_documentId_idx")
+  @@index([createdAt], map: "SystemDocumentHistory_createdAt_idx")
+  @@map("system_document_history")
+}
+
+// 系统文档（服务条款/隐私协议/帮助文档）真实点赞与踩反馈表：
+// 每条 (documentId, userId) 唯一，前端点赞走真实落库，helpfulCount 由 HELPFUL 票数实时重算，
+// 彻底替代此前纯前端表演、后台手填 helpfulCount 的虚假实现。
+model systemdocumentfeedback {
+  id         String   @id @default(cuid())
+  documentId String   @map("document_id")
+  userId     String
+  // HELPFUL（点赞/有用）| NOT_HELPFUL（踩/需改进）
+  vote       String   @default("HELPFUL")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([documentId, userId], map: "SystemDocumentFeedback_documentId_userId_key")
+  @@index([documentId], map: "SystemDocumentFeedback_documentId_idx")
+  @@index([userId], map: "SystemDocumentFeedback_userId_idx")
+  @@map("system_document_feedback")
+}
+
+model upgradeapplication {
+  id           String    @id
+  workspaceId  String?
+  userId       String
+  companyName  String
+  contactName  String
+  contactPhone String
+  phone        String?
+  description  String?   @db.Text
+  status       String    @default("PENDING")
+  adminRemark  String?   @db.Text
+  handledBy    String?
+  submittedAt  DateTime  @default(now())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime
+  user         user       @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UpgradeApplication_userId_fkey")
+  workspace    workspace? @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "UpgradeApplication_workspaceId_fkey")
+
+  @@index([status], map: "UpgradeApplication_status_idx")
+  @@index([userId], map: "UpgradeApplication_userId_fkey")
+  @@index([workspaceId], map: "UpgradeApplication_workspaceId_idx")
+}
+
+model usernotification {
+  id                 String   @id
+  userId             String   @unique(map: "UserNotification_userId_key")
+  emailNotifications Boolean  @default(true)
+  systemMessages     Boolean  @default(true)
+  projectUpdates     Boolean  @default(true)
+  commentMentions    Boolean  @default(true)
+  frequency          String   @default("REALTIME")
+  // 默认欢迎通知是否已注入（避免删除全部后再次冒出默认通知）
+  defaultsSeeded     Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime
+  user               user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserNotification_userId_fkey")
+
+  @@index([userId], map: "UserNotification_userId_idx")
+}
+
+// 用户通知消息（持久化存储，替代原内存 store；服务重启不丢失）
+model notification {
+  id        String   @id
+  userId    String
+  title     String
+  content   String
+  type          String   @default("system")
+  popupOnLogin  Boolean  @default(false)
+  isRead        Boolean  @default(false)
+  link          String?
+  createdAt     DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "Notification_userId_fkey")
+
+  @@index([userId, createdAt], map: "Notification_userId_createdAt_idx")
+}
+
+model userpreference {
+  id               String   @id
+  userId           String   @unique(map: "UserPreference_userId_key")
+  aiEngine         String   @default("zhige")
+  systemPrompt     String?
+  defaultModel     String   @default("zhige-v3")
+  temperature      Float    @default(0.7)
+  /// 模型 Token 上限（AI 实际输入/输出 token 数，属用量度量，非计费货币；仅用于统计与换算成算力点成本）
+  modelTokenLimit  Int      @default(2000) @map("maxTokens")
+  topP             Float    @default(0.9)
+  frequencyPenalty Float    @default(0)
+  presencePenalty  Float    @default(0)
+  /// 高危操作二次验证(2FA)开关：开启后敏感操作需二次身份验证
+  twoFactorEnabled Boolean  @default(false)
+  /// 新设备登录与异地登录安全告警开关
+  loginAlertEnabled Boolean  @default(true)
+  /// 个人中心 UI 偏好（语言/主题/密度/导出格式等，JSON 全量快照）
+  uiSettings       Json?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime
+  user             user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserPreference_userId_fkey")
+
+  @@index([userId], map: "UserPreference_userId_idx")
+}
+
+// 用户帮助反馈表：记录用户从"帮助与反馈"页面提交的意见反馈（含匿名提交）
+// 首页「用户评价」：按 groupNo 分组（共 5 组），系统默认每周自动轮换展示一组，
+// 管理员可在后台手动指定当前展示组、增删改评价与上下架。
+model testimonial {
+  id             String   @id @default(cuid())
+  groupNo        Int // 分组编号 1..5
+  category       String   @default("personal") // personal（个人用户）| enterprise（企业客户）
+  name           String
+  role           String?
+  org            String?
+  avatar         String? // 头像 URL（可空，为空时前端回退为姓名首字）
+  rating         Int      @default(5)
+  content        String   @db.Text
+  tags           Json? // string[] 能力标签
+  highlightLabel String?
+  highlightValue String?
+  sortOrder      Int      @default(0)
+  // active（上架展示）| hidden（后台下架）| pending（用户提交待审核）| rejected（审核驳回）
+  status         String   @default("active")
+  // —— 用户自助提交信息（管理员直接录入时为空）——
+  submitterId    String? // 提交人 userId
+  submittedAt    DateTime? // 提交时间
+  reviewNote     String? // 审核备注 / 驳回原因
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([groupNo], map: "Testimonial_groupNo_idx")
+  @@index([status], map: "Testimonial_status_idx")
+  @@index([submitterId], map: "Testimonial_submitterId_idx")
+}
+
+model userfeedback {
+  id        String   @id @default(cuid())
+  userId    String?
+  type      String   @default("suggestion") // suggestion | bug | experience | other
+  title     String
+  content   String   @db.Text
+  contact   String?
+  status    String   @default("pending") // pending | processing | resolved | closed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      user?    @relation(fields: [userId], references: [id], onDelete: SetNull, map: "UserFeedback_userId_fkey")
+
+  @@index([userId], map: "UserFeedback_userId_idx")
+  @@index([status], map: "UserFeedback_status_idx")
+  @@index([createdAt], map: "UserFeedback_createdAt_idx")
+}
+
+model demorequest {
+  id           String   @id @default(cuid())
+  name         String
+  email        String
+  company      String
+  phone        String?
+  requirements String?  @db.Text
+  status       String   @default("pending") // pending | contacted | closed
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([status])
+  @@index([createdAt])
+}
+
+model workspace {
+  id                  String                @id
+  name                String
+  type                workspace_type
+  ownerId             String
+  description         String?
+  logo                String?               @db.LongText
+  teamSize            String?
+  industry            String?
+  contactEmail        String?
+  contactPhone        String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  plan                String                @default("STANDARD")
+  quota               Json?
+  /// 订阅制套餐生效起始时间（购买/续费时写入）
+  planStartedAt       DateTime?
+  /// 订阅制套餐到期时间（到期未续费则自动降级为免费版）
+  planExpiresAt       DateTime?
+  /// 订阅周期：MONTH（月付）| YEAR（年付）
+  planBillingCycle    String?
+  /// 席位增购数量（在套餐自带席位之外叠加，到期随套餐一并清零）
+  extraSeats          Int                   @default(0)
+  status              String                @default("ACTIVE")
+  visibility          String                @default("PRIVATE")
+  lastActiveAt        DateTime?
+  workspacequotaId    String?
+  upgradeapplication  upgradeapplication[]
+  workspacequota      workspacequota?       @relation(fields: [workspacequotaId], references: [id])
+  workspaceinvitation workspaceinvitation[]
+  workspacemember     workspacemember[]
+  workspacepost       workspacepost[]
+
+  @@index([lastActiveAt], map: "Workspace_lastActiveAt_idx")
+  @@index([ownerId], map: "Workspace_ownerId_idx")
+  @@index([plan], map: "Workspace_plan_idx")
+  @@index([status], map: "Workspace_status_idx")
+  @@index([type], map: "Workspace_type_idx")
+  @@index([workspacequotaId], map: "workspace_workspacequotaId_fkey")
+}
+
+model workspaceinvitation {
+  id          String                   @id
+  workspaceId String
+  code        String                   @unique(map: "WorkspaceInvitation_code_key")
+  createdBy   String
+  email       String?
+  role        workspaceinvitation_role @default(MEMBER)
+  status      String                   @default("PENDING")
+  expiresAt   DateTime?
+  usedAt      DateTime?
+  usedBy      String?
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime
+  workspace   workspace                @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceInvitation_workspaceId_fkey")
+
+  @@index([code], map: "WorkspaceInvitation_code_idx")
+  @@index([createdBy], map: "WorkspaceInvitation_createdBy_idx")
+  @@index([status], map: "WorkspaceInvitation_status_idx")
+  @@index([workspaceId], map: "WorkspaceInvitation_workspaceId_idx")
+}
+
+model workspacemember {
+  id                String               @id
+  userId            String
+  workspaceId       String
+  role              workspacemember_role
+  /// 空间每月算力点额度上限（与 points 同币种；旧称 monthlyTokenLimit）
+  monthlyTokenLimit BigInt?
+  /// 空间当月已消耗算力点（旧称 monthlyTokenUsed）
+  monthlyTokenUsed  BigInt               @default(0)
+  /// 成员在本企业空间内的独立算力点余额：由空间所有者/管理员「配置算力」时从共享池分配，
+  /// 成员执行组件任务时仅从此余额扣减（独立记账，不污染空间共享池）
+  tokenBalance      BigInt               @default(0)
+  quotaResetAt      DateTime?
+  joinedAt          DateTime             @default(now())
+  user              user                 @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceMember_userId_fkey")
+  workspace         workspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspaceMember_workspaceId_fkey")
+
+  @@unique([userId, workspaceId], map: "WorkspaceMember_userId_workspaceId_key")
+  @@index([userId], map: "WorkspaceMember_userId_idx")
+  @@index([workspaceId], map: "WorkspaceMember_workspaceId_idx")
+}
+
+model workspacequota {
+  id                String          @id
+  workspaceId       String          @unique
+  membershipLevelId String
+  enterpriseSlots   BigInt          @default(1)
+  usedSlots         BigInt          @default(0)
+  /// 空间算力点余额（与用户级 pointwallet 同币种；旧称 tokenBalance，待合并为唯一账本）
+  tokenBalance      BigInt          @default(0)
+  /// 企业池低余额预警阈值（空间级覆盖，NULL 表示继承套餐默认阈值）
+  poolLowThreshold  BigInt?
+  storageUsed       BigInt          @default(0)
+  storageLimit      BigInt          @default(1073741824)
+  apiCallsUsed      BigInt          @default(0)
+  apiCallsLimit     BigInt          @default(1000)
+  resetAt           DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime
+  workspace         workspace[]
+  membershiplevel   membershiplevel @relation(fields: [membershipLevelId], references: [id], map: "WorkspaceQuota_membershipLevelId_fkey")
+
+  @@index([workspaceId], map: "WorkspaceQuota_workspaceId_idx")
+  @@index([membershipLevelId], map: "WorkspaceQuota_membershipLevelId_idx")
+}
+
+model workspacepost {
+  id                  String                @id
+  workspaceId         String
+  name                String
+  description         String?
+  color               String                @default("#64748b")
+  icon                String?               // 岗位图标（emoji 或 lucide 图标标识），用于权限矩阵表头展示
+  isDefault           Boolean               @default(false)
+  isSystem            Boolean               @default(false)
+  createdBy           String
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime
+  componentpermission componentpermission[]
+  postmember          postmember[]
+  workspace           workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade, map: "WorkspacePost_workspaceId_fkey")
+
+  @@unique([workspaceId, name], map: "WorkspacePost_workspaceId_name_key")
+  @@index([workspaceId], map: "WorkspacePost_workspaceId_idx")
+}
+
+model postmember {
+  id          String        @id
+  userId      String
+  postId      String
+  workspaceId String
+  assignedAt  DateTime      @default(now())
+  post        workspacepost @relation(fields: [postId], references: [id], onDelete: Cascade, map: "PostMember_postId_fkey")
+  user        user          @relation(fields: [userId], references: [id], onDelete: Cascade, map: "PostMember_userId_fkey")
+
+  @@unique([userId, postId], map: "PostMember_userId_postId_key")
+  @@index([postId], map: "PostMember_postId_idx")
+  @@index([workspaceId], map: "PostMember_workspaceId_idx")
+}
+
+/// 全平台官方标准岗位库（唯一权威数据源）
+/// 运行时所有岗位信息一律从此表查询，代码中不得硬编码任何岗位数据
+model platformstandardpost {
+  id                 String   @id
+  name               String   @unique
+  code               String
+  description        String?
+  color              String   @default("#3182ce")
+  icon               String?
+  status             String   @default("ACTIVE")
+  sortOrder          Int      @default(0)
+  /// 是否作为新建工作空间的默认基石岗位（自动装配）
+  isWorkspaceDefault Boolean  @default(false)
+  /// 是否为系统保留岗位（空间所有者等，不允许手动引入/移除）
+  isSystemReserved   Boolean  @default(false)
+  /// 预置岗位标识（由 seed 写入，区别于管理员后台自建岗位）；合并自原 position 表
+  isPreset           Boolean  @default(false)
+  /// 是否允许空间所有者编辑（预置岗位可能锁定）；合并自原 position 表
+  editable           Boolean  @default(true)
+  /// 预置岗位徽标文案（如「最高管控」）；合并自原 position 表
+  badge              String?
+  /// 预置岗位 Tailwind 徽章样式类；合并自原 position 表
+  colorCls           String?
+  /// 默认允许组件 ID 列表（null 表示不限制）；合并自原 position 表
+  defaultAllowedComponentIds Json?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([code], map: "PlatformStandardPost_code_idx")
+  @@index([sortOrder], map: "PlatformStandardPost_sortOrder_idx")
+}
+
+/// 平台岗位商务图标库（lucide 图标名称为唯一标识，前端据此渲染）
+/// 岗位图标的可选集合与选择器数据一律从本表查询，代码中不硬编码任何岗位图标
+model posticonlibrary {
+  id        String   @id
+  /// lucide 图标组件名（如 Crown / UserCog / Briefcase）
+  iconKey   String   @unique(map: "PostIconLibrary_iconKey_key")
+  /// 图标用途说明（中文）
+  name      String?
+  /// 图标分组：governance / team / business / finance / delivery / dev / audit
+  category  String   @default("general")
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([category], map: "PostIconLibrary_category_idx")
+  @@index([sortOrder], map: "PostIconLibrary_sortOrder_idx")
+}
+
+/// 岗位名称别名表（用于空间岗位与标准岗位的名称归集匹配）
+model postalias {
+  id        String   @id
+  postName  String
+  alias     String
+  createdAt DateTime @default(now())
+
+  @@unique([postName, alias], map: "PostAlias_postName_alias_key")
+  @@index([postName], map: "PostAlias_postName_idx")
+}
+
+/// 岗位代码别名表（用于空间成员角色 code 与标准岗位 code 的归集匹配）
+model postcodealias {
+  id        String   @id
+  postCode  String
+  roleCode  String
+  createdAt DateTime @default(now())
+
+  @@unique([postCode, roleCode], map: "PostCodeAlias_postCode_roleCode_key")
+  @@index([postCode], map: "PostCodeAlias_postCode_idx")
+}
+
+model componentpermission {
+  id          String        @id
+  postId      String
+  componentId String
+  canView     Boolean       @default(true)
+  canEdit     Boolean       @default(false)
+  canDelete   Boolean       @default(false)
+  canExecute  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime
+  post        workspacepost @relation(fields: [postId], references: [id], onDelete: Cascade, map: "ComponentPermission_postId_fkey")
+
+  @@unique([postId, componentId], map: "ComponentPermission_postId_componentId_key")
+  @@index([postId], map: "ComponentPermission_postId_idx")
+  @@index([componentId], map: "ComponentPermission_componentId_idx")
+}
+
+model projectrole {
+  id          String   @id
+  projectId   String
+  userId      String
+  role        String
+  permissions Json?
+  assignedAt  DateTime @default(now())
+  updatedAt   DateTime
+
+  @@unique([projectId, userId], map: "ProjectRole_projectId_userId_key")
+  @@index([projectId], map: "ProjectRole_projectId_idx")
+  @@index([userId], map: "ProjectRole_userId_idx")
+}
+
+model apiusage {
+  id           String   @id
+  userId       String
+  endpoint     String
+  method       String   @default("GET")
+  timestamp    DateTime @default(now())
+  responseCode Int?
+  latencyMs    Int?
+
+  @@index([endpoint], map: "ApiUsage_endpoint_idx")
+  @@index([timestamp], map: "ApiUsage_timestamp_idx")
+  @@index([userId], map: "ApiUsage_userId_idx")
+}
+
+enum UserStatus {
+  active
+  inactive
+  banned
+  deleted
+  deleting
+}
+
+enum workspace_type {
+  PERSONAL
+  ENTERPRISE
+}
+
+enum workspacemember_role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum workspaceinvitation_role {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+model userdevice {
+  id            String    @id @default(cuid())
+  userId        String
+  deviceName    String
+  deviceType    String    @default("web")
+  browser       String?
+  os            String?
+  ipAddress     String?
+  lastActiveAt  DateTime  @default(now())
+  lastAccessTime DateTime @default(now()) @map("last_access_time")
+  createdAt     DateTime  @default(now())
+  isCurrent     Boolean   @default(false)
+  user          user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserDevice_userId_fkey")
+
+  @@index([userId], map: "UserDevice_userId_idx")
+  @@index([lastActiveAt], map: "UserDevice_lastActiveAt_idx")
+}
+
+model workspacekickhistory {
+  id             String   @id @default(cuid())
+  workspaceId    String
+  workspaceName  String
+  userId         String
+  kickedBy       String
+  kickedByName   String?
+  reason         String?
+  createdAt      DateTime @default(now())
+  user           user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "WorkspaceKickHistory_userId_fkey")
+
+  @@index([workspaceId], map: "WorkspaceKickHistory_workspaceId_idx")
+  @@index([userId], map: "WorkspaceKickHistory_userId_idx")
+  @@index([createdAt], map: "WorkspaceKickHistory_createdAt_idx")
+}
+
+model accountappeal {
+  id             String    @id
+  userId         String
+  userAccount    String
+  userName       String?
+  userPhone      String?
+  userEmail      String?
+  banReason      String?   @db.Text
+  appealReason   String    @db.Text
+  appealEvidence String?   @db.Text
+  contactInfo    String?
+  status         String    @default("pending")
+  businessType   String?   @default("账号解封申诉")
+  adminId        String?
+  adminName      String?
+  adminComment   String?   @db.Text
+  processedAt    DateTime?
+  createdAt      DateTime
+  updatedAt      DateTime
+  user           user      @relation(fields: [userId], references: [id], onDelete: Cascade, map: "AccountAppeal_userId_fkey")
+
+  @@index([userId], map: "idx_userId")
+  @@index([status], map: "idx_status")
+  @@index([createdAt], map: "idx_createdAt")
+  @@map("AccountAppeal")
+}
+
+// ============ PRD v2.0 新增表 ============
+
+// I-03 数据库会话兜底表：即使 Redis 丢失，登录拦截器也能查此表拒绝过期 Token
+model usersession {
+  id                String   @id @default(cuid())
+  userId            String
+  deviceId          String
+  sessionToken      String   @unique @map("session_token")
+  refreshTokenHash  String   @map("refresh_token_hash")
+  absoluteExpireAt  DateTime @map("absolute_expire_at")
+  idleExpireAt      DateTime @map("idle_expire_at")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  user              user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "UserSession_userId_fkey")
+
+  @@index([userId], map: "UserSession_userId_idx")
+  @@index([sessionToken], map: "UserSession_sessionToken_idx")
+  @@index([absoluteExpireAt], map: "UserSession_absoluteExpireAt_idx")
+  @@map("user_session")
+}
+
+// E-03 网关黑名单（IP/User）数据库兜底：PRD 原意用 Redis，本仓库以 MySQL 等价实现
+model gatewayblacklist {
+  id        String   @id @default(cuid())
+  type      String // "ip" | "user"
+  target    String // IP 地址 或 userId
+  reason    String?
+  expireAt  DateTime @map("expire_at")
+  createdAt DateTime @default(now())
+
+  @@index([type, target], map: "GatewayBlacklist_type_target_idx")
+  @@index([expireAt], map: "GatewayBlacklist_expireAt_idx")
+  @@map("gateway_blacklist")
+}
+
+// E-04 Step-up 二次鉴权临时令牌：PRD 原意存 Redis(3min)，本仓库以 MySQL 等价实现
+model stepuptoken {
+  id        String   @id @default(cuid())
+  userId    String
+  operation String
+  code      String
+  expireAt  DateTime @map("expire_at")
+  createdAt DateTime @default(now())
+  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade, map: "StepUpToken_userId_fkey")
+
+  @@index([userId, operation], map: "StepUpToken_userId_operation_idx")
+  @@index([expireAt], map: "StepUpToken_expireAt_idx")
+  @@map("stepup_token")
+}
+
+// KN-CAT-V2 知识库个人分类：普通用户自建分类，仅创建人可见、可自删；
+// 与 systemconfig 中的系统内置分类（管理员管理、全员可见）共同构成分类体系。
+// name 全局唯一（含系统分类），避免 document.category 字符串归属歧义。
+model knowledgecategory {
+  id        String   @id
+  name      String   @unique
+  creatorId String
+  createdAt DateTime @default(now())
+  @@map("knowledge_category")
+}
+
+// G-02 系统维护模式持久化（替代进程内存变量，确保多实例一致）
+model systemconfig {
+  key       String   @id
+  value     String?  @db.MediumText
+  updatedAt DateTime @updatedAt
+  @@map("system_config")
+}
+
+// ============ 组件目录（唯一数据源，禁止前端/后端代码写死组件信息） ============
+
+// 组件目录表：系统全部组件的元数据（名称/描述/分类/图标/标签/计费/预览/输入方式）。
+// 前端与后端一律通过 /api/studio?action=catalog 从本表读取，代码中不得再硬编码组件列表。
+model componentcatalog {
+  id              String    @id // C01-C53
+  name            String
+  description     String
+  category        String // 分类 key（BID_PREP / REQ_DESIGN / ...）
+  icon            String
+  tags            Json // string[]
+  isPremium       Boolean   @default(false)
+  /// 预估模型 Token 消耗（AI 实际 token 数）：属「用量度量单位」，不是算力点、更不是计费货币。
+  /// 严禁把该值直接当作应扣算力点；所有扣点必须经算账中心 src/lib/billing/pricing-center.ts 换算。
+  estimatedModelTokens Int       @default(0) @map("estimatedTokens")
+
+  /// 选型模型部署（成本底线计算依据）：记录组件成本估算所选用的底层模型部署，成本底线随之重算
+  costModelDeploymentId String?  @map("cost_model_deployment_id")
+  /// 预估输入 Token（成本底线估算用），默认 4000；同时作为执行防爆阀「预估 Token 预算」基准
+  estimatedInputTokens  Int      @default(4000) @map("estimated_input_tokens")
+  /// 预估输出 Token（成本底线估算用），默认 2000；同时作为执行防爆阀「预估 Token 预算」基准
+  estimatedOutputTokens Int      @default(2000) @map("estimated_output_tokens")
+  /// 系统成本底线（算力点，快照）：costModelDeploymentId + 预估 Token × 全局加价系数，
+  /// 作为「防亏本红线」：管理员配置的最终售价不得低于此值
+  costFloorPoints       Int?     @map("cost_floor_points")
+  /// 业务复杂度：LIGHT / MEDIUM / HEAVY，仅用于定价参考（建议溢价倍数），不影响实际扣点
+  pricingComplexity     String?  @map("pricing_complexity")
+  previewData     Json // { inputMock, outputMock, roiText }
+  businessTags    Json? // string[]
+  inputMode       String    @default("text") // text | file | both
+  accept          String? // 文件上传支持的格式
+  hint            String? // 界面引导文案
+  detail          Json? // 深度详情：{ fullDescription, usage, apiDoc, faq }
+  isDefault       Boolean   @default(false) // 是否为新空间默认装配的 5 套件组件
+  contract        String? // 数据流动契约描述，如 "PDF ➜ 偏离表"
+  keywords        Json? // 智能搜索关键词 string[]，用于需求检索匹配组件
+  sortOrder       Int       @default(0)
+  isPublished     Boolean   @default(true)
+  usageCount      Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  activeContractId String?  @map("active_contract_id")
+  activeContract   componentcontract? @relation("ActiveContractForCatalog", fields: [activeContractId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "ComponentCatalog_activeContractId_fkey")
+  contracts       componentcontract[] @relation("ComponentToContracts")
+
+  @@index([activeContractId], map: "ComponentCatalog_activeContractId_idx")
+  @@index([category], map: "ComponentCatalog_category_idx")
+  @@index([isPublished], map: "ComponentCatalog_isPublished_idx")
+  @@index([sortOrder], map: "ComponentCatalog_sortOrder_idx")
+  @@map("component_catalog")
+}
+
+// 通用组件合同版本表（不可变版本行）
+model componentcontract {
+  id              String    @id @default(cuid())
+  componentId     String    @map("component_id")
+  contractVersion String    @map("contract_version") // 语义化版本号，如 "1.0.0", "1.1.0"
+  lifecycle       String    @default("DRAFT") // DRAFT | PUBLISHED | ARCHIVED
+  description     String?   @db.Text
+  contract        Json      // 完整经过 validateComponentContract 校验的 ComponentContract JSON
+  publishedAt     DateTime? @map("published_at")
+  publishedBy     String?   @map("published_by")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  component       componentcatalog @relation("ComponentToContracts", fields: [componentId], references: [id], onDelete: Restrict, map: "ComponentContract_componentId_fkey")
+  activeForCatalogs componentcatalog[] @relation("ActiveContractForCatalog")
+
+  @@unique([componentId, contractVersion], map: "ComponentContract_componentId_contractVersion_key")
+  @@index([componentId, lifecycle], map: "ComponentContract_componentId_lifecycle_idx")
+  @@map("component_contract")
+}
+
+// 组件分类表：阶段分类的显示名/主题色/组件范围。
+model componentcategory {
+  key       String   @id // BID_PREP / REQ_DESIGN / ...
+  name      String
+  color     String
+  range     String // 如 "C01-C06"
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true) // 启用/停用状态：启用的阶段不可编辑/删除，仅可禁用
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@index([isActive], map: "ComponentCategory_isActive_idx")
+  @@map("component_category")
+}
+
+// 岗位表：预置岗位 + 空间所有者自定义岗位统一定义（名称/徽标/默认组件授权矩阵）。
+// Webhook 事件订阅实体表：支持 Webhooks 真实订阅与事件推发日志
+model webhooksubscription {
+  id             String    @id @default(uuid())
+  userId         String
+  url            String
+  secret         String
+  events         Json      // string[] 存订阅事件
+  active         Boolean   @default(true)
+  successRate    String    @default("100%")
+  lastTriggered  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([userId], map: "Webhook_userId_idx")
+  @@index([active], map: "Webhook_active_idx")
+  @@map("webhooksubscription")
+}
+
+// 账单与交易记录表：记录空间套餐升级、会员订阅、算力充值等真实交易流水，
+// 供计费中心查询、对账与发票导出使用（对应前端 /settings/billing 页面）。
+model billingrecord {
+  id          String   @id
+  userId      String
+  workspaceId String?
+  // 交易类型：PLAN_UPGRADE 空间套餐升级 / MEMBERSHIP 会员订阅 / TOKEN_RECHARGE 算力充值 / REFUND 退款
+  type        String
+  title       String // 交易描述说明
+  // 交易金额，单位：分（与 membershiplevel 价格口径保持一致）
+  amount      Int      @default(0)
+  currency    String   @default("CNY")
+  // 交易状态：SUCCESS 成功 / PENDING 处理中 / FAILED 失败 / REFUNDED 已退款 / EXPIRED 超时未付
+  status      String   @default("SUCCESS")
+  // 支付截止时间：PENDING 订单超时未付由清算任务置 EXPIRED，超时单不再允许入账（大厂订单生命周期标准做法）
+  expiresAt   DateTime?
+  channel     String? // 支付渠道
+  referenceId String? // 关联业务单号（如操作日志 ID）
+  invoiceUrl  String?
+  metadata    Json? // 扩展信息（如套餐升级前后对比）
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId], map: "BillingRecord_userId_idx")
+  @@index([workspaceId], map: "BillingRecord_workspaceId_idx")
+  @@index([status], map: "BillingRecord_status_idx")
+  @@index([createdAt], map: "BillingRecord_createdAt_idx")
+  @@map("billing_record")
+}
+
+// 系统动态配置（key-value，JSON 文本）：供管理员在后台调整而无需发版
+// 例如 key = "ai_pricing_config" 存放 AI 厂商价格表与加价系数。
+// 注意：未执行本迁移前，相关代码会回退到 src/lib/model-rate.ts 的内置默认值，不影响系统运行。
+model systemsetting {
+  id          String   @id @default(cuid())
+  key         String   @unique(map: "SystemSetting_key_key")
+  value       String   @db.Text
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("system_setting")
+}
+
+model tokenpack {
+  id          String   @id
+  name        String
+  points      BigInt
+  price       Float
+  icon        String?  @default("⚡")
+  color       String?  @default("#3182ce")
+  description String?
+  isPopular   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isActive], map: "TokenPack_isActive_idx")
+  @@index([sortOrder], map: "TokenPack_sortOrder_idx")
+}
+
+/// 用户算力钱包：跨空间通用的算力点余额（快照，真源为 pointgrant 分桶剩余量之和）
+/// 说明：钱包中的算力点可在个人空间与企业空间中通用消费。
+model userwallet {
+  id        String   @id
+  userId    String   @unique(map: "UserWallet_userId_key")
+  balance   BigInt   @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId], map: "UserWallet_userId_idx")
+}
+
+/// 算力分桶（发放批次）：每一笔发放（赠送 / 在线充值 / 线下工单入账 / 退款 / 后台调整）
+/// 生成一个独立分桶，记录发放量、剩余量与到期时间。
+/// 消耗时按「最早到期优先」逐桶扣减；到期未用完的桶由到期清算任务清零。
+model pointgrant {
+  id          String    @id
+  /// 归属范围：WALLET 用户钱包（跨空间通用）| WORKSPACE 空间共享池 | PERSONAL_GIFT 个人空间专属赠送
+  scope       String
+  userId      String?
+  workspaceId String?
+  /// 本桶发放总量
+  points      BigInt
+  /// 本桶剩余可用量
+  remaining   BigInt
+  /// 来源类型：GIFT_REGISTER / RECHARGE / OFFLINE_ORDER / MEMBERSHIP / REFUND / MANUAL
+  sourceType  String
+  /// 关联单号（充值订单号 / 工单号 / 流水号）
+  sourceId    String?
+  /// 到期时间，null 表示永不过期（赠送点默认 3 个月有效）
+  expiresAt   DateTime?
+  /// ACTIVE 可用 | EXPIRED 已到期清零 | EXHAUSTED 已用完
+  status      String    @default("ACTIVE")
+  /// 发放人（后台人工入账/审批人）
+  operatorId  String?
+  title       String?
+  remark      String?   @db.Text
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status], map: "PointGrant_userId_status_idx")
+  @@index([workspaceId, status], map: "PointGrant_workspaceId_status_idx")
+  @@index([status, expiresAt], map: "PointGrant_status_expiresAt_idx")
+}
+
+/// 算力点流水总账：所有入账与出账的唯一权威记录，用于明细呈现、统计与对账
+model pointledger {
+  id            String   @id
+  /// 方向：IN 入账 | OUT 出账
+  direction     String
+  /// 类型：GIFT_REGISTER 新用户赠送 | GIFT_EXPIRE 赠送到期清零 | RECHARGE 在线充值
+  ///      OFFLINE_RECHARGE 线下工单入账 | MEMBERSHIP_GRANT 会员额度 | CONSUME 组件消耗
+  ///      REFUND 退回 | MANUAL_ADJUST 后台人工调整
+  type          String
+  /// 归属范围：WALLET | WORKSPACE | PERSONAL_GIFT 个人空间赠送 | PERSONAL_DEDUCTION 个人空间扣减
+  scope         String
+  userId        String?
+  userEmail     String?
+  workspaceId   String?
+  workspaceName String?
+  /// 空间类型：PERSONAL | ENTERPRISE（便于个人/企业消耗分账统计）
+  workspaceType String?
+  /// 操作人（消费者 / 后台操作人 / 审批人）
+  operatorId    String?
+  /// 变动点数（正数，增减由 direction 决定）
+  points        BigInt
+  /// 变动后该账户余额快照（用于对账）
+  balanceAfter  BigInt   @default(0)
+  /// 实付金额（单位：分），赠送/消耗为 0
+  amountCents   Int      @default(0)
+  /// 支付方式：WECHAT_PAY | ALIPAY | OFFLINE_BANK | CONTRACT | SYSTEM | MANUAL
+  paymentMethod String?
+  /// 关联订单号 / 工单号
+  orderNo       String?
+  /// 关联分桶 ID
+  grantId       String?
+  componentId   String?
+  componentName String?
+  taskId        String?
+  title         String
+  remark        String?  @db.Text
+  /// 幂等键（赠送、扣费、入账均需携带，防止重复记账）
+  idempotencyKey String? @unique(map: "PointLedger_idempotencyKey_key")
+  createdAt     DateTime @default(now())
+
+  @@index([userId, createdAt], map: "PointLedger_userId_createdAt_idx")
+  @@index([workspaceId, createdAt], map: "PointLedger_workspaceId_createdAt_idx")
+  @@index([type], map: "PointLedger_type_idx")
+  @@index([direction], map: "PointLedger_direction_idx")
+  @@index([createdAt], map: "PointLedger_createdAt_idx")
+}
+
+/// 模型失败退款恢复记录：记录待退款的完整消费事实，支持管理员查询与幂等重试
+/// 仅记录账务与任务标识，不记录原始材料 / Prompt / API Key
+model refundrecovery {
+  id                    String   @id
+  taskId                String
+  userId                String
+  workspaceId           String
+  /// 消费幂等键（CONSUME:{taskId}），重试时用于再次重建消费结果
+  consumeIdempotencyKey String
+  /// 消费流水 ID 列表（JSON 数组），用于审计与对账
+  consumeLedgerIds      Json
+  /// 消费明细（各来源分桶），用于重建 ConsumeResult 执行原路退款
+  details               Json
+  /// 本次应退款点数
+  points                BigInt   @default(0)
+  /// 需要回滚的月度用量增量
+  monthlyUsedRollback   BigInt   @default(0)
+  /// PENDING | PROCESSING | SETTLED | FAILED | REQUIRES_REVIEW
+  status                String   @default("PENDING")
+  retryCount            Int      @default(0)
+  lastError             String?  @db.Text
+  processingStartedAt   DateTime?
+  leaseUntil            DateTime?
+  /// 租约 fencing token：每次认领生成并校验，阻止旧 Worker 覆盖新 Worker 状态
+  claimToken            String?   @unique(map: "RefundRecovery_claimToken_key")
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([taskId, consumeIdempotencyKey], map: "RefundRecovery_taskId_key_key")
+  @@index([status], map: "RefundRecovery_status_idx")
+  @@index([userId], map: "RefundRecovery_userId_idx")
+}
+
+/// 用户自助退款申请：用户对「已扣费且成功」的任务申请退还算力点，必须经管理员审批后才真正退点。
+/// 本表仅记录申请事实与审批结论；真实退点一律由账务层生成 REFUND 流水，
+/// 杜绝出现「页面显示已退款但无任何账款流水」的虚假状态（refundLedgerId 为唯一可追溯凭证）。
+model refundrequest {
+  id           String   @id
+  taskId       String
+  userId       String
+  workspaceId  String?
+  componentId  String?
+  /// 申请退还的点数（取该任务实际扣除点数）
+  points       Int      @default(0)
+  /// 用户填写的申请原因
+  reason       String   @db.Text
+  /// PENDING（待审批）| APPROVED（已同意并已退点）| REJECTED（已驳回）
+  status       String   @default("PENDING")
+  /// 审批人 userId（管理员 / 超级管理员）
+  adminId      String?
+  /// 审批意见（驳回时必填）
+  adminRemark  String?  @db.Text
+  /// 退点成功后生成的账款流水 ID；为空表示尚未产生真实退款流水
+  refundLedgerId String?
+  createdAt    DateTime @default(now())
+  resolvedAt   DateTime?
+
+  /// 同一用户对同一任务只能有一条申请，幂等防重复
+  @@unique([taskId, userId], map: "RefundRequest_taskId_userId_key")
+  @@index([status, createdAt], map: "RefundRequest_status_createdAt_idx")
+  @@index([userId, createdAt], map: "RefundRequest_userId_createdAt_idx")
+}
+/// 模型供应商（服务端直连配置；API Key 不入库，仅保存环境变量名）
+model modelprovider {
+  id          String   @id
+  /// 供应商名称（平台**稳定标识**，也是合同与 modeldeployment 中的 providerId）：创建后禁止修改
+  name        String   @unique(map: "ModelProvider_name_key")
+  /// 对接协议：本期仅 OPENAI_COMPATIBLE
+  protocol    String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址（不向前端下发完整密钥信息；用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl     String   @db.Text
+  /// API Key 所在环境变量名（禁止把密钥明文写入数据库）
+  apiKeyEnv   String   @default("MODEL_API_KEY")
+  /// API Key 密文（AES-256-GCM，base64）：后台直接录入密钥时落库；为空时回退到 apiKeyEnv 对应环境变量
+  apiKeyCipher String?  @db.Text
+  enabled     Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  /// 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试连接」更新）
+  health      String   @default("unknown")
+  /// 最近一次「测试连接」时间
+  lastTestedAt DateTime?
+
+  /// 该供应商下的模型部署（外键引用 name：providerId 的语义即供应商平台标识 name）
+  deployments modeldeployment[]
+
+  @@index([enabled], map: "ModelProvider_enabled_idx")
+}
+
+/// 具体模型部署（含上下文限制与价格配置）
+model modeldeployment {
+  id            String   @id
+  /// 供应商平台标识 = modelprovider.name（数据库外键固化该语义），合同中的 providerId 同义
+  providerId    String
+  /// 平台内模型标识（合同中的 modelId）
+  modelId       String
+  /// 供应商侧真实模型名（调用时实际下发）
+  upstreamModel String
+  displayName   String   @default("")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 模型能力声明（规范化 JSON 字符串数组）。
+  /// 取值必须来自抽象能力白名单（如 TEXT_GENERATION / STRUCTURED_OUTPUT / VISION / LONG_CONTEXT / FILE_ANALYSIS），
+  /// 严禁写入具体厂商或模型名；contextLimit 不得作为能力替代表达。
+  capabilities  Json     @default("[]")
+  enabled       Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  /// 连通性健康状态：healthy 健康 | error 异常 | unknown 未探测（由「测试通道」更新，与供应商同口径）
+  health        String   @default("unknown")
+  /// 最近一次「测试通道」时间
+  lastTestedAt  DateTime?
+
+  /// 价格（唯一真源 modelpricing）；删除部署时级联删除，避免价格孤儿
+  pricing       modelpricing?
+  /// 时段价格覆盖（删除部署时级联删除）
+  periods      modelpricingperiod[]
+  /// 所属供应商（外键锁定 providerId → modelprovider.name，禁止悬挂引用）
+  provider      modelprovider @relation(fields: [providerId], references: [name], onDelete: Restrict, onUpdate: Restrict, map: "ModelDeployment_providerId_fkey")
+  /// 被空间模型策略引用为默认模型（RESTRICT：被引用时数据库层面禁止删除）
+  defaultInPolicies workspace_model_policy[]
+  /// 该部署的禁用计划（立即/定时），级联删除
+  disableSchedules modeldisableschedule[]
+
+  @@unique([providerId, modelId], map: "ModelDeployment_providerId_modelId_key")
+  @@index([providerId], map: "ModelDeployment_providerId_idx")
+  @@index([enabled], map: "ModelDeployment_enabled_idx")
+}
+
+/// 模型禁用计划：支持「立即 / 定时」禁用。到点由 cron（/api/cron/model-disable-sweep）执行：
+/// 翻 enabled=false、把受影响空间默认替换为替代模型、精准站内信通知受影响 Owner、写审计。
+model modeldisableschedule {
+  id                      String    @id @default(uuid())
+  /// 目标模型部署（删除部署时级联清理计划）
+  deploymentId            String
+  /// 生效时间（立即禁用=创建即由调用方处理；定时=到点由 cron 处理）
+  effectiveAt             DateTime
+  /// 临时替代模型：受影响"默认模型"将被替换为它；为空=仅下线、不替换（默认交由用户重选）
+  replacementDeploymentId String?
+  /// 禁用原因（写入审计与站内信，如"因 OpenAI 欠费紧急下线"）
+  reason                  String?
+  /// 状态：PENDING 待生效 | DONE 已生效 | CANCELLED 已取消
+  status                  String    @default("PENDING")
+  /// 操作人（平台管理员 userId）
+  createdBy               String?
+  createdAt               DateTime  @default(now())
+  processedAt             DateTime?
+  /// 生效时的影响面快照（JSON：{ asDefault, inWhitelist, workspaceIds }）
+  impact                  Json?
+
+  deployment modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelDisableSchedule_deploymentId_fkey")
+
+  @@index([status, effectiveAt], map: "ModelDisableSchedule_status_effectiveAt_idx")
+}
+
+/// 模型价格（供应商成本与用户售价分开保存；单位：微元 / 100 万 Token，1 微元 = 1e-6 元）
+/// 说明：不使用「整数分/1K」作为唯一单位，以支持低价模型（如 0.2 分/1K = 2 元/百万 = 2_000_000 微元）与元/百万小数。
+model modelpricing {
+  id          String   @id
+  deploymentId String  @unique(map: "ModelPricing_deploymentId_key")
+  currency    String   @default("CNY")
+
+  /// 正式外键级联：删除模型部署时同事务级联删除对应价格，杜绝价格孤儿
+  deployment  modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelPricing_deploymentId_fkey")
+
+  /// —— 供应商成本（平台侧支出）——
+  costInputMicrosPerMillion      Int?
+  costOutputMicrosPerMillion     Int?
+  costCacheReadMicrosPerMillion  Int?
+  costCacheWriteMicrosPerMillion Int?
+
+  /// —— 用户售价（对外扣点依据，与成本分离）——
+  priceInputMicrosPerMillion      Int?
+  priceOutputMicrosPerMillion     Int?
+  priceCacheReadMicrosPerMillion  Int?
+  priceCacheWriteMicrosPerMillion Int?
+
+  /// 价格来源：UNVERIFIED 未验证 | OBSERVED_ONLY 仅观测数据 | VERIFIED 供应商价目表已确认
+  priceSource String @default("UNVERIFIED")
+  /// 价格状态：UNCONFIGURED 未配置 | FREE 明确免费 | OBSERVED_ONLY | VERIFIED
+  priceStatus String @default("UNCONFIGURED")
+  /// 价格来源（计费口径）：PLATFORM 平台模型注册表 | USER_BYOK 用户自带模型（按官方价折算后收服务费）
+  priceOrigin String @default("PLATFORM")
+  /// 平台加价率（基点，1bp = 0.01%）；非空时覆盖全局加价系数 k（按模型覆盖）
+  markupRateBps Int?
+  /// 价格版本（每次改价递增）
+  priceVersion Int @default(1)
+  /// 价格生效时间
+  effectiveFrom DateTime?
+
+  /// 通用规则容器（JSON，可空，读取按 "{}" 处理）：承载「任何模型任何规则」的非标定价信息，
+  /// 例如多币种参考价（usd）、订阅套餐积分抵扣系数（subscriptionPointDeduction）、
+  /// 缓存存储计费标记（cacheStorage）、厂商特殊计费口径等。
+  /// 说明：成本/售价主口径仍以上述微元字段为准；rules 仅作扩展元数据，不得替代主价格字段参与结算。
+  rules Json?
+
+  updatedBy String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// 模型时段价格（在「主流价」modelpricing 之上叠加的时段覆盖价）
+/// 生效规则（周计划 + 日期区间，二选一或叠加）：
+///   - 周计划：weekdays（1=周一..7=周日，逗号分隔，null=每天）+ startTime/endTime（HH:mm，每天窗口）
+///   - 日期区间：startDate/endDate（含当日，用于节假日/自定义绝对区间）
+/// 结算时按当前时钟+日期挑「enabled 且命中且 priority 最高」的时段价；无命中则回退主流价。
+model modelpricingperiod {
+  id          String  @id @default(uuid())
+  deploymentId String
+  deployment  modeldeployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade, map: "ModelPricingPeriod_deploymentId_fkey")
+
+  /// 时段名称（管理员自定义，如「闲时」「国庆」）
+  name String
+  /// 类型：IDLE 闲时 | PEAK 高峰 | HOLIDAY 节假日 | CUSTOM 自定义（仅用于排序与展示）
+  kind String @default("CUSTOM")
+  /// 是否启用（禁用后结算忽略该时段）
+  enabled Boolean @default(true)
+  /// 优先级（数值大者优先；同级按 HOLIDAY>PEAK>IDLE>CUSTOM）
+  priority Int @default(0)
+
+  /// 周计划：星期几（1=周一..7=周日），逗号分隔；null=每天
+  weekdays String?
+  /// 每天起止时间 HH:mm（周计划窗口用，不支持跨天）
+  startTime String?
+  endTime   String?
+
+  /// 日期区间（节假日/自定义绝对区间用，含当日）
+  startDate DateTime?
+  endDate   DateTime?
+
+  /// —— 供应商成本（平台侧支出）——
+  costInputMicrosPerMillion      Int?
+  costOutputMicrosPerMillion     Int?
+  costCacheReadMicrosPerMillion  Int?
+  costCacheWriteMicrosPerMillion Int?
+
+  /// —— 用户售价（对外扣点依据）——
+  priceInputMicrosPerMillion      Int?
+  priceOutputMicrosPerMillion     Int?
+  priceCacheReadMicrosPerMillion  Int?
+  priceCacheWriteMicrosPerMillion Int?
+
+  priceSource String @default("UNVERIFIED")
+  priceStatus String @default("UNCONFIGURED")
+  markupRateBps Int?
+  priceVersion Int @default(1)
+  /// 快照展示用：取 startDate
+  effectiveFrom DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deploymentId])
+}
+
+/// 模型成本观测数据（如「综合有效成本」），**仅用于成本分析与运营报表，不得作为输入/输出官方单价**
+model modelcostobservation {
+  id                              String   @id
+  providerId                      String
+  modelId                         String
+  /// 观测口径：OBSERVED_BLENDED_COST
+  metric                          String   @default("OBSERVED_BLENDED_COST")
+  currency                        String   @default("USD")
+  totalTokens                     Int
+  inputTokens                     Int
+  outputTokens                    Int
+  cacheTokens                     Int
+  nonCacheTokens                  Int
+  requestCount                    Int
+  /// 总费用（微美元，1 微美元 = 1e-6 美元）
+  totalCostMicrosUsd              Int
+  /// 综合有效成本（微美元 / 100 万 Token，含缓存）
+  effectiveCostPerMillionMicrosUsd Int
+  /// 不含缓存的综合成本（微美元 / 100 万 Token）
+  nonCacheCostPerMillionMicrosUsd  Int
+  note                            String?  @db.Text
+  createdAt                       DateTime @default(now())
+
+  @@index([providerId, modelId], map: "ModelCostObservation_provider_model_idx")
+}
+
+/// 空间模型策略：默认模型与允许模型白名单
+model workspace_model_policy {
+  id          String   @id
+  workspaceId String   @unique(map: "WorkspaceModelPolicy_workspaceId_key")
+  /// 默认模型部署 ID（外键 RESTRICT：被引用时数据库层面禁止删除该部署）
+  defaultDeploymentId   String?
+  /// 允许的部署 ID 列表（JSON 数组；非空时启用白名单限制）
+  /// 注意：JSON 无法建立数据库外键，其引用完整性由 model-registry-lock 的命名锁 + 接口校验共同保证
+  allowedDeploymentIds  Json     @default("[]")
+  /// 空间级禁用清单（JSON 数组）：即使平台默认免费或已额外开通，在此清单中的部署也不可用
+  /// 用于支持「有效模型 = 平台默认免费 + 额外开通 - 空间禁用」的三段式计算
+  disabledDeploymentIds Json     @default("[]")
+  defaultDeployment     modeldeployment? @relation(fields: [defaultDeploymentId], references: [id], onDelete: Restrict, onUpdate: Restrict, map: "WorkspaceModelPolicy_defaultDeploymentId_fkey")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// 算力点提升申请：用户为所在空间申请提升额度，管理员审批通过后入账。
+/// 复用现有算力分桶(pointgrant)入账，不新建平行余额表，避免双账本。
+model quotaapply {
+  id          String    @id @default(uuid())
+  workspaceId String
+  userId      String
+  /// 申请提升的算力点数量
+  applyPoints BigInt
+  /// 申请理由（用户填写）
+  reason      String?   @db.Text
+  /// PENDING 待审批 | APPROVED 已通过 | REJECTED 已拒绝
+  status      String    @default("PENDING")
+  /// 审批人
+  adminId     String?
+  /// 实际批准的算力点数量（审批时可修改）
+  approvedPoints BigInt?
+  /// 审批意见 / 拒绝理由
+  adminRemark String?   @db.Text
+  /// 审批后入账的流水号（pointledger.id）
+  ledgerId    String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, createdAt], map: "QuotaApply_status_createdAt_idx")
+  @@index([workspaceId, status], map: "QuotaApply_workspaceId_status_idx")
+}
+
+/// 平台级默认模型池：管理员配置的「所有新空间默认可用」的模型清单。
+/// FREE = 默认免费模型（新空间自动继承）；PAID = 默认付费模型（不自动开通，仅作为可申请/可额外开通的候选）。
+/// 与旧的单值 PLATFORM_DEFAULT_DEPLOYMENT_ID 并存：后者仅作为「未显式设默认」时的兜底。
+model platformdefaultmodel {
+  id           String   @id @default(uuid())
+  /// 平台内模型标识（modeldeployment.id）
+  deploymentId String
+  /// FREE 默认免费（自动继承） | PAID 默认付费（需额外开通）
+  kind         String   @default("FREE")
+  /// 排序权重（数值大者靠前，仅影响后台展示顺序）
+  sortOrder    Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  /// 同一部署在同一 kind 下唯一，避免重复配置
+  @@unique([deploymentId, kind], map: "PlatformDefaultModel_deploymentId_kind_key")
+  @@index([kind, enabled], map: "PlatformDefaultModel_kind_enabled_idx")
+}
+
+/// 空间自带模型（BYO：Bring Your Own Model）
+/// 由空间所有者/管理员配置，覆盖该空间的默认执行模型；平台仍按此处配置的价格向用户收费。
+/// API Key 以 AES-256-GCM 密文落库（apiKeyCipher），明文密钥绝不写入数据库。
+/// 一个空间至多一条有效 BYO 配置（workspaceId 唯一）。
+model workspace_byo_model {
+  id            String   @id @default(uuid())
+  workspaceId   String   @unique(map: "WorkspaceByoModel_workspaceId_key")
+  /// 展示名（同时作为调用时下发的 upstreamModel）
+  label         String
+  /// 供应商（厂商）名称，如 DeepSeek / OpenAI / Ollama / 通义千问
+  providerName  String   @default("")
+  /// 对接协议：本期仅 OPENAI_COMPATIBLE
+  protocol      String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址（用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl       String   @db.Text
+  /// API Key 密文（AES-256-GCM base64）
+  apiKeyCipher  String   @db.Text
+  /// 模型能力声明（规范化 JSON 字符串数组，取值须来自抽象能力白名单）
+  capabilities  Json     @default("[]")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 是否启用（禁用则回落到空间/平台默认模型）
+  enabled       Boolean  @default(true)
+  /// 是否允许空间成员共享使用（默认 true；false 时仅空间所有者可使用该自带模型）
+  shareWithMembers Boolean @default(true)
+  /// —— 厂商官方单价（微元 / 100 万 Token）——【商业化方案 B】
+  /// BYO 下平台不承担厂商成本，此处登记的是「厂商官方单价」，不是平台售价。
+  /// 对外扣点 = 官方单价折算点数 ×（1 + 服务费费率 billing.byokServiceRateBps，默认 15%）。
+  /// 未登记（NULL）时算账中心（src/lib/billing/pricing-center.ts）一律阻断估价，绝不猜测默认价。
+  priceInputMicrosPerMillion   Int?
+  priceOutputMicrosPerMillion  Int?
+  priceStatus   String   @default("UNCONFIGURED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceId], map: "WorkspaceByoModel_workspaceId_idx")
+}
+
+/// 中央「我的模型库」定义：归属某个用户，集中维护端点/密钥/能力/单价。
+/// 一处维护、多处引用：通过 user_byo_model_assignment 绑定到多个空间。
+model user_byo_model_def {
+  id            String   @id @default(uuid())
+  /// 模型库归属用户（创建者）
+  ownerUserId   String
+  /// 展示名（同时作为调用时下发的 upstreamModel）
+  label         String
+  /// 供应商（厂商）名称，如 DeepSeek / OpenAI / Ollama / 通义千问
+  providerName  String   @default("")
+  /// 对接协议：OPENAI_COMPATIBLE / ANTHROPIC / GEMINI
+  protocol      String   @default("OPENAI_COMPATIBLE")
+  /// 服务端直连地址（用户可输入，统一为 TEXT 避免超长 URL 落库报错）
+  baseUrl       String   @db.Text
+  /// API Key 密文（AES-256-GCM base64）；库类型必须为 TEXT 以容纳密文（MySQL 下 String 默认 varchar(191) 会在长密钥时报错）
+  apiKeyCipher  String   @db.Text
+  /// 模型能力声明（规范化 JSON 字符串数组）
+  capabilities  Json     @default("[]")
+  /// 上下文上限（tokens）
+  contextLimit  Int      @default(32000)
+  /// 厂商官方单价（微元 / 100 万 Token）
+  priceInputMicrosPerMillion   Int?
+  priceOutputMicrosPerMillion  Int?
+  priceStatus   String   @default("UNCONFIGURED")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments   user_byo_model_assignment[]
+
+  @@index([ownerUserId], map: "UserByoModelDef_ownerUserId_idx")
+}
+
+/// 中央模型库 → 空间的绑定关系（多空间引用）。
+/// 单空间在任一时刻仅允许绑定到一个模型定义（写入时清理同空间的其他绑定，保证 materialize 唯一）。
+model user_byo_model_assignment {
+  id              String   @id @default(uuid())
+  /// 关联的中央模型库定义
+  defId           String
+  /// 绑定的工作空间
+  workspaceId     String
+  /// 该空间内是否启用（禁用则回落到空间/平台默认模型）
+  enabled         Boolean  @default(true)
+  /// 是否允许空间成员共享使用（false 时仅空间所有者可使用）
+  shareWithMembers Boolean @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  def             user_byo_model_def @relation(fields: [defId], references: [id], onDelete: Cascade)
+
+  @@unique([defId, workspaceId], map: "UserByoAssignment_def_workspace_key")
+  @@index([workspaceId], map: "UserByoAssignment_workspaceId_idx")
+  @@index([defId], map: "UserByoAssignment_defId_idx")
+}
+
+/// 模型使用申请（普通成员 → 空间所有者审批）。
+/// 仅普通成员（MEMBER）可发起；空间管理员(ADMIN)与所有者(OWNER)无需此流程（可直接设默认）。
+/// 审批通过后，按 (userId, workspaceId) 落地到 workspace_member_model_preference，仅改变该申请人默认模型，不影响他人。
+model modelapplication {
+  id            String   @id @default(uuid())
+  workspaceId   String // 申请所属工作空间
+  applicantId   String // 申请人 userId
+  applicantName String? // 冗余：申请人展示名（便于所有者后台展示）
+  deploymentId  String // 申请使用的系统模型部署 id（白名单内、非空间默认）
+  modelLabel    String? // 冗余：申请模型展示名
+  providerName  String? // 冗余：供应商名
+  reason        String? @db.Text // 申请事由
+  status        String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  reviewerId    String? // 审批人（空间所有者）userId
+  reviewerName  String? // 冗余：审批人展示名
+  rejectReason  String? @db.Text // 拒绝原因（拒绝时必填）
+  reviewedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([workspaceId], map: "ModelApplication_workspaceId_idx")
+  @@index([applicantId], map: "ModelApplication_applicantId_idx")
+  @@index([status], map: "ModelApplication_status_idx")
+}
+
+/// 成员级获批默认模型（按 用户×空间 唯一）。
+/// 由模型使用申请审批通过 upsert 写入：仅影响该成员在本空间的默认模型，不影响其他成员（满足“变更范围仅限本人”）。
+model workspace_member_model_preference {
+  id           String   @id @default(uuid())
+  workspaceId  String
+  userId       String
+  deploymentId String // 获批默认的系统模型部署 id（与 modeldeployment.id 对应）
+  isAuto       Boolean  @default(false) // true=智能调度/auto；审批通过固定为具体模型时为 false
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([workspaceId, userId], map: "WSMemberModelPref_workspace_user_key")
+  @@index([workspaceId], map: "WSMemberModelPref_workspaceId_idx")
+  @@index([userId], map: "WSMemberModelPref_userId_idx")
+}
+/// 模型注册表「引用完整性」串行锁（单行单例）。
+/// 通过 SELECT ... FOR UPDATE 获取：InnoDB 行锁由数据库持有至事务 COMMIT/ROLLBACK 自动释放，
+/// 因此保护边界必然覆盖到「提交完成」，不存在「提交前提前释放锁」的窗口
+/// （这是相对 MySQL 命名锁 GET_LOCK/RELEASE_LOCK 的关键区别：后者需手工释放，无法与 COMMIT 对齐）。
+model registrylock {
+  id        String   @id
+  createdAt DateTime @default(now())
+}
+
+model tokenrechargeorder {
+  id            String    @id
+  orderNo       String    @unique(map: "TokenRechargeOrder_orderNo_key")
+  workspaceId   String
+  workspaceName String?
+  /// 入账范围：WALLET 个人钱包 | WORKSPACE 企业空间共享池
+  scope         String
+  applicantId   String
+  applicantName String?
+  packId        String?
+  packName      String?
+  points        BigInt
+  /// 应付金额（单位：分）
+  amountCents   Int       @default(0)
+  /// OFFLINE_BANK 对公转账 | CONTRACT 合同结算
+  paymentMethod String    @default("OFFLINE_BANK")
+  /// 发票信息
+  invoiceTitle  String?
+  taxNo         String?
+  bankName      String?
+  bankAccount   String?
+  /// 付款凭证（截图/回单链接或 base64 标识）
+  voucherUrl    String?
+  remark        String?   @db.Text
+  /// PENDING 待审批 | APPROVED 审批通过待收款 | PAID 已收款已入账
+  /// REJECTED 已驳回 | CANCELLED 已撤销
+  status        String    @default("PENDING")
+  reviewerId    String?
+  reviewerName  String?
+  reviewNote    String?   @db.Text
+  reviewedAt    DateTime?
+  paidAt        DateTime?
+  /// 入账后生成的流水号
+  ledgerId      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([workspaceId, status], map: "TokenRechargeOrder_workspaceId_status_idx")
+  @@index([applicantId], map: "TokenRechargeOrder_applicantId_idx")
+  @@index([status, createdAt], map: "TokenRechargeOrder_status_createdAt_idx")
+}
+
+// ============================================================
+// 资料治理模块：移除单 / 资料级权限 / 版本 / 评论 / 分享
+// 说明：以下表仅以 String 保存关联 ID，不建立 Prisma 关系，
+// 避免改动既有 model，且移除记录需长期留存、不随资料级联删除。
+// ============================================================
+
+// 资料移除单：管理员移除资料的原因与执行记录，支持恢复
+model documentremoval {
+  id            String    @id
+  documentId    String
+  workspaceId   String
+  titleSnapshot String
+  uploaderId    String?
+  removedBy     String
+  reasonCode    String // VIOLATION 违规 | EXPIRED 过期 | COPYRIGHT 版权 | OTHER 其他
+  reasonDetail  String?   @db.Text
+  // 删除申请状态：PENDING 待管理员审核（普通成员删除自己资料）| APPROVED 已生效移除 | REJECTED 已驳回
+  status        String   @default("APPROVED")
+  // 管理员驳回删除申请时填写的意见，回写给申请人
+  rejectReason  String?   @db.Text
+  notifiedCount Int       @default(0)
+  removedAt     DateTime  @default(now())
+  restoredAt    DateTime?
+  restoredBy    String?
+  // 上传人确认接收移除：确认后资料转入个人私密，可在治理中心申请恢复
+  confirmedAt   DateTime?
+  confirmedBy   String?
+  // 上传人申请恢复：记录申请时间与说明，避免重复申请并更新遮罩层状态
+  restoreRequestedAt    DateTime?
+  restoreRequestMessage String?   @db.Text
+
+  @@index([workspaceId, removedAt], map: "DocumentRemoval_workspaceId_removedAt_idx")
+  @@index([documentId], map: "DocumentRemoval_documentId_idx")
+  @@index([workspaceId, status], map: "DocumentRemoval_workspaceId_status_idx")
+  @@index([workspaceId, confirmedAt], map: "DocumentRemoval_workspaceId_confirmedAt_idx")
+}
+
+// 资料级操作权限：可精确授予某成员，或按角色 / 岗位批量授予
+model assetpermission {
+  id               String   @id
+  workspaceId      String
+  userId           String?
+  roleScope        String?
+  positionCode     String?
+  canView          Boolean  @default(true)
+  canUpload        Boolean  @default(false)
+  canEdit          Boolean  @default(false)
+  canDelete        Boolean  @default(false)
+  canShare         Boolean  @default(false)
+  canComment       Boolean  @default(true)
+  canManageVersion Boolean  @default(false)
+  grantedBy        String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([workspaceId], map: "AssetPermission_workspaceId_idx")
+  @@index([workspaceId, userId], map: "AssetPermission_workspaceId_userId_idx")
+}
+
+// 资料版本快照：编辑前自动留存，支持对比与回滚
+model documentversion {
+  id         String   @id
+  documentId String
+  versionNo  Int
+  title      String
+  content    String   @db.Text
+  changeNote String?
+  createdBy  String
+  createdAt  DateTime @default(now())
+
+  @@unique([documentId, versionNo], map: "DocumentVersion_documentId_versionNo_key")
+  @@index([documentId, createdAt], map: "DocumentVersion_documentId_createdAt_idx")
+}
+
+// 空间级套餐配置表：供空间创建初始化与空间套餐升级使用，后台可配置
+model workspaceplan {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  name          String
+  description   String
+  priceMonthly  Int      @default(0)
+  priceYearly   Int      @default(0)
+  maxComponents Int      @default(0)
+  maxMembers    Int      @default(0)
+  maxStorage    Int      @default(0)
+  maxApiCalls   Int      @default(0)
+  tokenLimit    Int      @default(0)
+  /// 并发任务数上限（同一空间同时运行的任务数）；0 表示沿用系统默认
+  maxConcurrency Int     @default(0)
+  /// 单次上传文件大小上限（字节）；0 表示沿用合同默认上限
+  maxSingleFileBytes BigInt @default(0)
+  /// 可分配系统模型数量上限；0 表示不限制
+  maxModelAllocations Int @default(0)
+  /// 自建模型（BYO）数量上限；0 表示不限制
+  maxByoModels Int @default(0)
+  /// 新空间一次性体验额度赠送（企业套餐差异化）：{ enabled, points, expireDays }
+  /// 为空时由代码常量 WORKSPACE_PLANS 兜底；写入后优先于常量
+  trialGift     Json?
+  features      Json?
+  sortOrder     Int      @default(0)
+  purchasable   Boolean  @default(true)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([sortOrder], map: "WorkspacePlan_sortOrder_idx")
+  @@index([isActive], map: "WorkspacePlan_isActive_idx")
+}
+
+// 资料评论：支持楼中楼回复
+model documentcomment {
+  id          String   @id
+  documentId  String
+  workspaceId String
+  userId      String
+  userName    String?
+  content     String   @db.Text
+  parentId    String?
+  createdAt   DateTime @default(now())
+
+  @@index([documentId, createdAt], map: "DocumentComment_documentId_createdAt_idx")
+  @@index([workspaceId], map: "DocumentComment_workspaceId_idx")
+}
+
+// 资料分享链接：token 访问，支持过期与吊销
+model documentshare {
+  id          String    @id
+  documentId  String
+  workspaceId String
+  token       String    @unique
+  permission  String    @default("view") // view | download
+  expiresAt   DateTime?
+  accessCount Int       @default(0)
+  revokedAt   DateTime?
+  createdBy   String
+  createdAt   DateTime  @default(now())
+
+  @@index([documentId], map: "DocumentShare_documentId_idx")
+  @@index([workspaceId], map: "DocumentShare_workspaceId_idx")
+}
+
+// 通知受众群组：支撑系统通知的「按角色推送」与「自定义人群推送」
+// type=system：系统角色群组，roleKey 对应 user.role 的值，基础人群由 role 动态算出（不再硬编码）
+// type=custom：自定义群组，人群完全来自 notificationgroupmember 的 include 名单
+model notificationgroup {
+  id          String                     @id @default(cuid())
+  name        String
+  type        String                     @default("custom") // system | custom
+  roleKey     String? // 仅系统群组使用：对应的 user.role 枚举值
+  description String?
+  createdBy   String?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  members     notificationgroupmember[]
+
+  @@index([type], map: "NotificationGroup_type_idx")
+  @@index([roleKey], map: "NotificationGroup_roleKey_idx")
+}
+
+// 群组成员增删名单：exclude=从群组基础人群中剔除，include=额外追加进群组
+// 最终推送人群 = (系统群组基础人群 − exclude) ∪ include
+model notificationgroupmember {
+  id        String             @id @default(cuid())
+  groupId   String
+  userId    String
+  action    String             @default("include") // include | exclude
+  createdAt DateTime           @default(now())
+  group     notificationgroup  @relation(fields: [groupId], references: [id], onDelete: Cascade, map: "NotificationGroupMember_groupId_fkey")
+
+  @@unique([groupId, userId], map: "NotificationGroupMember_groupId_userId_key")
+  @@index([groupId], map: "NotificationGroupMember_groupId_idx")
+  @@index([userId], map: "NotificationGroupMember_userId_idx")
+}
+
+// Phase 2A: 真实 Token 结算预扣记录表
+model tokensettlementhold {
+  id                          String          @id
+  taskId                      String          @unique(map: "TokenSettlementHold_taskId_key")
+  userId                      String
+  workspaceId                 String
+  holdPoints                  BigInt
+  monthlyTokenUsedIncremented BigInt          @default(0)
+  status                      String          @default("HELD") // HELD | SETTLED | RELEASED | REQUIRES_REVIEW
+  idempotencyKey              String          @unique(map: "TokenSettlementHold_idempotencyKey_key")
+  holdDetails                 Json            // 预扣分桶明细（用于原路释放与差额对齐）
+  expiresAt                   DateTime
+  statusChangedAt             DateTime        @default(now())
+  createdAt                   DateTime        @default(now())
+  updatedAt                   DateTime        @updatedAt
+  tokensettlement             tokensettlement?
+
+  @@index([userId, status], map: "TokenSettlementHold_userId_status_idx")
+  @@index([workspaceId, status], map: "TokenSettlementHold_workspaceId_status_idx")
+  @@index([status, expiresAt], map: "TokenSettlementHold_status_expiresAt_idx")
+}
+
+// Phase 2A: 真实 Token 结算流水与审计表
+model tokensettlement {
+  id                          String              @id
+  taskId                      String              @unique(map: "TokenSettlement_taskId_key")
+  userId                      String
+  workspaceId                 String
+  status                      String              @default("HOLD") // HOLD | SETTLED | RELEASED | REQUIRES_REVIEW
+  holdPoints                  BigInt
+  monthlyTokenUsedIncremented BigInt              @default(0)
+  actualPricePoints           BigInt              @default(0)
+  releasedPoints              BigInt              @default(0)
+  supplementPoints            BigInt              @default(0)
+  inputTokens                 BigInt              @default(0)
+  outputTokens                BigInt              @default(0)
+  cacheReadTokens             BigInt              @default(0)
+  cacheWriteTokens            BigInt              @default(0)
+  costMicros                  BigInt?
+  userPriceMicros             BigInt?
+  pricingSnapshot             Json                // 任务发生时绑定的价格快照（历史不可变）
+  settlementVersion           Int                 @default(1)
+  errorCode                   String?
+  auditMessage                String?             @db.Text
+  settledAt                   DateTime?
+  releasedAt                  DateTime?
+  createdAt                   DateTime            @default(now())
+  updatedAt                   DateTime            @updatedAt
+  tokensettlementhold         tokensettlementhold @relation(fields: [taskId], references: [taskId], onDelete: Cascade, map: "TokenSettlement_taskId_fkey")
+
+  @@index([userId, createdAt], map: "TokenSettlement_userId_createdAt_idx")
+  @@index([workspaceId, createdAt], map: "TokenSettlement_workspaceId_createdAt_idx")
+  @@index([status], map: "TokenSettlement_status_idx")
+}
+
+// Phase 2A: 真实 Token 结算异常与超时恢复记录表
+model tokensettlementrecovery {
+  id                  String    @id
+  taskId              String    @unique(map: "TokenSettlementRecovery_taskId_key")
+  userId              String
+  workspaceId         String
+  status              String    @default("PENDING") // PENDING | PROCESSING | SETTLED | RELEASED | REQUIRES_REVIEW
+  recoveryType        String    // SETTLEMENT_FAILED | RELEASE_FAILED | EXPIRED_HOLD_REAP | TASK_WRITE_FAILED
+  retryCount          Int       @default(0)
+  lastError           String?   @db.Text
+  usage               Json?
+  pricingSnapshot     Json?
+  settlementVersion   Int?
+  processingStartedAt DateTime?
+  leaseUntil          DateTime?
+  claimToken          String?   @unique(map: "TokenSettlementRecovery_claimToken_key")
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([status, leaseUntil], map: "TokenSettlementRecovery_status_leaseUntil_idx")
+  @@index([userId], map: "TokenSettlementRecovery_userId_idx")
+}
+
+
+// ─────────────────────────────────────────────────────────────
+// [R0-J1 离线 schema 草案] 原方案 F13 存储操作记录
+// 上线前需执行迁移（prisma migrate dev）并重新生成客户端；
+// 迁移未执行前存储写入诚实拒绝（STORAGE_QUOTA_NOT_READY），请求中不自动 DDL。
+// 回滚：drop TABLE storageoperation 即可，不影响既有表。
+// ─────────────────────────────────────────────────────────────
+model storageoperation {
+  id          String   @id
+  /// 幂等键：同一操作身份重放不重复占用/确认/释放
+  opId        String   @unique
+  workspaceId String
+  userId      String
+  /// RESERVE(预留) | RELEASE(释放)
+  opType      String
+  /// RESERVED 已预留待确认 | CONFIRMED 已确认(文档已创建) | RELEASED 已释放 | PENDING_CLEANUP 待清理(对象状态未知)
+  status      String
+  /// 对象定位（保存成功后回填；未知保存结果为 null → PENDING_CLEANUP）
+  filePath    String?
+  bytes       Int
+  documentId  String?
+  /// 失败/待核实原因
+  note        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([opId])
+}

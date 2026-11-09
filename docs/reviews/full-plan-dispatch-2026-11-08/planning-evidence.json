@@ -1,0 +1,231 @@
+{
+  "capturedAt": "2026-11-08T13:43:18.057Z",
+  "kind": "Complete original-roadmap dispatch package; not implementation or new code acceptance",
+  "reviewerBusinessSourceChanges": 0,
+  "taskCount": 14,
+  "existingTasks": 4,
+  "newTaskNumbers": [
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14
+  ],
+  "originalPlanCoverage": [
+    "R0",
+    "R1",
+    "R2",
+    "R3",
+    "R4",
+    "R5",
+    "original4.2/code-facts F01-F12",
+    "original5-14"
+  ],
+  "tasks": [
+    {
+      "n": 1,
+      "owner": "A",
+      "file": "docs/reviews/R0-parallel-four-batches-2026-11-08/01-A-F14.md",
+      "source": "F14 / R0-K1",
+      "deps": [],
+      "sha256": "495402dcebd15460665c9e75a3a0580fbda0f1c64ef1e92c7e184bf142ad4c9d"
+    },
+    {
+      "n": 2,
+      "owner": "B",
+      "file": "docs/reviews/R0-parallel-four-batches-2026-11-08/02-B-F15.md",
+      "source": "F15",
+      "deps": [],
+      "sha256": "ef27a5ea8c709fb3f49d8eaa4995a3cb1177ec42b225470e78239e969d270079"
+    },
+    {
+      "n": 3,
+      "owner": "A",
+      "file": "docs/reviews/R0-parallel-four-batches-2026-11-08/03-A-F16.md",
+      "source": "F16",
+      "deps": [
+        1
+      ],
+      "sha256": "c9f6dd276a910ecb45a1a1aa11859ce6393e78cfd0fae0dfdeb897d7242db240"
+    },
+    {
+      "n": 4,
+      "owner": "B",
+      "file": "docs/reviews/R0-parallel-four-batches-2026-11-08/04-B-INTEGRATION.md",
+      "source": "R0 integration",
+      "deps": [
+        1,
+        2,
+        3
+      ],
+      "sha256": "afca58c6ccfb7114b42e7a51705996f2edeb55b885baaa4a7e7a5528b9111fea"
+    },
+    {
+      "n": 5,
+      "owner": "A",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/05-A-PAYMENT-FACTS.md",
+      "source": "R1 / original 7.1-7.3,12",
+      "deps": [
+        4
+      ],
+      "sha256": "78ec0e5def54d4dcfe8e160c320aba631e974fe4c4168d1080b7d09b14d14b17"
+    },
+    {
+      "n": 6,
+      "owner": "B",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/06-B-QUOTE-BUDGET.md",
+      "source": "R2 / original 6,7.4,9 / CF-F05",
+      "deps": [
+        4
+      ],
+      "sha256": "34e5ffc173ccfe72a5aa8c08ca7a2b1909e2f7ae6ff0ec7595518093c0e98643"
+    },
+    {
+      "n": 7,
+      "owner": "A",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/07-A-SOURCE-REFUND-ENTITLEMENT.md",
+      "source": "R1 / original 6.1,7.2 / CF-F04,F09",
+      "deps": [
+        5,
+        6
+      ],
+      "sha256": "ca5120fd727b1896b1676948f2bbedbe07c05aeac381d0cc31167a557fe3a41b"
+    },
+    {
+      "n": 8,
+      "owner": "B",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/08-B-TASK-ATTEMPT-RECOVERY.md",
+      "source": "R2 / original 7.4,9",
+      "deps": [
+        5,
+        6
+      ],
+      "contractGate": "Financial API contract from7 required before dependent integration",
+      "sha256": "a5d04b101496730157332d586e18856aff9a775b81c606b4190ec3afbd4e4c1f"
+    },
+    {
+      "n": 9,
+      "owner": "A",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/09-A-ENTERPRISE-LIFECYCLE.md",
+      "source": "R4 / original8.1 and4.2 / CF-F01,F02,F03,F07,F08,F11",
+      "deps": [
+        7,
+        8
+      ],
+      "sha256": "906ffea2719fc71765cb72faa17f5977b1001858d32972b38198c5d3ebe19bd8"
+    },
+    {
+      "n": 10,
+      "owner": "B",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/10-B-FIRST-VALUE.md",
+      "source": "R3 / original5,6.1",
+      "deps": [
+        7,
+        8
+      ],
+      "contractGate": "Enterprise API contract from9 required before dependent UI",
+      "sha256": "5863bfd17f4503ca81ffce2fcefbd8a19891e2bc3f8ef8affab564f5a0352253"
+    },
+    {
+      "n": 11,
+      "owner": "A",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/11-A-OPERATIONS-READINESS.md",
+      "source": "R5 / original8.2,12,13 / CF-F06",
+      "deps": [
+        9,
+        10
+      ],
+      "sha256": "7ea4d70cb62ff3e50f756b8c8f9a1f9facb10fc5537923a292829fa1471eeffe"
+    },
+    {
+      "n": 12,
+      "owner": "B",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/12-B-VALUE-COST-METRICS.md",
+      "source": "R5 / original6.2,10",
+      "deps": [
+        9,
+        10
+      ],
+      "sha256": "a8e70c4407be9048c33a36a6c65fb1a41e9465a88e79e2eef9882cfd1c785617"
+    },
+    {
+      "n": 13,
+      "owner": "A",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/13-A-INTEGRATION.md",
+      "source": "Original9,13 / CF-F10",
+      "deps": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12
+      ],
+      "sha256": "4a4d9c8618b8e50ea56b10eba36e006442df983501214ad7c6306a44a3ee6d3b"
+    },
+    {
+      "n": 14,
+      "owner": "B",
+      "file": "D:/Project Development/ZhiGe-Dockyard/zhige-dockyard-web/docs/reviews/full-plan-dispatch-2026-11-08/14-B-FINAL-VERIFICATION.md",
+      "source": "Original12 and charter acceptance map",
+      "deps": [
+        13
+      ],
+      "sha256": "70d69c8aece72a1d111f5a14f3755af69be8d0f49814103545b6b52232db536a"
+    }
+  ],
+  "sourcePreflight": [
+    {
+      "path": "docs/PROJECT-DEVELOPMENT-CHARTER.md",
+      "sha256": "57dbf5dba894516e1d36889583cef0c73a334995d001daf3680c2193cdb73874"
+    },
+    {
+      "path": "docs/product-business-review-2026-11-05/RESTRUCTURING-PROPOSAL.md",
+      "sha256": "cdbe807f79bbebecc41bb1533d222edb9221515dd68745896bf9747fbcacf22c"
+    },
+    {
+      "path": "docs/code-facts-2026-11-05/REPORT.md",
+      "sha256": "a69b39f247b804e1ec4729ba298f4a583b4709b5182ee5e1e07c9cc35e432abf"
+    },
+    {
+      "path": "src/app/api/payments/notify/wechat/route.ts",
+      "sha256": "eebc2b3edd185d034bc6a7efe725d12d055ab581ea3b861f941251e77d462deb"
+    },
+    {
+      "path": "src/app/api/payments/notify/alipay/route.ts",
+      "sha256": "0be4a7510e2ba6a6c9dbc3357db2d72abfb11fc41afb9db28091d4df83196f67"
+    },
+    {
+      "path": "src/lib/model-cost-admission.ts",
+      "sha256": "57fbb1e36af25851bbb97c9f918937debbee3295913c0a3e1f9221565f13909b"
+    },
+    {
+      "path": "src/lib/token-settlement-service.ts",
+      "sha256": "ac1440924110c3300282b64f0d44f0b583a7a17d0d19f85c44aba7258139a659"
+    },
+    {
+      "path": "src/app/api/open/v1/execute/route.ts",
+      "sha256": "256d75c48de5c63ea2df4548f0d8bfebb3c0ae3a6f4741a94d790f6ed9953d00"
+    }
+  ],
+  "limits": [
+    "No implementation or tests run this turn",
+    "No real DB, vendor, model, payment, secrets, migration or deployment",
+    "No external AGI dispatch or receipt observed",
+    "Existing active development not source-frozen by this planning package",
+    "Commercial decisions and production evidence remain gated; no profitability guarantee"
+  ],
+  "schemaOwnership": "A1 then B4;5-12 fragments only;A13 final integration",
+  "finalIndependentReview": "After14 final same-version handoff in this chat",
+  "skills": [
+    "D:/agents-skills/dispatch-accept-verify/SKILL.md",
+    "D:/agents-skills/evidence-before-done/SKILL.md"
+  ]
+}

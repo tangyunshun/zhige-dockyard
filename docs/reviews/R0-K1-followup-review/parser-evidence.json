@@ -1,0 +1,85 @@
+{
+  "capturedAt": "2026-11-08T12:58:26.149Z",
+  "mode": "Real local workers/parsers/preview GET; tiny fixtures; fake auth/DB/file IO/OCR where explicitly indicated",
+  "observations": [
+    {
+      "name": "png-pixels-positive",
+      "ocrStarts": 0
+    },
+    {
+      "name": "docx-text-inflation-positive",
+      "rejected": true
+    },
+    {
+      "name": "archive-count-positive",
+      "entries": 21,
+      "rejected": true
+    },
+    {
+      "name": "xlsx-expansion-charged-compressed",
+      "compressedBytes": 8614,
+      "actualFixtureExpandedBytes": 15820,
+      "budgetBytes": 8630,
+      "meteredBytes": 8614,
+      "accepted": true
+    },
+    {
+      "name": "html-declared-inflation-positive",
+      "budgetBytes": 8,
+      "rejected": true
+    },
+    {
+      "name": "tiff-byte-pixel-substitution",
+      "declaredPixels": 10000,
+      "budgetPixels": 100,
+      "meteredPixels": 38,
+      "ocrStarts": 1,
+      "fixture": "TIFF header/IFD only; fake OCR, not full raster decode"
+    },
+    {
+      "name": "xlsx-numeric-positive",
+      "oldContains42": true,
+      "newContains42": true,
+      "newAccepted": true,
+      "newTextPrefix": "Product Quantity Widget AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+    },
+    {
+      "name": "legacy-positive-doc",
+      "matchesOld": true,
+      "expectedText": "智慧园区项目立项报告"
+    },
+    {
+      "name": "legacy-positive-ppt",
+      "matchesOld": true,
+      "expectedText": "智慧交通汇报"
+    },
+    {
+      "name": "ocr-recognize-pending-after-terminate",
+      "rootDeadlineMs": 30,
+      "ocrTimeoutMs": 10,
+      "elapsedMs": 100,
+      "terminateAcknowledged": true,
+      "settled": false
+    },
+    {
+      "name": "cached-preview-positive-xlsx",
+      "status": 200,
+      "type": "table"
+    },
+    {
+      "name": "cached-preview-positive-docx",
+      "status": 200,
+      "type": "html"
+    },
+    {
+      "name": "sheet-cell-budget-not-consumed",
+      "actualSheets": 2,
+      "actualCells": 4,
+      "allowedSheets": 1,
+      "allowedCells": 1,
+      "meteredSheets": 0,
+      "meteredCells": 0,
+      "accepted": true
+    }
+  ]
+}

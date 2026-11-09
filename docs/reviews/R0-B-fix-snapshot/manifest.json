@@ -1,0 +1,40 @@
+{
+  "capturedAt": "R0-B batch start baseline",
+  "files": {
+    "src/lib/payment/fulfill.ts": {
+      "sha256": "63371884f259e0eea85bd4552194dd04f9812c98235684c8de9dc257fd226ce0",
+      "bytes": 6204,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__lib__payment__fulfill.ts"
+    },
+    "src/app/api/payments/mock/confirm/route.ts": {
+      "sha256": "7be08326998d6a043bb5a4d9281c2283169f85770bc95ceee4f3a2fd4d0693d8",
+      "bytes": 9991,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__app__api__payments__mock__confirm__route.ts"
+    },
+    "src/app/api/workspace/seat-addon/route.ts": {
+      "sha256": "b4438f10b14f30c48fe5841e8c514e64c8d2f925cd0b5819dd24034cc3d83d28",
+      "bytes": 6133,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__app__api__workspace__seat-addon__route.ts"
+    },
+    "src/app/api/payments/notify/wechat/route.ts": {
+      "sha256": "eebc2b3edd185d034bc6a7efe725d12d055ab581ea3b861f941251e77d462deb",
+      "bytes": 2882,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__app__api__payments__notify__wechat__route.ts"
+    },
+    "src/app/api/payments/notify/alipay/route.ts": {
+      "sha256": "0be4a7510e2ba6a6c9dbc3357db2d72abfb11fc41afb9db28091d4df83196f67",
+      "bytes": 2795,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__app__api__payments__notify__alipay__route.ts"
+    },
+    "src/components/pricing/SeatAddonModal.tsx": {
+      "sha256": "e794f81069497091dee8f77aa11543f7fe78631e3a8a6e70f7f4580741018459",
+      "bytes": 5258,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__components__pricing__SeatAddonModal.tsx"
+    },
+    "src/app/user/pay/mock/page.tsx": {
+      "sha256": "5ce7f505fecd19fdca7bcd8c5a270dc9387a30f0be9e7f7985ace41f33ad0fba",
+      "bytes": 9468,
+      "snapshotCopy": "docs/reviews/R0-B-fix-snapshot/frozen-source/src__app__user__pay__mock__page.tsx"
+    }
+  }
+}

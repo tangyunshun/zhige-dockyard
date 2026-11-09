@@ -19,6 +19,9 @@ import {
   Zap,
 } from "lucide-react";
 import { useToast } from "@/components/Toast";
+import { useEscapeKey } from "@/hooks/useEscapeKey";
+import { maskEmail, formatNumber } from "@/utils/format";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 import { getAuthToken } from "@/utils/auth";
 
 interface DissolveWorkspaceCheckModalProps {
@@ -39,6 +42,9 @@ export function DissolveWorkspaceCheckModal({
   onPassed,
 }: DissolveWorkspaceCheckModalProps) {
   const toast = useToast();
+  // KN-UI：高危清理动作「输入 DELETE」强确认（自查清单指令四）
+  const [cleanupConfirm, setCleanupConfirm] = useState<null | { action: string; label: string; expect: string }>(null);
+  useEscapeKey(!!cleanupConfirm, () => setCleanupConfirm(null));
   const [scanning, setScanning] = useState(true);
   const [scanStep, setScanStep] = useState(0);
   const [scanProgress, setScanProgress] = useState(0);
@@ -108,6 +114,32 @@ export function DissolveWorkspaceCheckModal({
     action: "REMOVE_MEMBERS" | "UNBIND_ASSETS" | "CLEAR_ALL" | "REMOVE_SINGLE_MEMBER" | "UNBIND_SINGLE_ASSET",
     targetId?: string
   ) => {
+    // KN-UI：批量/一键类不可逆操作必须先过「输入 DELETE」强确认弹窗
+    if (action === "CLEAR_ALL" || action === "REMOVE_MEMBERS" || action === "UNBIND_ASSETS") {
+      const labelMap: Record<string, string> = {
+        CLEAR_ALL: "一键清空全部依赖数据",
+        REMOVE_MEMBERS: "批量移出所有成员",
+        UNBIND_ASSETS: "批量解绑所有资产",
+      };
+      setCleanupConfirm({ action, label: labelMap[action], expect: "DELETE" });
+      return;
+    }
+    // 单条移出/解绑也需确认（误触即影响他人）
+    if (action === "REMOVE_SINGLE_MEMBER" || action === "UNBIND_SINGLE_ASSET") {
+      const labelMap2: Record<string, string> = {
+        REMOVE_SINGLE_MEMBER: "移出该成员",
+        UNBIND_SINGLE_ASSET: "解绑该资产",
+      };
+      setCleanupConfirm({ action, label: labelMap2[action], expect: "DELETE" });
+      return;
+    }
+    await executeCleanup(action, targetId);
+  };
+
+  const executeCleanup = async (
+    action: "REMOVE_MEMBERS" | "UNBIND_ASSETS" | "CLEAR_ALL" | "REMOVE_SINGLE_MEMBER" | "UNBIND_SINGLE_ASSET",
+    targetId?: string
+  ) => {
     setCleaning(true);
     try {
       const payload: any = { workspaceId, action };
@@ -140,6 +172,7 @@ export function DissolveWorkspaceCheckModal({
     }
   };
 
+  const checkFailed = !checkData;
   const summary = checkData?.summary || { memberCount: 0, assetCount: 0, pendingInvitationCount: 0 };
   const details = checkData?.details || { members: [], assets: [], pendingInvitations: [] };
   const canDissolve = checkData?.canDissolve === true;
@@ -521,7 +554,7 @@ export function DissolveWorkspaceCheckModal({
                             </div>
                             <div className="flex items-center gap-3">
                               <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-extrabold border border-slate-200/60">
-                                {member.role || "MEMBER"}
+                                {member.role === "OWNER" ? "所有者" : member.role === "ADMIN" ? "管理员" : "协同成员"}
                               </span>
                               <button
                                 disabled={cleaning}
@@ -555,7 +588,7 @@ export function DissolveWorkspaceCheckModal({
                               <div className="min-w-0">
                                 <p className="text-xs font-black text-slate-800 truncate">{asset.name}</p>
                                 <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5">
-                                  分类：<span className="text-slate-600 font-bold">{asset.category || "通用资产"}</span> | 累计调用: <span className="text-blue-600 font-mono font-bold">{asset.usageCount}</span> 次
+                                  分类：<span className="text-slate-600 font-bold">{asset.category || "通用资产"}</span> | 累计调用: <span className="text-blue-600 font-mono font-bold">{formatNumber(asset.usageCount)}</span> 次
                                 </p>
                               </div>
                             </div>
@@ -582,6 +615,13 @@ export function DissolveWorkspaceCheckModal({
           )}
 
         </div>
+
+        {/* KN-UI：检测失败错误横幅（与「真无依赖」区分，自查清单指令四） */}
+        {!scanning && checkFailed && (
+          <div className="px-6 pb-2">
+            <LoadErrorBanner message="合规检测接口失败，无法获取真实依赖数据。请点击【重新检测】重试；在检测成功前请勿解散空间。" onRetry={() => runDissolveCheck()} retrying={scanning} />
+          </div>
+        )}
 
         {/* Footer 底部操作按钮栏：严格遵循规范按钮 Token */}
         <div className="px-6 py-4 bg-white border-t border-slate-200/80 flex items-center justify-between shrink-0">
@@ -629,6 +669,84 @@ export function DissolveWorkspaceCheckModal({
           </div>
         </div>
 
+      </div>
+
+      {/* KN-UI：高危清理动作「输入 DELETE」强确认弹窗（自查清单指令四） */}
+      {cleanupConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md" onClick={() => !cleaning && setCleanupConfirm(null)}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="h-1 w-full bg-gradient-to-r from-rose-500 to-red-600" />
+            <div className="p-6 space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <h3 className="text-base font-black text-slate-900">确认执行「{cleanupConfirm.label}」？</h3>
+              </div>
+              <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                此操作将永久移除依赖数据，<strong className="text-rose-600">不可撤销</strong>。执行后请重新运行合规盘点扫描。
+              </p>
+              <CleanupConfirmInput
+                expect={cleanupConfirm.expect}
+                onConfirmed={() => {
+                  const act = cleanupConfirm.action as "REMOVE_MEMBERS" | "UNBIND_ASSETS" | "CLEAR_ALL" | "REMOVE_SINGLE_MEMBER" | "UNBIND_SINGLE_ASSET";
+                  setCleanupConfirm(null);
+                  executeCleanup(act);
+                }}
+                onCancel={() => setCleanupConfirm(null)}
+                cleaning={cleaning}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// KN-UI：高危操作输入文字确认子组件（输入 DELETE 解锁；自查清单指令四）
+function CleanupConfirmInput({
+  expect,
+  onConfirmed,
+  onCancel,
+  cleaning,
+}: {
+  expect: string;
+  onConfirmed: () => void;
+  onCancel: () => void;
+  cleaning: boolean;
+}) {
+  const [val, setVal] = React.useState("");
+  const [err, setErr] = useState<string | null>(null);
+  const locked = val.trim() !== expect;
+  return (
+    <div className="space-y-2">
+      <label className="block text-xs font-bold text-slate-700">
+        请输入「<span className="font-mono text-rose-600">{expect}</span>」以确认执行
+        <span className="text-red-500 ml-0.5">*</span>
+      </label>
+      <input
+        type="text"
+        value={val}
+        onChange={(e) => { setVal(e.target.value); setErr(null); }}
+        maxLength={10}
+        autoFocus
+        placeholder={expect}
+        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none text-xs font-mono"
+      />
+      {err && <p className="text-xs text-red-600 font-medium">{err}</p>}
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button type="button" onClick={onCancel} disabled={cleaning} className="px-4 h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer disabled:opacity-50">
+          取消
+        </button>
+        <button
+          type="button"
+          onClick={() => { if (locked) { setErr(`请输入「${expect}」后才能执行`); return; } onConfirmed(); }}
+          disabled={cleaning}
+          className="px-5 h-9 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-lg cursor-pointer disabled:opacity-50"
+        >
+          {cleaning ? "执行中…" : "确认执行"}
+        </button>
       </div>
     </div>
   );

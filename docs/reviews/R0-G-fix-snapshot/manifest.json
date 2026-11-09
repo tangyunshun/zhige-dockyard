@@ -1,0 +1,11 @@
+{
+  "capturedAtReal": "2026-11-07T14:06:34.071333+08:00",
+  "purpose": "R0-G batch start baseline (before F10 cron subscription-expiry fixes)",
+  "files": {
+    "src/app/api/cron/workspace-subscription-expire/route.ts": {
+      "sha256": "e514c43a62b5c300f61b140a30aed4895aee18c031b4aefa741a78c12391e3a3",
+      "bytes": 3219,
+      "snapshotCopy": "docs/reviews/R0-G-fix-snapshot/frozen-source/src__app__api__cron__workspace-subscription-expire__route.ts.snapshot.txt"
+    }
+  }
+}

@@ -147,6 +147,10 @@ export default function UserPayPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const toast = useToast();
+  // KN-UI：对公工单撤销/删除二次确认（自查清单指令四）
+  const [transferConfirm, setTransferConfirm] = useState<
+    null | { kind: "cancel" | "delete" | "batch-delete"; ids: string[]; label: string }
+  >(null);
 
   const [tab, setTab] = useState<PayTab>("recharge");
 
@@ -194,6 +198,8 @@ export default function UserPayPage() {
   const [transferTotalPages, setTransferTotalPages] = useState(1);
   const [transferStartDate, setTransferStartDate] = useState("");
   const [transferEndDate, setTransferEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
   const [transferStatusFilter, setTransferStatusFilter] = useState("ALL");
   const [selectedTransferIds, setSelectedTransferIds] = useState<string[]>([]);
   const [transferDetail, setTransferDetail] = useState<any | null>(null);
@@ -463,21 +469,10 @@ export default function UserPayPage() {
   };
 
   const handleTransferStartChange = (val: string) => {
-    if (val && transferEndDate && val > transferEndDate) {
-      toast.warning("开始时间不能晚于结束时间，已为您清空结束时间");
-      setTransferEndDate("");
-      setTransferStartDate(val);
-      void loadTransferOrders(1, val, "");
-      return;
-    }
     setTransferStartDate(val);
     void loadTransferOrders(1, val, transferEndDate);
   };
   const handleTransferEndChange = (val: string) => {
-    if (val && transferStartDate && val < transferStartDate) {
-      toast.warning("结束时间不能早于开始时间，请重新选择");
-      return;
-    }
     setTransferEndDate(val);
     void loadTransferOrders(1, transferStartDate, val);
   };
@@ -1782,7 +1777,7 @@ export default function UserPayPage() {
                   <input
                     type="date"
                     value={transferStartDate}
-                    max={transferEndDate || undefined}
+                    max={transferEndDate || today}
                     onChange={(e) => handleTransferStartChange(e.target.value)}
                     className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-[#3182ce] cursor-pointer"
                   />
@@ -1791,6 +1786,7 @@ export default function UserPayPage() {
                     type="date"
                     value={transferEndDate}
                     min={transferStartDate || undefined}
+                    max={today}
                     onChange={(e) => handleTransferEndChange(e.target.value)}
                     className="h-8 px-2.5 rounded-lg border border-slate-200 bg-white text-xs text-slate-700 outline-none focus:border-[#3182ce] cursor-pointer"
                   />
@@ -1817,7 +1813,7 @@ export default function UserPayPage() {
                         已选 {selectedTransferIds.length} 笔（仅超 3 年工单可删除）
                       </span>
                       <button
-                        onClick={() => handleDeleteTransfer(selectedTransferIds)}
+                        onClick={() => setTransferConfirm({ kind: "batch-delete", ids: selectedTransferIds, label: `批量删除选中的 ${selectedTransferIds.length} 笔对公工单` })}
                         disabled={transferBusy}
                         className="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 border border-rose-200 font-bold hover:bg-rose-100 disabled:opacity-50 flex items-center gap-1"
                       >
@@ -1876,7 +1872,7 @@ export default function UserPayPage() {
                             </button>
                             {o.status === "PENDING" && (
                               <button
-                                onClick={() => handleCancelOrder(o.id)}
+                                onClick={() => setTransferConfirm({ kind: "cancel", ids: [o.id], label: "撤销该笔对公工单" })}
                                 disabled={transferBusy}
                                 className="text-[11px] font-bold text-rose-500 hover:underline cursor-pointer disabled:opacity-50"
                               >
@@ -1885,7 +1881,7 @@ export default function UserPayPage() {
                             )}
                             {expired && (
                               <button
-                                onClick={() => handleDeleteTransfer([o.id])}
+                                onClick={() => setTransferConfirm({ kind: "delete", ids: [o.id], label: "删除该笔对公工单" })}
                                 disabled={transferBusy}
                                 className="text-[11px] font-bold text-slate-400 hover:text-rose-500 cursor-pointer disabled:opacity-50"
                               >
@@ -2012,7 +2008,7 @@ export default function UserPayPage() {
                   {transferDetail.status === "PENDING" && (
                     <div className="shrink-0 flex justify-end">
                       <button
-                        onClick={() => handleCancelOrder(transferDetail.id)}
+                        onClick={() => setTransferConfirm({ kind: "cancel", ids: [transferDetail.id], label: "撤销该笔对公工单" })}
                         disabled={transferBusy}
                         className="px-5 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl font-bold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                       >
@@ -2093,11 +2089,10 @@ export default function UserPayPage() {
                 <input
                   type="date"
                   value={orderDateStart}
-                  max={orderDateEnd || undefined}
+                  max={orderDateEnd || today}
                   onChange={(e) => {
                     const v = e.target.value;
                     setOrderDateStart(v);
-                    if (v && orderDateEnd && v > orderDateEnd) setOrderDateEnd("");
                     setOrdersPage(1);
                     void loadOrders(1);
                   }}
@@ -2107,9 +2102,9 @@ export default function UserPayPage() {
                   type="date"
                   value={orderDateEnd}
                   min={orderDateStart || undefined}
+                  max={today}
                   onChange={(e) => {
                     const v = e.target.value;
-                    if (v && orderDateStart && v < orderDateStart) return;
                     setOrderDateEnd(v);
                     setOrdersPage(1);
                     void loadOrders(1);
@@ -2675,6 +2670,78 @@ export default function UserPayPage() {
           </div>
         )}
       </div>
+
+      {/* KN-UI：对公工单撤销/删除二次确认（自查清单指令四） */}
+      {transferConfirm && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md" onClick={() => !transferBusy && setTransferConfirm(null)}>
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
+            <div className="h-1 w-full bg-gradient-to-r from-rose-500 to-red-600" />
+            <div className="p-6 space-y-3">
+              <h3 className="text-base font-black text-slate-900">
+                {transferConfirm.kind === "cancel" ? "撤销工单" : "删除工单"}
+              </h3>
+              <p className="text-xs text-slate-600 font-bold leading-relaxed">
+                {transferConfirm.kind === "cancel"
+                  ? "撤销后该笔对公转账工单将终止处理，需重新提交。"
+                  : "删除后工单记录将不可恢复（已入账的算力点不受影响）。"}
+                {transferConfirm.ids.length > 1 ? ` 共 ${transferConfirm.ids.length} 笔。` : ""}
+              </p>
+              {transferConfirm.kind !== "cancel" && transferConfirm.ids.length > 1 && (
+                <div className="px-3 py-2 bg-rose-50 border border-rose-200 rounded-lg">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    批量删除不可恢复，请输入「<span className="font-mono text-rose-600">DELETE</span>」以确认
+                    <span className="text-red-500 ml-0.5">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    id="transfer-batch-confirm-input"
+                    maxLength={10}
+                    placeholder="DELETE"
+                    className="w-full h-9 px-3 text-xs font-mono border border-slate-200 rounded-lg focus:border-[#3182ce] outline-none"
+                  />
+                </div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setTransferConfirm(null)}
+                  disabled={transferBusy}
+                  className="px-4 h-9 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg cursor-pointer disabled:opacity-50"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (transferConfirm.kind === "cancel") {
+                      setTransferConfirm(null);
+                      handleCancelOrder(transferConfirm.ids[0]);
+                      return;
+                    }
+                    if (transferConfirm.ids.length > 1) {
+                      const el = document.getElementById("transfer-batch-confirm-input") as HTMLInputElement | null;
+                      if (!el || el.value.trim() !== "DELETE") {
+                        toast.error("请输入「DELETE」后才能执行批量删除");
+                        return;
+                      }
+                    }
+                    const ids = transferConfirm.ids;
+                    const kind = transferConfirm.kind;
+                    setTransferConfirm(null);
+                    handleDeleteTransfer(ids);
+                  }}
+                  disabled={transferBusy}
+                  className={`px-5 h-9 text-white text-xs font-black rounded-lg cursor-pointer disabled:opacity-50 ${
+                    transferConfirm.kind === "cancel" ? "bg-amber-500 hover:bg-amber-600" : "bg-rose-600 hover:bg-rose-700"
+                  }`}
+                >
+                  {transferBusy ? "处理中…" : transferConfirm.kind === "cancel" ? "确认撤销" : "确认删除"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

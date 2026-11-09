@@ -12,6 +12,7 @@ import {
   writeAuditLog,
 } from "@/lib/security";
 import { checkAndResetQuotaCycle } from "@/lib/quota-cycle";
+import { PROTECTED_ACTION_PATTERN } from "@/lib/log-protection";
 import { isProbablyBinaryContent, sanitizeTextContent } from "@/lib/text-utils";
 import { scanSensitiveWords } from "@/lib/sensitive-words";
 import {
@@ -29,27 +30,42 @@ import { getAssetPermissions } from "@/lib/asset-permission";
 import { getFileTypeLabel, resolveAssetSize } from "@/lib/file-type";
 import { addNotification } from "@/lib/notifications-store";
 import { generateSmartSummary } from "@/lib/smart-summary";
-import { saveAssetFile, deleteAssetFile, readAssetFile } from "@/lib/file-store";
+import { saveAssetFile, deleteAssetFile, readAssetFile, allocateObjectKey, saveAssetFileToKey } from "@/lib/file-store";
 import {
-  assertStorageQuota,
   addStorageUsed,
   subtractStorageUsed,
+  reserveStorageBytes,
+  releaseStorageBytes,
+  claimObjectCleanup,
+  finalizeObjectCleanup,
+  countOtherReferences,
+  findStorageOpByDocument,
+  releaseReservationAtomic,
+  bindOperationObjectKey,
+  confirmStorageOperation,
+  markStorageOperationPendingCleanup,
+  reconcileWorkspaceStorage,
   StorageQuotaError,
 } from "@/lib/storage-quota";
 import { getFileExtension } from "@/lib/file-type";
 
-// 文件/资料文本提取统一走可取消超时入口（内部 AbortController，超时真正终止底层 OCR worker）
+// [R0-K] 文件/资料文本提取统一走隔离执行边界；解析失败不吞成空文本，
+// 在模型调用/扣点/hold 之前以稳定错误结束（F13 清理仍由 upload_doc 既有 catch 负责）。
 const TEXT_EXTRACT_TIMEOUT_MS = 60000;
 
-async function readDocumentFileText(filePath: string, fileName: string): Promise<string> {
-  try {
-    const buf = await readAssetFile(filePath);
-    return await extractTextFromBufferWithTimeout(buf, fileName, "", TEXT_EXTRACT_TIMEOUT_MS);
-  } catch {
-    return "";
-  }
+async function readDocumentFileText(
+  filePath: string,
+  fileName: string,
+  budget?: import("@/lib/parse-policy").RootBudget,
+  signal?: AbortSignal,
+  onWorkerExited?: () => void | Promise<void>,
+): Promise<string> {
+  const buf = await readAssetFile(filePath);
+  return extractTextFromBufferWithTimeout(buf, fileName, "", TEXT_EXTRACT_TIMEOUT_MS, signal, { budget, onWorkerExited });
 }
 import { extractTextFromBufferWithTimeout } from "@/lib/text-extract";
+import { ParseResourceError, RootBudget, parseErrorBody, PARSE_LIMITS, checkRealInput, PARSE_CODES } from "@/lib/parse-policy";
+import { acquireParseLease, releaseParseLease, quarantineParseLease, isParseLeaseActive } from "@/lib/parse-admission";
 /** 合同 MIME 白名单匹配（服务端唯一依据：文件扩展名 + 真实 MIME，支持多主材料逐文件校验） */
 function isAcceptedFileMime(accepted: string[], fileName: string, mimeType: string): boolean {
   const ext = (fileName.split(".").pop() || "").toLowerCase();
@@ -112,7 +128,6 @@ import {
 } from "@/lib/model-registry";
 import {
   estimatePoints,
-  splitTokenEstimate,
   resolvePricingSource,
 } from "@/lib/billing/pricing-center";
 import {
@@ -127,6 +142,7 @@ import {
 import { estimateCombinedTokenCount } from "@/lib/token-estimate";
 import { checkStudioExecutionAllowed, recordStudioCircuitBreak } from "@/lib/studio-rate-limit";
 import { computeCostFloorFromPricing } from "@/lib/component-cost-floor";
+import { decidePlatformModelCostAdmission } from "@/lib/model-cost-admission";
 import {
   isTokenSettlementFeatureEnabled,
   createSettlementHold,
@@ -594,7 +610,7 @@ export async function runStudioGet(request: NextRequest, deps: StudioExecutionDe
         data: {
           components: componentsWithStats,
           categories,
-          internalComponents,
+          // KN-SEC：internalComponents 含 costFloorPoints 等内部成本字段，不下发给游客（自查清单安全红线）
           defaultAllowedIds,
           presetPositions,
         },
@@ -1746,6 +1762,13 @@ async function getRestrictedComponentIds(workspaceId: string, userId: string): P
 // POST 处理函数支持可选 deps 参数：生产入口（Next.js 运行时）不传 -> 使用真实单例；
 // 测试入口传入内存 fake。禁止用全局可变变量或测试环境分支实现注入。
 // 该边界仅改变依赖来源、不改变任何执行逻辑（生产中 ed.X 即为真实 X）。
+/**
+ * [R0-I / 原方案 F12] BYOK 任务执行暂停说明（稳定文案）：收费口径待确认，
+ * 本次未扣点、未调用模型；模型配置/绑定/默认设置与历史保留。
+ */
+const BYOK_EXECUTION_PAUSE_MESSAGE =
+  "自带模型（BYOK）的任务调用暂不可用：平台收费口径待确认。本次未扣除算力点、未调用模型服务；您的模型配置与绑定已保留，待平台完成收费口径确认后恢复。";
+
 export interface StudioExecutionDeps {
   readonly prisma: typeof prisma;
   readonly getUserId: typeof getUserId;
@@ -2851,48 +2874,18 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                   requiredCapabilities: caps,
                   userId: userId,
                 });
-            // 计费双轨制：
-            // - 平台模型：扣点 = 管理员配置的固定点数（rawCost，全链路展示同一真源）；
-            // - 用户自带模型（BYOK，deploymentId = byo:<workspaceId>）：平台只收服务费，
-            //   扣点 = 用户登记的官方单价 × Token 用量 × (1 + byokServiceRateBps 服务费率 15%)，
-            //   经算账核心 estimatePoints 换算（内部含服务费与单次保底，不套平台加价系数 k）。
-            //   Token 用量优先级：合同 billingPolicy.estimatedTokens → 目录估算值（rawCost）。
+            // [R0-I / 原方案 F12] BYOK 任务收费口径未确认 → 安全暂停：
+            // 不估价、不回退固定点数、不配额重置、不扣点/hold、不建任务、不执行。
+            // 收费口径（付款责任/费率/用量/保底/退款）由负责人确认并单独授权后再恢复。
             if (resolvePricingSource(plan.deploymentId) === "USER_BYOK") {
-              const steps = Array.isArray((activeContract as any)?.executionPlan?.steps)
-                ? ((activeContract as any).executionPlan.steps as Array<{ maxOutputTokens?: number }>)
-                : [];
-              const maxOut = steps.reduce(
-                (acc, s) => acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
-                0,
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "BYOK_BILLING_POLICY_UNCONFIRMED",
+                  error: BYOK_EXECUTION_PAUSE_MESSAGE,
+                },
+                { status: 409 },
               );
-              const contractTokens = (activeContract as any)?.billingPolicy?.estimatedTokens;
-              const estimatedTotalTokens =
-                typeof contractTokens === "number" && contractTokens > 0 ? contractTokens : rawCost;
-              const split = splitTokenEstimate({
-                estimatedTotalTokens,
-                maxOutputTokens: maxOut > 0 ? maxOut : null,
-              });
-              const est = await estimatePoints({
-                modelDeploymentId: plan.deploymentId,
-                inputTokens: split.inputTokens,
-                outputTokens: split.outputTokens,
-                pricingSource: resolvePricingSource(plan.deploymentId),
-                estimateSource:
-                  typeof contractTokens === "number" && contractTokens > 0
-                    ? "CONTRACT_ESTIMATED_TOKENS"
-                    : "CATALOG_ESTIMATED_TOKENS",
-              });
-              pricingEstimateSnapshot = est.snapshot;
-              if (est.basis === "CONVERTED_PRICE" && est.points !== null && est.points > 0) {
-                deductTokens = est.points;
-                billingBasis = "CONVERTED_PRICE";
-              } else {
-                pendingRegistration = { deploymentId: plan.deploymentId, reason: est.blockedReason };
-                console.warn(
-                  "[算账中心] BYOK 官方单价不可用，兼容期维持固定点数扣点口径:",
-                  rawCost,
-                );
-              }
             }
           }
         } catch (estimateErr) {
@@ -2900,12 +2893,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           console.warn("[算账中心] 模型裁决异常:", (estimateErr as Error)?.message);
         }
 
-        // 自然月跨月算力配额自动重置
-        await checkAndResetQuotaCycle(prisma, workspaceId, userId);
-
-        // 1. 确保空间配额记录存在（算力点真源为 pointgrant 分桶，此处仅保证配额行存在）
-        const quota = await getOrCreateQuota(workspaceId, userId);
-
+        // [R0-I] 自然月配额重置与配额行确保已移至「最终模型计划解析 + BYOK 暂停裁决」之后：
+        // BYOK 暂停必须在任何配额重置写入之前生效。
         // 任务 ID 先行生成：作为扣费幂等键与算力流水关联的任务号
         const taskId = crypto.randomUUID();
 
@@ -2927,44 +2916,10 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             enqueueRefundRecovery: refundService.enqueueRefundRecovery,
           });
 
-        // 2. 校验成员月度算力额度 (若管理员显式为该成员配置了额度)
-        const currentMember = await prisma.workspacemember.findUnique({
-          where: { userId_workspaceId: { userId, workspaceId } },
-          include: { user: { select: { name: true, email: true } } },
-        });
-        if (currentMember && currentMember.monthlyTokenLimit !== null && currentMember.monthlyTokenLimit !== undefined) {
-          const memberLimit = Number(currentMember.monthlyTokenLimit);
-          const memberUsed = Number(currentMember.monthlyTokenUsed || 0);
-          if (memberUsed + deductTokens > memberLimit) {
-            // 成员月度额度将用尽：首次跨越阈值时通知空间所有者补充算力点，避免重复骚扰
-            if (memberUsed < memberLimit) {
-              try {
-                const ownerWs = await prisma.workspace.findUnique({
-                  where: { id: workspaceId },
-                  select: { ownerId: true, name: true },
-                });
-                if (ownerWs?.ownerId) {
-                  const memberName = (currentMember as any).user?.name || currentMember.userId;
-                  await addNotification(
-                    ownerWs.ownerId,
-                    "成员算力额度已用尽，请补充企业池",
-                    `成员「${memberName}」在「${ownerWs.name || "企业空间"}」的月度算力额度已用尽（已用 ${memberUsed}/${memberLimit}）。请补充企业池算力点，或提升该成员额度后重试。`,
-                    "asset",
-                    `/workspace/${workspaceId}/members`
-                  );
-                }
-              } catch (notifyErr) {
-                console.warn("[额度提醒] 通知空间所有者失败:", notifyErr);
-              }
-            }
-            return NextResponse.json({
-              success: false,
-              error: `您本月的个人算力点配额已用尽（当前已用 ${memberUsed}/${memberLimit}，本次需要 ${deductTokens}），请联系空间管理员提升配额`,
-            }, { status: 400 });
-          }
-        }
+        // [R0-I1 I-MONTH-ORDER] 成员月度额度校验已移至「最终模型计划 BYOK 暂停裁决 → 自然月维护」之后：
+        // 重新读取维护后的有效用量再校验，避免用旧月计数拒绝新月份任务（额度校验仍先于扣点/hold/任务/执行）。
 
-        // 解析当前用户会员等级 + 空间套餐的"生效能力上限"（就高不就低）
+        // 解析当前用户会员等级        // 解析当前用户会员等级 + 空间套餐的"生效能力上限"（就高不就低）
         const executingMembershipLevel =
           (await prisma.user.findUnique({ where: { id: userId }, select: { membershipLevel: true } }))?.membershipLevel ||
           "FREE";
@@ -3179,53 +3134,107 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           serverInputMaterial = fields.map((f) => `${f.label || f.name}：${String(formData?.[f.name] ?? "")}`).join("\n");
         }
         if (reqSourceType === "file") {
-          const fileSize = storedInputSource.fileSize ?? 0;
-          const hardCap = 100 * 1024 * 1024; // 100MB 绝对上限，避免超大文件占用内存
-          if (fileSize > hardCap) {
-            return NextResponse.json(
-              { success: false, code: "INPUT_TOO_LARGE", error: `文件过大（${fileSize} 字节），超过系统上限 ${hardCap} 字节。` },
-              { status: 400 },
-            );
+          const hardCap = PARSE_LIMITS.TASK_FILE_HARD_CAP_BYTES; // 100MB 任务 file 模式绝对上限（既有，不放宽）
+          // [R0-K K02] 多文件共用同一根预算：总量/输出/工作量/总 deadline 不逐文件重置
+          const rootBudget = new RootBudget({ deadlineMs: TEXT_EXTRACT_TIMEOUT_MS });
+          // [KR1] 整单多文件共用同一共享准入：一次认领覆盖整单，内层共用，不逐文件重认领/不漏保护
+          let parseLease: Awaited<ReturnType<typeof acquireParseLease>> | null = null;
+          let parseQuarantined = false;
+          try {
+            parseLease = await acquireParseLease({ userId, workUnits: PARSE_LIMITS.WORK_UNITS_PER_PARSE, now: Date.now() });
+          } catch (admErr) {
+            const perr = admErr instanceof ParseResourceError ? admErr : new ParseResourceError(PARSE_CODES.ADMISSION_NOT_READY);
+            return NextResponse.json({ ...parseErrorBody(perr) }, { status: perr.status });
           }
+          // 停止证据成立（worker 实际退出，含迟到退出）后幂等归还被隔离的租约，不永久卡槽
+          const onWorkerExited = async () => {
+            if (parseLease && parseQuarantined) await releaseParseLease(parseLease).catch(() => {});
+          };
           // 多主材料：逐文件提取文本并按上传顺序合并为单一材料（顺序稳定、分隔清晰、标注来源）
           const extractedParts: string[] = [];
           const unreadableFiles: string[] = [];
-          for (const uf of uploadFiles) {
-            const fname = uf.name || "upload.bin";
-            const fileBuf = Buffer.from(await uf.arrayBuffer());
-            const extractedOne = await extractTextFromBufferWithTimeout(fileBuf, fname, uf.type || "", TEXT_EXTRACT_TIMEOUT_MS);
-            if (extractedOne && extractedOne.trim()) {
-              // 保留文件名，便于模型区分多份材料的归属（多主材料合同要求自行识别各部分）
-              extractedParts.push(`【材料：${fname}】\n${extractedOne.trim()}`);
-            } else {
-              unreadableFiles.push(fname);
+          try {
+            for (const uf of uploadFiles) {
+              const fname = uf.name || "upload.bin";
+              const fileBuf = Buffer.from(await uf.arrayBuffer());
+              checkRealInput(fileBuf, hardCap); // 实际读取字节再核验，不信 Content-Length/扩展名
+              const extractedOne = await extractTextFromBufferWithTimeout(
+                fileBuf, fname, uf.type || "", TEXT_EXTRACT_TIMEOUT_MS, request.signal,
+                { budget: rootBudget, maxInputBytes: hardCap, onWorkerExited },
+              );
+              if (extractedOne && extractedOne.trim()) {
+                // 保留文件名，便于模型区分多份材料的归属（多主材料合同要求自行识别各部分）
+                extractedParts.push(`【材料：${fname}】\n${extractedOne.trim()}`);
+              } else {
+                unreadableFiles.push(fname);
+              }
             }
+            // 任一文件无法提取文本一律拒绝整单：绝不静默丢弃文件后照常扣费（本次不扣点、不写任务）
+            if (unreadableFiles.length > 0) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "INPUT_TEXT_NOT_EXTRACTED",
+                  error: `以下文件未能提取出可分析文本：${unreadableFiles.join("、")}。请确认文件包含文字内容（图片扫描件无法识别）后重新提交，本次不扣费。`,
+                },
+                { status: 400 },
+              );
+            }
+            if (extractedParts.length === 0) {
+              return NextResponse.json(
+                { success: false, code: "INPUT_TEXT_NOT_EXTRACTED", error: "文件未能提取出可分析文本，请确认文件包含文字内容（图片扫描件无法识别）。" },
+                { status: 400 },
+              );
+            }
+            serverInputMaterial = extractedParts.join("\n\n---\n\n");
+          } catch (e) {
+            // [KR1/KR4] 未确认停止（STOP_UNCONFIRMED）：worker 可能仍在后台运行，名额必须保留/隔离，
+            // 不归还给新任务；确认停止（超时/取消）或成功路径才归还。按 .code 判定（与 parseErrorBody 同源口径）
+            if ((e as any)?.code === PARSE_CODES.STOP_UNCONFIRMED) {
+              parseQuarantined = true;
+              await quarantineParseLease(parseLease, "任务材料解析 worker 退出未确认，保守隔离占用").catch(() => {});
+            }
+            throw e;
+          } finally {
+            // 只在解析确认结束后归还名额；未确认停止（已隔离）保留占用，由 late-exit 回调确认退出后幂等归还，不永久卡槽
+            if (parseLease && !parseQuarantined) await releaseParseLease(parseLease).catch(() => {});
           }
-          // 任一文件无法提取文本一律拒绝整单：绝不静默丢弃文件后照常扣费（本次不扣点、不写任务）
-          if (unreadableFiles.length > 0) {
-            return NextResponse.json(
-              {
-                success: false,
-                code: "INPUT_TEXT_NOT_EXTRACTED",
-                error: `以下文件未能提取出可分析文本：${unreadableFiles.join("、")}。请确认文件包含文字内容（图片扫描件无法识别）后重新提交，本次不扣费。`,
-              },
-              { status: 400 },
-            );
-          }
-          if (extractedParts.length === 0) {
-            return NextResponse.json(
-              { success: false, code: "INPUT_TEXT_NOT_EXTRACTED", error: "文件未能提取出可分析文本，请确认文件包含文字内容（图片扫描件无法识别）。" },
-              { status: 400 },
-            );
-          }
-          serverInputMaterial = extractedParts.join("\n\n---\n\n");
         } else if (reqSourceType === "asset") {
           let extracted = resolvedDoc?.content ? String(resolvedDoc.content) : "";
           if (!extracted.trim() && resolvedDoc?.filePath) {
-            extracted = await readDocumentFileText(
-              resolvedDoc.filePath,
-              resolvedDoc.originalName || storedInputSource.fileName || "doc",
-            );
+            // [R0-K K04] 资料重解析同样受隔离边界与根预算；纯文本已有 content 不制造 worker
+            // [KR1] 资料重解析同样使用共享准入：任何未就绪/繁忙在 worker 启动前拒绝
+            let parseLease: Awaited<ReturnType<typeof acquireParseLease>> | null = null;
+            let parseQuarantined = false;
+            try {
+              parseLease = await acquireParseLease({ userId, workUnits: PARSE_LIMITS.WORK_UNITS_PER_PARSE, now: Date.now() });
+            } catch (admErr) {
+              const perr = admErr instanceof ParseResourceError ? admErr : new ParseResourceError(PARSE_CODES.ADMISSION_NOT_READY);
+              return NextResponse.json({ ...parseErrorBody(perr) }, { status: perr.status });
+            }
+            // 停止证据成立（worker 实际退出，含迟到退出）后幂等归还被隔离的租约，不永久卡槽
+            const onWorkerExited = async () => {
+              if (parseLease && parseQuarantined) await releaseParseLease(parseLease).catch(() => {});
+            };
+            try {
+              extracted = await readDocumentFileText(
+                resolvedDoc.filePath,
+                resolvedDoc.originalName || storedInputSource.fileName || "doc",
+                new RootBudget({ deadlineMs: TEXT_EXTRACT_TIMEOUT_MS }),
+                request.signal,
+                onWorkerExited,
+              );
+            } catch (e) {
+              // [KR1/KR4] 未确认停止：隔离占用，不归还给新任务（按 .code 判定，与 parseErrorBody 同源口径）
+              if ((e as any)?.code === PARSE_CODES.STOP_UNCONFIRMED) {
+                parseQuarantined = true;
+                await quarantineParseLease(parseLease, "资料重解析 worker 退出未确认，保守隔离占用").catch(() => {});
+              }
+              throw e;
+            } finally {
+              // 已隔离（未知停止）的租约不在此立即释放，交由 late-exit 回调确认退出后幂等归还，不永久卡槽
+              if (parseLease && !parseQuarantined) await releaseParseLease(parseLease).catch(() => {});
+            }
           }
           if (!extracted || !extracted.trim()) {
             return NextResponse.json(
@@ -3277,6 +3286,9 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         let modelPlanForSettlement: ResolvedModelPlan | null = null;
         let modelResultForSettlement: ModelExecutionResult | null = null;
 
+        // [R0-I1 I-MONTH-ORDER] currentMember 提升到外层声明：月度额度校验已移至
+        // 「最终模型计划 BYOK 暂停裁决 → 自然月维护」之后重新读取；后续个人点预检与余额响应复用同一读取。
+        let currentMember: Awaited<ReturnType<typeof prisma.workspacemember.findUnique>> = null as any;
         if (activeContract) {
           // 批次 2 灰度：全局结算 flag 与组件白名单同时满足才启用押金-结算；
           // 白名单外组件（含 C02）维持估算兼容模式，禁止全局一刀切。
@@ -3390,6 +3402,12 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
           // MODEL-SELECT-E1：请求只接受 deploymentId 或 "byo"，禁止 baseUrl 任意拼接（严格 SSRF 红线）
           const rawTarget = typeof body.deploymentId === "string" ? body.deploymentId.trim() : "";
           const isAuto = !rawTarget || rawTarget === "auto";
+          // [R0-H L03] 最终请求参数（准入与 adapter.execute 使用同一份，杜绝「按小上限检查、按大上限执行」）：
+          // 在发生任何执行之前生成最终 systemPrompt（含 {{COST_BASELINE}} 真实展开）、userPrompt 与输出硬上限。
+          let finalSystemPrompt = "";
+          let finalUserPrompt = "";
+          let finalMaxOutputTokens = 0;
+          let estimatedActualInput = 0;
           try {
             const requiredCapabilities = extractRequiredCapabilities(activeContract);
             const resolvedPlan = isAuto
@@ -3402,6 +3420,60 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 });
 
             modelPlan = resolvedPlan;
+            // [R0-I / 原方案 F12] 最终计划为 BYOK（含 auto/默认命中、前后两次解析交错为 BYOK）→ 暂停：
+            // 任何配额重置写入、扣点、hold、任务创建、供应商 execute 之前拒绝，不以客户端标记放行。
+            if (resolvePricingSource(modelPlan.deploymentId) === "USER_BYOK") {
+              return NextResponse.json(
+                {
+                  success: false,
+                  code: "BYOK_BILLING_POLICY_UNCONFIRMED",
+                  error: BYOK_EXECUTION_PAUSE_MESSAGE,
+                },
+                { status: 409 },
+              );
+            }
+            // 配额重置/配额行确保（已移至最终模型裁决之后，BYOK 暂停不产生这些写入）
+            await checkAndResetQuotaCycle(prisma, workspaceId, userId);
+            const quota = await getOrCreateQuota(workspaceId, userId);
+            void quota;
+
+            // [R0-I1 I-MONTH-ORDER] 自然月维护后重新读取成员有效月度用量，再校验本次任务额度
+            // （管理员显式配置了额度才校验；仍早于扣点/hold/任务创建/execute）
+            currentMember = await prisma.workspacemember.findUnique({
+              where: { userId_workspaceId: { userId, workspaceId } },
+              include: { user: { select: { name: true, email: true } } },
+            });
+            if (currentMember && currentMember.monthlyTokenLimit !== null && currentMember.monthlyTokenLimit !== undefined) {
+              const memberLimit = Number(currentMember.monthlyTokenLimit);
+              const memberUsed = Number(currentMember.monthlyTokenUsed || 0);
+              if (memberUsed + deductTokens > memberLimit) {
+                // 成员月度额度将用尽：首次跨越阈值时通知空间所有者补充算力点，避免重复骚扰
+                if (memberUsed < memberLimit) {
+                  try {
+                    const ownerWs = await prisma.workspace.findUnique({
+                      where: { id: workspaceId },
+                      select: { ownerId: true, name: true },
+                    });
+                    if (ownerWs?.ownerId) {
+                      const memberName = (currentMember as any).user?.name || currentMember.userId;
+                      await addNotification(
+                        ownerWs.ownerId,
+                        "成员算力额度已用尽，请补充企业池",
+                        `成员「${memberName}」在「${ownerWs.name || "企业空间"}」的月度算力额度已用尽（已用 ${memberUsed}/${memberLimit}）。请补充企业池算力点，或提升该成员额度后重试。`,
+                        "asset",
+                        `/workspace/${workspaceId}/members`
+                      );
+                    }
+                  } catch (notifyErr) {
+                    console.warn("[额度提醒] 通知空间所有者失败:", notifyErr);
+                  }
+                }
+                return NextResponse.json({
+                  success: false,
+                  error: `您本月的个人算力点配额已用尽（当前已用 ${memberUsed}/${memberLimit}，本次需要 ${deductTokens}），请联系空间管理员提升配额`,
+                }, { status: 400 });
+              }
+            }
             adapter = await createModelAdapter(modelPlan);
             modelPlanForSettlement = modelPlan;
 
@@ -3414,10 +3486,21 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             const gatePromptTemplate =
               activeContract.executionPlan?.steps?.[0]?.promptTemplate ||
               "请基于以下输入材料执行专业分析并输出规范成果物。";
-            const estimatedActualInput = estimateCombinedTokenCount(
-              gatePromptTemplate,
-              buildSourceMaterialPrompt(effectiveInputMaterial),
-            );
+            // [R0-H L03] 最终 systemPrompt：与实际执行同一处展开 {{COST_BASELINE}}（合同声明消费真实历史基准）
+            finalSystemPrompt = gatePromptTemplate;
+            if (finalSystemPrompt.includes(COST_BASELINE_PLACEHOLDER)) {
+              const costBaseline = await getComponentCostBaseline();
+              finalSystemPrompt = finalSystemPrompt
+                .split(COST_BASELINE_PLACEHOLDER)
+                .join(renderCostBaselineText(costBaseline));
+            }
+            finalUserPrompt = buildSourceMaterialPrompt(effectiveInputMaterial);
+            // [R0-H L03] 输出硬上限与 adapter.execute 完全一致（目录×3 / env / 默认分支同源）
+            finalMaxOutputTokens =
+              (comp?.estimatedOutputTokens ?? 0) > 0
+                ? comp.estimatedOutputTokens * 3
+                : Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 2000;
+            estimatedActualInput = estimateCombinedTokenCount(finalSystemPrompt, finalUserPrompt);
             const declaredMaxLen =
               typeof activeContract.input?.textConstraints?.maxLength === "number"
                 ? activeContract.input.textConstraints.maxLength
@@ -3436,28 +3519,37 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
                 { status: 400 },
               );
             }
-            if (modelPlan.pricing && resolvePricingSource(modelPlan.deploymentId) !== "USER_BYOK") {
-              const declaredMaxOutput = Array.isArray(activeContract.executionPlan?.steps)
-                ? activeContract.executionPlan.steps.reduce(
-                    (acc, s) =>
-                      acc + (typeof s?.maxOutputTokens === "number" ? s.maxOutputTokens : 0),
-                    0,
-                  )
-                : 0;
-              const projectedPoints = computeCostFloorFromPricing(
-                modelPlan.pricing,
-                estimatedActualInput,
-                declaredMaxOutput,
-                modelPlan.pricing.markupRateBps ?? billingCfg.markupCoefficientBps ?? 0,
-              );
-              if (projectedPoints != null && rawCost > 0 && projectedPoints > rawCost * 2) {
+            // [R0-H L01/L02 → R0-H1 H-MODE] 平台模型「固定点数兼容模式」执行前成本准入（原 F11）。
+            // 模式隔离（H-MODE）：按服务端实际生效计费分支判定——
+            //   仅「非 BYOK 且 billingBasis 仍为兼容 且 真实结算未启用」才应用固定预算准入；
+            //   BYOK（CONVERTED_PRICE）与已启用押金-结算（settlementFeatureEnabled）各有自己的
+            //   就绪/费用门禁，不得误套固定 rawCost 预算（原 L07）。
+            // 取消旧「成本超过 2 倍才阻断」容忍区；成本未知/不可信/超过本次名义预算均在
+            // 扣点与供应商调用之前拒绝（零 consumePoints、零 hold、零 execute、无任务创建）。
+            if (
+              resolvePricingSource(modelPlan.deploymentId) !== "USER_BYOK" &&
+              billingBasis === "ESTIMATED_COMPATIBILITY" &&
+              !settlementFeatureEnabled
+            ) {
+              const effectiveMarkupBps =
+                modelPlan.pricing?.markupRateBps != null &&
+                Number.isFinite(Number(modelPlan.pricing.markupRateBps))
+                  ? Number(modelPlan.pricing.markupRateBps)
+                  : billingCfg.markupCoefficientBps ?? 0;
+              // [R0-H2 H-BOUND] 输入上界来源 = 服务端最终模型计划的注册表硬上下文限制
+              // （完整值作保守输入预算，客户端不可传入；0/缺失/非法 → 稳定未就绪拒绝）。
+              // 字符粗估 estimatedActualInput 仅保留为输入防爆阀/诊断用途。
+              const admission = decidePlatformModelCostAdmission({
+                pricing: modelPlan.pricing ?? null,
+                contextLimit: modelPlan.contextLimit,
+                maxOutputTokens: finalMaxOutputTokens,
+                budgetPoints: rawCost,
+                markupRateBps: effectiveMarkupBps,
+              });
+              if (!admission.allowed) {
                 return NextResponse.json(
-                  {
-                    success: false,
-                    code: "INPUT_COST_TOO_HIGH",
-                    error: `输入材料过大：按当前模型单价估算，本次执行成本约 ${projectedPoints} 算力点，已超过该组件定价（${rawCost} 点）的 2 倍。请压缩或拆分材料后重试。`,
-                  },
-                  { status: 400 },
+                  { success: false, code: admission.code, error: admission.error },
+                  { status: admission.code === "MODEL_COST_EXCEEDS_BUDGET" ? 400 : 422 },
                 );
               }
             }
@@ -3747,33 +3839,19 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             );
           }
 
-          // 组装 Prompt：严格以通用合同 executionPlan.steps 为唯一依据（不记录原文到日志）
-          const primaryStep = activeContract.executionPlan?.steps?.[0];
-          const contractPromptTemplate = primaryStep?.promptTemplate || "请基于以下输入材料执行专业分析并输出规范成果物。";
-          // 合同通过 {{COST_BASELINE}} 声明消费「真实历史成本/工时基准」：
-          // 已配置真实基准则注入真实数据；未配置则回退为显式假设文本（模型必须标注其性质）。
-          let systemPrompt = contractPromptTemplate;
-          if (systemPrompt.includes(COST_BASELINE_PLACEHOLDER)) {
-            const costBaseline = await getComponentCostBaseline();
-            systemPrompt = systemPrompt
-              .split(COST_BASELINE_PLACEHOLDER)
-              .join(renderCostBaselineText(costBaseline));
-          }
+          // 组装 Prompt：[R0-H L03] 直接使用与准入同一份最终请求参数（finalSystemPrompt 已含
+          // {{COST_BASELINE}} 展开、maxOutputTokens 与目录×3/env/默认分支同源），不再另行计算，
+          // 杜绝「检查后放大输出上限或后展开提示词」。
           let modelResult: ModelExecutionResult;
           try {
             modelResult = await adapter.execute({
               providerId: adapter.providerId,
               modelId: adapter.modelId,
-              systemPrompt,
-              userPrompt: buildSourceMaterialPrompt(effectiveInputMaterial),
+              systemPrompt: finalSystemPrompt,
+              userPrompt: finalUserPrompt,
               temperature: 0.5,
-              // §风控防爆阀（生成期硬封顶）：输出上限 = 预估输出 Token × 3，
-              // 与执行后「总 Token 超 3 倍预估预算即熔断」形成双层防护，
-              // 防止恶意用户绕过前端刷爆模型额度。未配置预估输出 Token 时回退全局默认值。
-              maxOutputTokens:
-                (comp?.estimatedOutputTokens ?? 0) > 0
-                  ? comp.estimatedOutputTokens * 3
-                  : Number(process.env.MODEL_MAX_OUTPUT_TOKENS) || 2000,
+              // §风控防爆阀（生成期硬封顶）与成本准入使用同一输出硬上限（见上方 [R0-H] 最终请求参数）
+              maxOutputTokens: finalMaxOutputTokens,
             });
             modelResultForSettlement = modelResult;
           } catch (e) {
@@ -4494,6 +4572,12 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       let mimeType: string | null = null;
       let originalName: string | null = null;
       let targetWorkspaceId = workspaceId || "";
+      let uploadBufferForSave: Buffer | null = null; // [R0-J] multipart 待保存物理内容（鉴权/预留后落盘）
+      let storageOpId = ""; // [R0-J1] 操作身份（幂等去重/恢复）
+      let reserved = false;
+      let saved: { filePath: string; size: number; mimeType: string } | null = null;
+      let doc: any = null;
+      let uploadFileType = "";
 
       if (isMultipart) {
         // 复用顶层已解析的 FormData（请求体只能被消费一次）
@@ -4517,33 +4601,17 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
 
         originalName = (file as any).name || title;
         fileExt = getFileExtension(originalName);
-        // 存储配额校验：超出空间文件存储上限时拒绝上传（落盘前拦截，避免产生孤儿文件）
-        try {
-          await assertStorageQuota(targetWorkspaceId || "", buffer.length);
-        } catch (quotaErr) {
-          if (quotaErr instanceof StorageQuotaError) {
-            return NextResponse.json({ success: false, error: quotaErr.message }, { status: 403 });
-          }
-          throw quotaErr;
-        }
-        const saved = await saveAssetFile(targetWorkspaceId || "", originalName || title, buffer, fileExt);
-        filePath = saved.filePath;
-        fileSize = saved.size;
-        mimeType = saved.mimeType;
+        uploadBufferForSave = buffer; // [R0-J] 保存动作移至鉴权/预留段执行
+        uploadFileType = (file as any).type || "";
 
         const imageExts = ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp", "ico"];
         const isImage = (file as any).type?.startsWith("image/") || imageExts.includes(fileExt || "");
         // 统一走可取消超时入口：超时会真正终止 OCR worker，避免资料导入卡死
-        content = await extractTextFromBufferWithTimeout(buffer, originalName || "", (file as any).type || "", TEXT_EXTRACT_TIMEOUT_MS);
-        if (!summary) {
-          if (content) {
-            summary = generateSmartSummary(content, originalName).overview;
-          } else {
-            summary = `《${originalName || title}》${isImage ? "为图片文件，无可提取文字内容" : "解析超时或无可提取文字"}，可预览原文件或下载查看。`;
-          }
-        }
       } else {
-        ({ title, content, type, visibility, fileSize, fileExt, summary } = body);
+        ({ title, content, type, visibility, fileExt, summary } = body);
+        // [R0-J S01] JSON 文本兼容路径没有物理文件：fileSize 一律不采信客户端值，
+        // 也不按文本字符数假装物理文件大小 → fileSize 恒为 null（不参与物理占用）。
+        fileSize = null;
         originalName = null;
       }
 
@@ -4554,7 +4622,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         }, { status: 400 });
       }
 
-      // 空间归属强校验：空间不存在 → 404，非成员 → 403
+      // [R0-J S03] 空间归属强校验：空间不存在 → 404，非成员 → 403
+      // （multipart 分支已前置到文件保存/预留之前：禁止在 401/403 后留下文件或预留）
       const uploadAccess = await checkWorkspaceAccess(userId, targetWorkspaceId);
       if (uploadAccess.error) {
         return NextResponse.json({ success: false, error: uploadAccess.error.message }, { status: uploadAccess.error.status });
@@ -4568,6 +4637,136 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       const isPrivate = visibility === "PRIVATE";
       const initialStatus = (isPrivate || isManager) ? "APPROVED" : "PENDING";
 
+      // [R0-J S03 + R0-J3 §二 J-UPLOAD] multipart：预留 → 对象键预绑定 → 保存（标记前置）→ 单次提取
+      // [R0-J S01] JSON 文本兼容路径没有物理文件：不预留、不按客户端伪造 fileSize 入账
+      if (isMultipart && uploadBufferForSave) {
+        // [KR1] 共享准入在存储预留/落盘之前认领：未就绪/繁忙先拒绝，不产生存储预留/落盘/成功空壳；
+        // 与 F13 清理协议互不干扰——准入失败发生在预留之前，无需清理。
+        let parseLease: Awaited<ReturnType<typeof acquireParseLease>> | null = null;
+        try {
+          parseLease = await acquireParseLease({ userId, workUnits: PARSE_LIMITS.WORK_UNITS_PER_PARSE, now: Date.now() });
+        } catch (admErr) {
+          const perr = admErr instanceof ParseResourceError ? admErr : new ParseResourceError(PARSE_CODES.ADMISSION_NOT_READY);
+          return NextResponse.json({ ...parseErrorBody(perr) }, { status: perr.status });
+        }
+        // [R0-J2 §2.1] 操作 ID 非空、唯一且绑定本次已授权请求；userId 用服务端身份
+        storageOpId = crypto.randomUUID();
+        // [R0-J3 §二.1] 对象键在外部写入之前分配，持久关联操作——丢失响应后仍可定位具体对象
+        const allocated = allocateObjectKey(targetWorkspaceId, fileExt);
+        let boundKey: string | null = null;
+        let saveAttempted = false; // [R0-J3 §二.1] 开始保存之前标记（写入可能已产生对象）
+        let parseQuarantined = false;
+        // 停止证据成立（worker 实际退出，含迟到退出）后幂等归还被隔离的租约，不永久卡槽
+        const onWorkerExited = async () => {
+          if (parseLease && parseQuarantined) await releaseParseLease(parseLease).catch(() => {});
+        };
+        try {
+          await reserveStorageBytes(targetWorkspaceId, uploadBufferForSave.length, storageOpId, userId);
+          reserved = true;
+          await bindOperationObjectKey(storageOpId, allocated.key);
+          boundKey = allocated.key;
+          saveAttempted = true;
+          saved = await saveAssetFileToKey(allocated.key, uploadBufferForSave, targetWorkspaceId);
+          filePath = saved.filePath;
+          fileSize = saved.size;
+          mimeType = saved.mimeType;
+          // [R0-K K04] 统一隔离边界：解析超限/取消/失败会抛稳定异常，
+          // 由本 try 的既有 F13 catch 继续按已绑定对象键清理文件并原子释放预留；
+          // 不产生成功空壳，不盲释未知对象占用。
+          content = await extractTextFromBufferWithTimeout(
+            uploadBufferForSave, originalName || "", uploadFileType || "", TEXT_EXTRACT_TIMEOUT_MS, request.signal,
+            { budget: new RootBudget({ deadlineMs: TEXT_EXTRACT_TIMEOUT_MS }), onWorkerExited },
+          );
+          // [KR1] 解析确认结束（worker 已退出）后归还准入名额；迟到结果不会先腾出名额
+          if (parseLease) { await releaseParseLease(parseLease).catch(() => {}); parseLease = null; }
+        } catch (flowErr) {
+          // [KR1/KR4] 解析失败/取消：未确认停止（STOP_UNCONFIRMED）隔离占用，不归还给新任务，
+          // 由 late-exit 回调确认退出后幂等归还；其余（worker 已确认停止的超时/取消/失败）才归还。F13 存储清理仍继续。
+          // 按 .code 判定（与 parseErrorBody 同源口径），不依赖 instanceof。
+          const stoppedUnconfirmed = (flowErr as any)?.code === PARSE_CODES.STOP_UNCONFIRMED;
+          if (stoppedUnconfirmed) {
+            if (parseLease) await quarantineParseLease(parseLease, "上传解析 worker 退出未确认，保守隔离占用").catch(() => {});
+            parseQuarantined = true;
+          } else if (parseLease) {
+            await releaseParseLease(parseLease).catch(() => {});
+          }
+          // 已隔离（未知停止）的租约保留引用，交由 late-exit 回调确认退出后幂等归还；不在此置空
+          if (parseLease && !parseQuarantined) parseLease = null;
+          // [R0-J3 §二.2] 保存已开始且对象定位已绑定：先按对象定位核实/清理事实，不按缺返回值盲释
+          if (saveAttempted && !saved) {
+            let fileDeleted = false;
+            if (boundKey) {
+              const del = await deleteAssetFile(boundKey, targetWorkspaceId);
+              fileDeleted = del.ok; // ok 含确认不存在（幂等核实）
+            }
+            if (fileDeleted && reserved) {
+              // 已核实无对象 → 原子释放预留 + 终态（不留虚假占用）
+              const relRes = await releaseReservationAtomic(targetWorkspaceId, storageOpId, uploadBufferForSave.length, "上传失败：对象已核实清理，预留原子释放（终态）");
+              if (relRes.drift) {
+                await markStorageOperationPendingCleanup(storageOpId, "预留释放漂移，占用保留待核对", boundKey);
+                return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+              }
+              if (flowErr instanceof StorageQuotaError) {
+                return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+              }
+              if (flowErr instanceof ContractValidationError) throw flowErr;
+              return NextResponse.json({ success: false, error: (flowErr as Error)?.message || "文件处理失败，请稍后重试" }, { status: 500 });
+            }
+            // [R0-J3 §二.2] 对象未确认清理（仍在/歧义/删除失败）→ 稳定待核实：占用保留 + 操作持有可定位对象
+            await markStorageOperationPendingCleanup(storageOpId, "保存结果未知且对象未确认清理: " + (flowErr as Error)?.message, boundKey);
+            return NextResponse.json({ success: false, code: "STORAGE_OP_PENDING", error: "上传失败且保存结果未知，已保留占用与可定位恢复信息（操作 ID: " + storageOpId + (boundKey ? "，对象: " + boundKey : "") + "），请勿重复上传。", storageOpId, filePath: boundKey ?? undefined }, { status: 500 });
+          }
+          // 保存未开始（预留/绑定失败）→ 原子释放预留 + 终态；无文件副作用
+          if (reserved && !saved) {
+            const relRes = await releaseReservationAtomic(targetWorkspaceId, storageOpId, uploadBufferForSave.length, "上传失败（保存前），预留原子释放（终态）");
+            if (relRes.drift) {
+              await markStorageOperationPendingCleanup(storageOpId, "预留释放漂移，占用保留待核对");
+              return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+            }
+            if (flowErr instanceof StorageQuotaError) {
+              return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+            }
+            if (flowErr instanceof ContractValidationError) throw flowErr;
+            // [R0-K K04] 对象与预留已按 F13 协议安全清理；此时才呈现原始解析稳定码
+            if (flowErr instanceof ParseResourceError) {
+              return NextResponse.json({ ...parseErrorBody(flowErr), storageOpId }, { status: flowErr.status });
+            }
+            return NextResponse.json({ success: false, error: (flowErr as Error)?.message || "文件处理失败，请稍后重试" }, { status: 500 });
+          }
+          // saved 存在但提取失败 → 清理文件 + 原子释放 + 终态；清理失败保留待核实
+          let fileDeleted = false;
+          if (saved?.filePath) {
+            const del = await deleteAssetFile(saved.filePath, targetWorkspaceId);
+            fileDeleted = del.ok;
+          }
+          if (saved?.filePath && !fileDeleted) {
+            await markStorageOperationPendingCleanup(storageOpId, "上传失败且文件清理未完成", saved.filePath);
+            return NextResponse.json({
+              success: false,
+              code: "STORAGE_CLEANUP_PENDING",
+              error: "上传失败且临时文件清理未完成，已保留占用与恢复信息（操作 ID: " + storageOpId + "），请勿重复上传。",
+              storageOpId,
+            }, { status: 500 });
+          }
+          const relRes = reserved
+            ? await releaseReservationAtomic(targetWorkspaceId, storageOpId, saved?.size ?? uploadBufferForSave.length, "上传失败已安全清理（终态）")
+            : { released: false, drift: false }; // 预留未发生（如准入拒绝）→ 无需释放
+          if (relRes.drift) {
+            await markStorageOperationPendingCleanup(storageOpId, "预留释放漂移，占用保留待核对", saved?.filePath ?? undefined);
+            return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+          }
+          if (flowErr instanceof StorageQuotaError) {
+            return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+          }
+          if (flowErr instanceof ContractValidationError) throw flowErr;
+          // [R0-K K04] 已核实清理完成后才呈现原始解析稳定码；未清理状态分支优先
+          if (flowErr instanceof ParseResourceError) {
+            return NextResponse.json({ ...parseErrorBody(flowErr), storageOpId }, { status: flowErr.status });
+          }
+          return NextResponse.json({ success: false, error: (flowErr as Error)?.message || "文件处理失败，请稍后重试" }, { status: 500 });
+        }
+      }
+
       // 查询 user 表解析真正的账号用户名/昵称
       const uploaderUser = await prisma.user.findUnique({
         where: { id: userId },
@@ -4575,12 +4774,15 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       });
       const resolvedUploaderName = uploaderUser?.name || uploaderUser?.email || "系统用户";
 
-      // 真实文件元信息：fileSize 取文件真实字节数（仅接受正整数），
+      // 真实文件元信息：fileSize 取文件真实字节数（multipart 以服务端 buffer 为准，0 字节保留 0），
       // fileExt 规范化为小写无点扩展名，summary 为前端基于原文生成的智能总结。
+      // [R0-J2 §2.3] 0 字节物理文件保留 0（不归一为 null 造成对账失真）；JSON 文本路径恒 null
       const normalizedFileSize =
-        typeof fileSize === "number" && Number.isFinite(fileSize) && fileSize > 0
-          ? Math.round(fileSize)
-          : null;
+        isMultipart && saved
+          ? saved.size
+          : (typeof fileSize === "number" && Number.isFinite(fileSize) && fileSize > 0
+              ? Math.round(fileSize)
+              : null);
       const normalizedFileExt =
         typeof fileExt === "string" && fileExt.trim()
           ? fileExt.trim().toLowerCase().replace(/^\./, "").slice(0, 32)
@@ -4588,30 +4790,67 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       const normalizedSummary =
         typeof summary === "string" && summary.trim() ? summary.trim() : null;
 
-      const doc = await prisma.document.create({
-        data: {
-          id: crypto.randomUUID(),
-          workspaceId: targetWorkspaceId,
-          title,
-          content: content || "",
-          type: type || "doc",
-          status: initialStatus,
-          uploaderId: userId,
-          visibility: visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
-          fileSize: normalizedFileSize,
-          fileExt: normalizedFileExt,
-          summary: normalizedSummary,
-          filePath,
-          mimeType,
-          originalName,
-          updatedAt: new Date(),
-        },
-      });
-
-      // 存储用量真实入账：按文件真实字节数累加空间存储占用（与 workspacequota.storageUsed 展示口径一致）
-      if (normalizedFileSize && normalizedFileSize > 0) {
-        await addStorageUsed(targetWorkspaceId, normalizedFileSize);
+      try {
+        doc = await prisma.document.create({
+          data: {
+            id: crypto.randomUUID(),
+            workspaceId: targetWorkspaceId,
+            title,
+            content: content || "",
+            type: type || "doc",
+            status: initialStatus,
+            uploaderId: userId,
+            visibility: visibility === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+            fileSize: normalizedFileSize,
+            fileExt: normalizedFileExt,
+            summary: normalizedSummary,
+            filePath,
+            mimeType,
+            originalName,
+            updatedAt: new Date(),
+          },
+        });
+        // [R0-J1 J-UPLOAD] 确认存储操作（对象定位 + 文档 ID 回填）
+        if (isMultipart && storageOpId && saved) {
+          await confirmStorageOperation(storageOpId, saved.filePath, doc.id);
+        }
+      } catch (docErr) {
+        // [R0-J3 §二.4] doc.create/确认失败：先条件删残留文档行；行删除失败 → 不继续删文件/释放，
+        // 保留可恢复状态（文档+文件+占用齐全可重试），不留"成功资料外观的空壳"
+        if (doc?.id) {
+          try {
+            await prisma.document.deleteMany({ where: { id: doc.id } });
+          } catch (rowErr) {
+            await markStorageOperationPendingCleanup(storageOpId, "doc.create/确认失败且文档行清理失败: " + (rowErr as Error)?.message, filePath ?? undefined);
+            return NextResponse.json({
+              success: false,
+              code: "STORAGE_CLEANUP_PENDING",
+              error: "上传失败且残留文档清理未完成，已保留文件、记录与占用（可恢复，操作 ID: " + storageOpId + "）。请稍后重试。",
+              storageOpId,
+            }, { status: 500 });
+          }
+        }
+        let fileDeleted = false;
+        if (filePath) {
+          const del = await deleteAssetFile(filePath, targetWorkspaceId);
+          fileDeleted = del.ok;
+        }
+        if (filePath && !fileDeleted) {
+          await markStorageOperationPendingCleanup(storageOpId, "doc.create/确认失败且文件清理未完成", filePath);
+          return NextResponse.json({ success: false, code: "STORAGE_CLEANUP_PENDING", error: "上传失败且清理未完成，已保留占用与恢复信息（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+        }
+        // [R0-J3 §二.3] 文件已确认清理 → 预留原子释放 + RELEASED 终态（操作状态与净占用一致）
+        const relRes = await releaseReservationAtomic(targetWorkspaceId, storageOpId, saved?.size ?? uploadBufferForSave?.length ?? 0, "上传失败已安全清理（文档行+物理文件已清理，终态）");
+        if (relRes.drift) {
+          await markStorageOperationPendingCleanup(storageOpId, "清理完成但预留释放漂移，占用保留待核对", filePath);
+          return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+        }
+        if (docErr instanceof StorageQuotaError) {
+          return NextResponse.json({ success: false, code: docErr.code, error: docErr.message, storageOpId }, { status: docErr.status });
+        }
+        return NextResponse.json({ success: false, error: (docErr as Error)?.message || "资料创建失败，请稍后重试" }, { status: 500 });
       }
+
 
       // 资料上传同样需要留痕审计
       await writeAuditLog(userId, "asset:upload", { title, type: doc.type, documentId: doc.id, status: initialStatus }, targetWorkspaceId)
@@ -4706,7 +4945,59 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       const isManager = role === "ADMIN" || role === "OWNER";
 
       const target = await prisma.document.findUnique({ where: { id: assetId } });
-      if (!target || target.workspaceId !== workspaceId) {
+      if (!target) {
+        // [R0-J4 J3-05 / R0-J5 J3-01/J3-05/J3-07] 文档已不存在：若存在本空间待清理认领，
+        // 按持久化主体/空间/文档身份核权后尝试恢复终结，避免认领与占用卡死。
+        // 就绪错误必须在任何物理动作之前稳定 503，不得掉入 Studio 通用 500。
+        let pending: any;
+        try {
+          pending = await findStorageOpByDocument(assetId, workspaceId);
+        } catch (recoveryErr) {
+          if (recoveryErr instanceof StorageQuotaError) {
+            return NextResponse.json({ success: false, code: recoveryErr.code, error: recoveryErr.message, data: { id: assetId } }, { status: recoveryErr.status });
+          }
+          throw recoveryErr;
+        }
+        if (pending && pending.status === "PENDING_CLEANUP") {
+          // [R0-J5 J3-05] 仅原持久认领主体可重试：历史状态无法证明允许当前管理角色代恢复他人私密删除认领，
+          // isManager 不作统一通行证；未授权安全拒绝，零副作用且不谎报 pendingCleared。
+          if (pending.userId !== userId) {
+            return NextResponse.json({ success: false, code: "ASSET_RECOVERY_FORBIDDEN", error: "权限不足：该历史清理认领仅原发起者可重试，资料、文件、占用与认领状态均未变更", data: { id: assetId } }, { status: 403 });
+          }
+          // [R0-J5 J3-01] 外部删除之前按规范对象身份（含历史别名）复核当前仍保留的引用
+          const stillReferenced = await countOtherReferences(workspaceId, pending.filePath, [assetId]);
+          if (stillReferenced > 0) {
+            return NextResponse.json({
+              success: true,
+              data: { assetId, notifiedCount: 0, recovered: false, pendingCleared: false, sharedRefKept: true },
+              message: "共享引用保留：该对象仍被其他资料引用，已保留文件、资料与占用，清理认领保持待处理（容量不释放）",
+            });
+          }
+          let fin: Awaited<ReturnType<typeof finalizeObjectCleanup>>;
+          const fileDel = await deleteAssetFile(pending.filePath, workspaceId);
+          if (!fileDel.ok && !fileDel.notExists) {
+            return NextResponse.json({ success: false, code: "ASSET_FILE_DELETE_FAILED", error: "物理文件删除失败（" + (fileDel.error || "未知原因") + "），认领保持待清理，请稍后重试" }, { status: 500 });
+          }
+          try {
+            fin = await finalizeObjectCleanup(workspaceId, pending.opId, pending.bytes);
+          } catch (finalizeErr) {
+            if (finalizeErr instanceof StorageQuotaError) {
+              return NextResponse.json({ success: false, code: finalizeErr.code, error: finalizeErr.message, data: { id: assetId } }, { status: finalizeErr.status });
+            }
+            throw finalizeErr;
+          }
+          if (fin.conflicted) {
+            return NextResponse.json({ success: false, code: "STORAGE_RELEASE_CONFLICT", error: "历史清理字节矛盾，已保留占用与待清理认领，请人工核实" }, { status: 500 });
+          }
+          if (fin.drift) {
+            return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "存储历史漂移，已保留占用与待清理认领，请人工核对" }, { status: 500 });
+          }
+          return NextResponse.json({ success: true, data: { assetId, notifiedCount: 0, recovered: true, pendingCleared: true, releasedBytes: fin.released }, message: "已恢复完成历史待清理认领" });
+        }
+        // 文档确已不存在且无可恢复认领：幂等成功
+        return NextResponse.json({ success: true, data: { assetId, notifiedCount: 0 } });
+      }
+      if (target.workspaceId !== workspaceId) {
         // 容错处理：若库中已被擦除或不存在，说明已处于移除状态，优雅返回成功
         return NextResponse.json({ success: true, data: { assetId, notifiedCount: 0 } });
       }
@@ -4814,16 +5105,73 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       }
 
       // —— 个人私密资料 (PRIVATE)：仅上传人本人可删除，直接彻底擦除，不在治理中心留存恢复记录，也不通知任何人 ——
+      // [R0-J3 §一 J-RELEASE] 认领协议：物理对象未确认不存在前占用保持计量；认领先持久，清理确认后才释放一次
       if (target.visibility === "PRIVATE") {
-        try {
-          await prisma.document.delete({ where: { id: assetId } });
-          await deleteAssetFile(target.filePath);
-          await subtractStorageUsed(target.workspaceId, target.fileSize || 0);
-        } catch {
-          await prisma.document.update({
-            where: { id: assetId },
-            data: { status: "REMOVED", updatedAt: new Date() },
+        // 1. 共享引用（别名一致身份）：其他文档仍引用同一对象 → 只删本条记录，对象与占用保留
+        const otherRefs = await countOtherReferences(target.workspaceId, target.filePath, [target.id]);
+        if (otherRefs > 0) {
+          const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+          if (rowDel.count !== 1) {
+            return NextResponse.json({ success: false, error: "该资料已被删除，请刷新列表" }, { status: 404 });
+          }
+          await writeAuditLog(userId, "asset:remove_private", {
+            documentId: assetId,
+            title: target.title,
+          }, workspaceId).catch(() => {});
+          return NextResponse.json({
+            success: true,
+            data: { id: assetId, status: "REMOVED", notifiedCount: 0, physicalFileRetained: true },
+            message: "资料记录已删除；该文件仍被其他资料引用，物理文件与对应占用已保留",
           });
+        }
+        // 2. 破坏性步骤之前持久认领（对象定位/字节/主体/状态；确定性 opId 幂等，物理失败可恢复重试）
+        let claim: Awaited<ReturnType<typeof claimObjectCleanup>>;
+        try {
+          claim = await claimObjectCleanup(target.workspaceId, target.filePath, target.fileSize, { userId, documentId: target.id, source: "remove_asset" });
+        } catch (claimErr) {
+          if (claimErr instanceof StorageQuotaError) {
+            return NextResponse.json({ success: false, code: claimErr.code, error: claimErr.message, data: { id: assetId } }, { status: claimErr.status });
+          }
+          throw claimErr;
+        }
+        // [R0-J4 J3-03] 历史大小事实未知或与调用方矛盾：阻断保留文件/记录/占用/认领，交由人工核实
+        if (claim.state === "blocked") {
+          return NextResponse.json({ success: false, code: "STORAGE_SIZE_UNKNOWN", error: "该资料的存储大小未知或与历史记录不一致，已保留文件与占用，请核实后重试。", data: { id: assetId } }, { status: 500 });
+        }
+        if (claim.state === "already-released") {
+          // 此前待清理已终结（对象已删/释放）→ 幂等收尾：记录应已不在
+          await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+          return NextResponse.json({ success: true, data: { id: assetId, status: "REMOVED", notifiedCount: 0, previouslyPending: true }, message: "该资料的待清理状态已在此前处理完成，本次无需重复操作" });
+        }
+        // 3. 物理删除（数据库短事务之外）
+        const fileDel = await deleteAssetFile(target.filePath, target.workspaceId);
+        if (!fileDel.ok) {
+          // [R0-J3 §一.1] 物理未确认删除 → 占用保持计量；认领保持 PENDING_CLEANUP（可重试/可定位）
+          return NextResponse.json({
+            success: false,
+            code: "ASSET_FILE_DELETE_FAILED",
+            error: "物理文件删除失败（" + (fileDel.error || "未知原因") + "），记录与占用已保留，请稍后重试或联系管理员核实" + (fileDel.ambiguous ? "（同一对象存在多个候选位置，需人工核实）" : "") + "。",
+            data: { id: assetId, filePath: target.filePath },
+          }, { status: 500 });
+        }
+        // 4. 物理已确认删除 → 条件删行认领（并发后到者 count=0）
+        const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+        if (rowDel.count !== 1) {
+          // [R0-J4 J3-02] 条件删行 count=0 只能证明本请求未删到文档，不能证明整个对象清理已终结、无用量待释放。
+          // 禁止据此无条件关闭共用认领：仅当认领确已 RELEASED 才视为完成；PENDING_CLEANUP 保持待清理，交由完成方终结或恢复重试。
+          return NextResponse.json({ success: false, error: "该资料已被并发删除，请刷新列表" }, { status: 404 });
+        }
+        // 5. 终结：同一事务 { 条件扣减 + 认领 RELEASED 终态 } —— 只释放一次（无物理对象时无需终结）
+        const fin = claim.claimOpId
+          ? await finalizeObjectCleanup(target.workspaceId, claim.claimOpId, target.fileSize)
+          : { released: false, drift: false, finalized: true, alreadyReleased: false };
+        if (fin.drift) {
+          return NextResponse.json({
+            success: false,
+            code: "STORAGE_RELEASE_DRIFT",
+            error: "存储历史漂移：占用不足以扣减，已保留占用与待清理认领，请人工核对。",
+            data: { id: assetId },
+          }, { status: 500 });
         }
 
         await writeAuditLog(userId, "asset:remove_private", {
@@ -4837,6 +5185,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
             id: assetId,
             status: "REMOVED",
             notifiedCount: 0,
+            releasedBytes: fin.released ? Number(target.fileSize ?? 0) : 0,
           },
           message: "资料删除成功",
         });
@@ -5463,7 +5812,17 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         return NextResponse.json({ success: false, error: "未找到可删除的变更记录" }, { status: 404 });
       }
 
-      for (const tLog of targetLogs) {
+      // 合规保护：安全敏感日志（登录/支付/改密/转让/注销/踢出/二次验证等）任何角色
+      // （含空间所有者/管理员）均不可删除，否则审计溯源链断裂。与 /api/user/activities 同口径。
+      const deletableLogs = targetLogs.filter((l) => !PROTECTED_ACTION_PATTERN.test(l.action || ""));
+      if (deletableLogs.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "所选日志含安全敏感记录（登录/支付/改密/转让/注销等），受合规保护不可删除" },
+          { status: 403 },
+        );
+      }
+
+      for (const tLog of deletableLogs) {
         let isPrivateLog = false;
         let detailsObj: any = tLog.details;
         if (typeof detailsObj === "string") {
@@ -5493,7 +5852,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       }
 
       await prisma.operationlog.deleteMany({
-        where: { id: { in: targetLogs.map((l) => l.id) } },
+        where: { id: { in: deletableLogs.map((l) => l.id) } },
       });
 
       // 持久化记录管理员删除记录的累计总条数
@@ -5501,7 +5860,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         const configKey = `admin_deleted_log_count_${workspaceId}`;
         const existing = await prisma.systemconfig.findUnique({ where: { key: configKey } }).catch(() => null);
         const currentCount = existing ? parseInt(existing.value || "0") : 0;
-        const newCount = currentCount + targetLogs.length;
+        const newCount = currentCount + deletableLogs.length;
         await prisma.systemconfig.upsert({
           where: { key: configKey },
           create: { key: configKey, value: String(newCount), updatedAt: new Date() },
@@ -5509,7 +5868,7 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         }).catch(() => {});
       }
 
-      return NextResponse.json({ success: true, count: targetLogs.length, message: "变更记录已删除" });
+      return NextResponse.json({ success: true, count: deletableLogs.length, message: "变更记录已删除" });
     }
 
     // ===== 定期物理清理 1 年前历史日志 =====
@@ -5525,17 +5884,27 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       const oneYearAgo = new Date();
       oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
 
+      // 合规保护：满 1 年的历史日志中，安全敏感类（登录/支付/改密/转让/注销等）
+      // 仍受保护、不参与物理清理，避免审计溯源链断裂（与个人中心清理口径一致）。
+      const expiredCandidates = await prisma.operationlog.findMany({
+        where: { workspaceId, createdAt: { lt: oneYearAgo } },
+        select: { id: true, action: true },
+      });
+      const expiredDeletableIds = expiredCandidates
+        .filter((c) => !PROTECTED_ACTION_PATTERN.test(c.action || ""))
+        .map((c) => c.id);
+      const protectedSkipped = expiredCandidates.length - expiredDeletableIds.length;
       const deleteRes = await prisma.operationlog.deleteMany({
-        where: {
-          workspaceId,
-          createdAt: { lt: oneYearAgo }
-        }
+        where: { id: { in: expiredDeletableIds } },
       });
 
       return NextResponse.json({
         success: true,
         count: deleteRes.count,
-        message: `已定期清理满 1 年历史日志，共清除 ${deleteRes.count} 条记录`
+        message:
+          protectedSkipped > 0
+            ? `已定期清理满 1 年普通历史日志 ${deleteRes.count} 条；${protectedSkipped} 条安全敏感日志受合规保护保留`
+            : `已定期清理满 1 年历史日志，共清除 ${deleteRes.count} 条记录`,
       });
     }
 
@@ -5593,13 +5962,67 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       }
 
       if (targetDoc) {
-        // 先移除底层资料，再清理移除单；同资料的历史移除单也一并清理，避免残留“找不到文档”的记录
-        await prisma.document.delete({ where: { id: targetDoc.id } });
-        await prisma.documentremoval.deleteMany({
-          where: { documentId: targetDoc.id, workspaceId },
-        });
-        await deleteAssetFile(targetDoc.filePath);
-        await subtractStorageUsed(targetDoc.workspaceId || workspaceId, targetDoc.fileSize || 0);
+        // [R0-J3 §一 J-RELEASE] 认领协议：共享引用（别名身份）保留 → 认领先持久 → 物理删除确认 → 删行 → 终结释放一次
+        const otherRefs = await countOtherReferences(targetDoc.workspaceId || workspaceId, targetDoc.filePath, [targetDoc.id]);
+        if (otherRefs > 0) {
+          const rowDel = await prisma.document.deleteMany({ where: { id: targetDoc.id, workspaceId: targetDoc.workspaceId || workspaceId } });
+          if (rowDel.count !== 1) {
+            return NextResponse.json({ success: false, error: "该资料已被并发删除，请刷新列表" }, { status: 404 });
+          }
+          await prisma.documentremoval.deleteMany({
+            where: { documentId: targetDoc.id, workspaceId },
+          });
+          // fall through to audit/response with retained note
+        } else {
+          let claim: Awaited<ReturnType<typeof claimObjectCleanup>>;
+          try {
+            claim = await claimObjectCleanup(targetDoc.workspaceId || workspaceId, targetDoc.filePath, targetDoc.fileSize, { userId, documentId: targetDoc.id, source: "delete_removal_record" });
+          } catch (claimErr) {
+            if (claimErr instanceof StorageQuotaError) {
+              return NextResponse.json({ success: false, code: claimErr.code, error: claimErr.message, data: { documentId: targetDoc.id } }, { status: claimErr.status });
+            }
+            throw claimErr;
+          }
+          if (claim.state === "already-released") {
+            await prisma.document.deleteMany({ where: { id: targetDoc.id, workspaceId: targetDoc.workspaceId || workspaceId } });
+            await prisma.documentremoval.deleteMany({ where: { documentId: targetDoc.id, workspaceId } });
+          } else if (claim.state === "blocked") {
+            // [R0-J4 J3-03] 未知/矛盾大小 → 阻断保留
+            return NextResponse.json({ success: false, code: "STORAGE_SIZE_UNKNOWN", error: "该资料的存储大小未知或与历史记录不一致，已保留文件与占用，请核实后重试。", data: { documentId: targetDoc.id } }, { status: 500 });
+          } else {
+            const fileDel = await deleteAssetFile(targetDoc.filePath, targetDoc.workspaceId || workspaceId);
+            if (!fileDel.ok) {
+              // [R0-J3 §一.1] 物理未确认删除 → 记录/占用保持，认领保持待清理（可重试）
+              return NextResponse.json({
+                success: false,
+                code: "ASSET_FILE_DELETE_FAILED",
+                error: "物理文件删除失败（" + (fileDel.error || "未知原因") + "），记录与占用已保留，请稍后重试或联系管理员核实" + (fileDel.ambiguous ? "（同一对象存在多个候选位置，需人工核实）" : "") + "。",
+                data: { documentId: targetDoc.id, filePath: targetDoc.filePath },
+              }, { status: 500 });
+            }
+            const rowDel = await prisma.document.deleteMany({ where: { id: targetDoc.id, workspaceId: targetDoc.workspaceId || workspaceId } });
+            if (rowDel.count === 1) {
+              const fin = claim.claimOpId
+                ? await finalizeObjectCleanup(targetDoc.workspaceId || workspaceId, claim.claimOpId, targetDoc.fileSize)
+                : { released: false, drift: false, finalized: true, alreadyReleased: false };
+              if (fin.drift) {
+                return NextResponse.json({
+                  success: false,
+                  code: "STORAGE_RELEASE_DRIFT",
+                  error: "存储历史漂移：占用不足以扣减，已保留占用与待清理认领，请人工核对。",
+                  data: { documentId: targetDoc.id },
+                }, { status: 500 });
+              }
+            } else {
+              // [R0-J4 J3-02] 条件删行 count=0 只能证明本请求未删到文档，不能证明整个对象清理已终结。
+              // 禁止据此关闭共用认领：PENDING_CLEANUP 保持待清理，交由完成方终结或恢复重试。
+            }
+            // 同资料的历史移除单一并清理
+            await prisma.documentremoval.deleteMany({
+              where: { documentId: targetDoc.id, workspaceId },
+            });
+          }
+        }
       } else {
         await prisma.documentremoval.deleteMany({
           where: { documentId: record.documentId, workspaceId },
@@ -5706,20 +6129,91 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         return NextResponse.json({ success: false, error: access.error.message }, { status: access.error.status });
       }
 
-      const deleteRes = await prisma.document.deleteMany({
-        where: {
-          id: { in: assetIds },
-          workspaceId
-        }
-      });
+      // [R0-J S05] 批量硬删除走治理权限（与删除申请同一裁决），不得直接 deleteMany 绕过文件与占用
+      const isGovernance = await isGovernanceAdminRole(userId, workspaceId);
+      if (!isGovernance) {
+        return NextResponse.json({ success: false, error: "权限不足，仅空间管理员或所有者可批量彻底删除资料" }, { status: 403 });
+      }
 
-      await writeAuditLog(userId, "asset:batch_delete", { count: deleteRes.count, assetIds }, workspaceId)
+      // [R0-J1 J-PRIVATE] PRIVATE 仅上传人本人可删除规则（与邻近删除分支一致）
+      const succeeded: Array<{ id: string; title: string | null; filePath: string | null }> = [];
+      const failed: Array<{ id: string; reason: string }> = [];
+      const cleanupPendingIds: string[] = []; // [R0-J3] 认领待清理项（物理未确认删除时记录与占用保留，重试可完成）
+      const sharedRetainedIds: string[] = []; // [R0-J3 §一.5] 共享引用保留项（记录已删，对象与占用保留）
+      for (const assetId of assetIds) {
+        const target = await prisma.document.findFirst({ where: { id: assetId, workspaceId } });
+        if (!target) { failed.push({ id: assetId, reason: "资料不存在或不属于当前空间" }); continue; }
+        // [R0-J1 J-PRIVATE] PRIVATE 仅上传人本人可删除（不扩大管理员权限）
+        if (target.visibility === "PRIVATE" && target.uploaderId !== userId) {
+          failed.push({ id: assetId, reason: "个人私密资料仅上传人本人可彻底删除" });
+          continue;
+        }
+        // [R0-J3 §一 J-RELEASE] 认领协议（逐条）：共享保留 / 认领 → 物理删除 → 删行 → 终结释放一次
+        try {
+          // 共享引用（别名一致身份）：其他文档仍引用同一对象 → 只删本条记录，对象与占用保留
+          const otherRefs = await countOtherReferences(target.workspaceId || workspaceId, target.filePath, [target.id]);
+          if (otherRefs > 0) {
+            const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId || workspaceId } });
+            if (rowDel.count !== 1) { failed.push({ id: assetId, reason: "资料已被并发删除，请刷新列表" }); continue; }
+            sharedRetainedIds.push(target.id);
+            succeeded.push({ id: target.id, title: target.title, filePath: target.filePath });
+            continue;
+          }
+          const claim = await claimObjectCleanup(target.workspaceId || workspaceId, target.filePath, target.fileSize, { userId, documentId: target.id, source: "batch_delete_assets" });
+          if (claim.state === "already-released") {
+            await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId || workspaceId } });
+            succeeded.push({ id: target.id, title: target.title, filePath: target.filePath });
+            continue;
+          }
+          if (claim.state === "blocked") {
+            // [R0-J4 J3-03] 未知/矛盾大小 → 阻断保留
+            failed.push({ id: assetId, reason: "资料存储大小未知或与历史记录不一致，已保留文件与占用，请核实后重试" });
+            continue;
+          }
+          const fileDel = await deleteAssetFile(target.filePath, target.workspaceId || workspaceId);
+          if (!fileDel.ok) {
+            // [R0-J3 §一.1] 物理未确认删除 → 记录与占用保持，认领待清理；如实计入 failed（不假报成功）
+            failed.push({ id: assetId, reason: "物理文件删除失败（" + (fileDel.error || "未知原因") + "），记录与占用已保留" + (fileDel.ambiguous ? "（多候选位置待人工核实）" : "") });
+            continue;
+          }
+          const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId || workspaceId } });
+          if (rowDel.count !== 1) {
+            // [R0-J4 J3-02] 条件删行 count=0 只能证明本请求未删到文档，不能证明整个对象清理已终结。
+            // 禁止据此关闭共用认领：PENDING_CLEANUP 保持待清理，交由完成方终结或恢复重试。
+            failed.push({ id: assetId, reason: "资料已被并发删除，请刷新列表" });
+            continue;
+          }
+          const fin = claim.claimOpId
+            ? await finalizeObjectCleanup(target.workspaceId || workspaceId, claim.claimOpId, target.fileSize)
+            : { released: false, drift: false, finalized: true, alreadyReleased: false };
+          if (fin.drift) {
+            // 漂移：占用保留 + 认领待清理；本条记录已删但占用未释放 → 如实计入 failed
+            failed.push({ id: assetId, reason: "存储历史漂移：占用保留待人工核对，物理对象已删" });
+            continue;
+          }
+          succeeded.push({ id: target.id, title: target.title, filePath: target.filePath });
+        } catch (delErr) {
+          if (delErr instanceof StorageQuotaError) {
+            failed.push({ id: assetId, reason: delErr.message });
+            continue;
+          }
+          throw delErr;
+        }
+      }
+
+      await writeAuditLog(userId, "asset:batch_delete", { requested: assetIds.length, succeeded: succeeded.length, failed: failed.length, assetIds }, workspaceId)
         .catch((e) => console.warn("[审计] 批量删除资料日志写入失败:", e));
 
       return NextResponse.json({
-        success: true,
-        count: deleteRes.count
-      });
+        success: failed.length === 0,
+        count: succeeded.length,
+        succeededIds: succeeded.map(s => s.id),
+        failedCount: failed.length,
+        failed,
+        cleanupPendingIds,
+        sharedRetainedIds,
+        error: failed.length > 0 ? "部分资料删除失败（已保留可重试依据），其余已删除" : undefined,
+      }, { status: failed.length > 0 ? 207 : 200 });
     }
 
     // ===== 资料治理：批量移除资料（软删除 + 移除单 + 全员通知） =====
@@ -5753,6 +6247,8 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       const titles: string[] = [];
       const byUploader: Record<string, string[]> = {};
       const removedIds: string[] = [];
+      const failed: Array<{ id: string; reason: string }> = []; // [R0-J] 物理删除失败如实计入
+      const sharedRetainedIds: string[] = []; // [R0-J3 §一.5] 共享引用保留项（记录已删，对象与占用保留）
       let removedCount = 0;
       let skippedCount = 0;
       const removalRows: any[] = [];
@@ -5768,24 +6264,64 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
 
         if (target.visibility === "PRIVATE") {
           // 个人私密资料：仅上传人本人可删除，物理直接抹除，不生成治理记录，也不通知任何人
+          // [R0-J3 §一 J-RELEASE] 认领协议：物理未确认删除 → 记录/占用保留并如实计入 failed（不假报已移除）
           try {
-            await prisma.document.delete({ where: { id: assetId } });
-            await deleteAssetFile(target.filePath);
-            await subtractStorageUsed(target.workspaceId, target.fileSize || 0);
-          } catch {
-            await prisma.document.update({
-              where: { id: assetId },
-              data: { status: "REMOVED", updatedAt: removedAt },
-            });
+            const otherRefs = await countOtherReferences(target.workspaceId, target.filePath, [target.id]);
+            if (otherRefs > 0) {
+              const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+              if (rowDel.count !== 1) { failed.push({ id: assetId, reason: "资料已被并发删除，请刷新列表" }); continue; }
+              removedIds.push(target.id);
+              removedCount++;
+              sharedRetainedIds.push(target.id);
+              await writeAuditLog(userId, "asset:remove_private", { documentId: target.id, title: target.title }, workspaceId).catch(() => {});
+              continue;
+            }
+            const claim = await claimObjectCleanup(target.workspaceId, target.filePath, target.fileSize, { userId, documentId: target.id, source: "batch_remove_assets" });
+            if (claim.state === "already-released") {
+              await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+              removedIds.push(target.id);
+              removedCount++;
+              continue;
+            }
+            if (claim.state === "blocked") {
+              // [R0-J4 J3-03] 未知/矛盾大小 → 阻断保留
+              failed.push({ id: assetId, reason: "资料存储大小未知或与历史记录不一致，已保留文件与占用，请核实后重试" });
+              continue;
+            }
+            const fileDel = await deleteAssetFile(target.filePath, target.workspaceId);
+            if (!fileDel.ok) {
+              failed.push({ id: assetId, reason: "物理文件删除失败（" + (fileDel.error || "未知原因") + "），记录与占用已保留" + (fileDel.ambiguous ? "（多候选位置待人工核实）" : "") });
+              continue;
+            }
+            const rowDel = await prisma.document.deleteMany({ where: { id: target.id, workspaceId: target.workspaceId } });
+            if (rowDel.count !== 1) {
+              // [R0-J4 J3-02] 条件删行 count=0 只能证明本请求未删到文档，不能证明整个对象清理已终结。
+              // 禁止据此关闭共用认领：PENDING_CLEANUP 保持待清理，交由完成方终结或恢复重试。
+              failed.push({ id: assetId, reason: "资料已被并发删除，请刷新列表" });
+              continue;
+            }
+            const fin = claim.claimOpId
+              ? await finalizeObjectCleanup(target.workspaceId, claim.claimOpId, target.fileSize)
+              : { released: false, drift: false, finalized: true, alreadyReleased: false };
+            if (fin.drift) {
+              failed.push({ id: assetId, reason: "存储历史漂移：占用保留待人工核对，物理对象已删" });
+              continue;
+            }
+            removedIds.push(target.id);
+            removedCount++;
+            await writeAuditLog(
+              userId,
+              "asset:remove_private",
+              { documentId: target.id, title: target.title },
+              workspaceId
+            ).catch(() => {});
+          } catch (delErr) {
+            if (delErr instanceof StorageQuotaError) {
+              failed.push({ id: assetId, reason: delErr.message });
+              continue;
+            }
+            throw delErr;
           }
-          removedIds.push(target.id);
-          removedCount++;
-          await writeAuditLog(
-            userId,
-            "asset:remove_private",
-            { documentId: target.id, title: target.title },
-            workspaceId
-          ).catch(() => {});
           continue;
         }
 
@@ -5856,9 +6392,9 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       }
 
       return NextResponse.json({
-        success: true,
-        data: { removedCount, skippedCount, notifiedCount },
-      });
+        success: failed.length === 0,
+        data: { removedCount, skippedCount, notifiedCount, failedCount: failed.length, failed, succeededIds: removedIds, cleanupPendingIds: [], sharedRetainedIds },
+      }, { status: failed.length > 0 ? 207 : 200 });
     }
 
     // 批量公开资料接口（管理员直接批量公开，普通成员批量提交公开审核）
@@ -6342,6 +6878,10 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
       if (!parentEntry || parentEntry.type !== "knowledge" || parentEntry.status === "deleted") {
         return NextResponse.json({ success: false, error: "知识条目不存在" }, { status: 404 });
       }
+      // [R0-J S03] 附件父条目必须属于记账空间：不一致 → 403（不得把其他空间的容量/文件挂在此条目下）
+      if (parentEntry.workspaceId !== attWsId) {
+        return NextResponse.json({ success: false, error: "知识条目不属于当前工作空间，无法在此上传附件" }, { status: 403 });
+      }
       const attRole = await getLogicalWorkspaceRole(userId, attWsId);
       const attIsCreator = parentEntry.uploaderId === userId;
       if (!attIsCreator && attRole !== "OWNER" && attRole !== "ADMIN") {
@@ -6373,45 +6913,111 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
 
       const attBuffer = Buffer.from(await attFile.arrayBuffer());
 
-      // 存储配额校验 + 入账
+      // [R0-J S03 + R0-J3 §二 J-UPLOAD] 与 upload_doc 相同协议：预留 → 对象键预绑定 → 保存（标记前置）→ doc.create → 确认
+      const storageOpId = crypto.randomUUID();
+      const attAllocated = allocateObjectKey(attWsId, attExt);
+      let attBoundKey: string | null = null;
+      let attReserved = false;
+      let attSaved: { filePath: string; size: number; mimeType: string } | null = null;
+      let attSaveAttempted = false;
+      let attDoc: any = null;
       try {
-        await assertStorageQuota(attWsId, attBuffer.length);
-      } catch (quotaErr) {
-        if (quotaErr instanceof StorageQuotaError) {
-          return NextResponse.json({ success: false, error: quotaErr.message }, { status: 403 });
+        await reserveStorageBytes(attWsId, attBuffer.length, storageOpId, userId);
+        attReserved = true;
+        await bindOperationObjectKey(storageOpId, attAllocated.key);
+        attBoundKey = attAllocated.key;
+        attSaveAttempted = true; // [R0-J3 §二.1] 开始保存之前标记
+        attSaved = await saveAssetFileToKey(attAllocated.key, attBuffer, attWsId);
+        attDoc = await prisma.document.create({
+          data: {
+            id: crypto.randomUUID(),
+            workspaceId: attWsId,
+            title: attFile.name,
+            content: null,
+            type: "knowledge",
+            status: parentEntry.status,
+            parentId: attKnowledgeId,
+            uploaderId: userId,
+            filePath: attSaved.filePath,
+            originalName: attFile.name,
+            fileSize: attBuffer.length,
+            fileExt: attExt,
+            mimeType: attFile.type || "application/octet-stream",
+            visibility: "PUBLIC",
+            updatedAt: new Date(),
+          },
+        });
+        await confirmStorageOperation(storageOpId, attSaved.filePath, attDoc.id);
+      } catch (flowErr) {
+        // [R0-J3 §二.2] 保存已开始且对象定位已绑定：按对象定位核实/清理事实，不按缺返回值盲释
+        if (attSaveAttempted && !attSaved) {
+          let fileDeleted = false;
+          if (attBoundKey) {
+            const del = await deleteAssetFile(attBoundKey, attWsId);
+            fileDeleted = del.ok;
+          }
+          if (fileDeleted && attReserved) {
+            const relRes = await releaseReservationAtomic(attWsId, storageOpId, attBuffer.length, "附件上传失败：对象已核实清理，预留原子释放（终态）");
+            if (relRes.drift) {
+              await markStorageOperationPendingCleanup(storageOpId, "附件预留释放漂移，占用保留待核对", attBoundKey);
+              return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "附件上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+            }
+            if (flowErr instanceof StorageQuotaError) {
+              return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+            }
+            throw flowErr;
+          }
+          // [R0-J3 §二.2] 对象未确认清理 → 稳定待核实（占用保留 + 操作持有可定位对象）
+          await markStorageOperationPendingCleanup(storageOpId, "附件保存结果未知且对象未确认清理: " + (flowErr as Error)?.message, attBoundKey);
+          return NextResponse.json({ success: false, code: "STORAGE_OP_PENDING", error: "附件上传失败且保存结果未知，已保留占用与可定位恢复信息（操作 ID: " + storageOpId + (attBoundKey ? "，对象: " + attBoundKey : "") + "），请勿重复上传。", storageOpId, filePath: attBoundKey ?? undefined }, { status: 500 });
         }
-        throw quotaErr;
+        // 保存未开始 → 原子释放预留 + 终态
+        if (attReserved && !attSaved) {
+          const relRes = await releaseReservationAtomic(attWsId, storageOpId, attBuffer.length, "附件上传失败（保存前），预留原子释放（终态）");
+          if (relRes.drift) {
+            await markStorageOperationPendingCleanup(storageOpId, "附件预留释放漂移，占用保留待核对");
+            return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "附件上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+          }
+          if (flowErr instanceof StorageQuotaError) {
+            return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+          }
+          throw flowErr;
+        }
+        // [R0-J3 §二.4] doc.create/确认失败：先条件删残留文档行；行删除失败 → 保留文件/记录/占用（可恢复），不留成功外观
+        if (attDoc?.id) {
+          try {
+            await prisma.document.deleteMany({ where: { id: attDoc.id } });
+          } catch (rowErr) {
+            await markStorageOperationPendingCleanup(storageOpId, "附件 doc.create/确认失败且文档行清理失败: " + (rowErr as Error)?.message, attSaved?.filePath ?? attBoundKey);
+            return NextResponse.json({
+              success: false,
+              code: "STORAGE_CLEANUP_PENDING",
+              error: "附件上传失败且残留文档清理未完成，已保留文件、记录与占用（可恢复，操作 ID: " + storageOpId + "）。请稍后重试。",
+              storageOpId,
+            }, { status: 500 });
+          }
+        }
+        let fileDeleted = false;
+        if (attSaved?.filePath) {
+          const del = await deleteAssetFile(attSaved.filePath, attWsId);
+          fileDeleted = del.ok;
+        }
+        if (attSaved?.filePath && !fileDeleted) {
+          await markStorageOperationPendingCleanup(storageOpId, "附件上传失败且文件清理未完成", attSaved.filePath);
+          return NextResponse.json({ success: false, code: "STORAGE_CLEANUP_PENDING", error: "附件上传失败且临时文件清理未完成，已保留占用与恢复信息（操作 ID: " + storageOpId + "），请勿重复上传。", storageOpId }, { status: 500 });
+        }
+        const relRes = attReserved
+          ? await releaseReservationAtomic(attWsId, storageOpId, attSaved?.size ?? attBuffer.length, "附件上传失败已安全清理（终态）")
+          : { released: false, drift: false }; // 预留未发生（如准入拒绝）→ 无需释放
+        if (relRes.drift) {
+          await markStorageOperationPendingCleanup(storageOpId, "附件清理完成但预留释放漂移，占用保留待核对", attSaved?.filePath ?? attBoundKey);
+          return NextResponse.json({ success: false, code: "STORAGE_RELEASE_DRIFT", error: "附件上传失败且预留释放漂移，占用保留待人工核对（操作 ID: " + storageOpId + "）。", storageOpId }, { status: 500 });
+        }
+        if (flowErr instanceof StorageQuotaError) {
+          return NextResponse.json({ success: false, code: flowErr.code, error: flowErr.message, storageOpId }, { status: flowErr.status });
+        }
+        throw flowErr;
       }
-
-      // 直接写盘到 uploads/assets/{wsId}/{uuid.ext}，与 readAssetFile 的路径解析一致
-      const fs = await import("fs/promises");
-      const path = await import("path");
-      const attFileName = crypto.randomUUID() + (attExt ? "." + attExt : "");
-      const attDir = path.join(process.cwd(), "uploads", "assets", attWsId);
-      await fs.mkdir(attDir, { recursive: true });
-      const attAbsPath = path.join(attDir, attFileName);
-      await fs.writeFile(attAbsPath, attBuffer);
-      const attRelPath = attWsId + "/" + attFileName;
-      await addStorageUsed(attWsId, attBuffer.length);
-      const attDoc = await prisma.document.create({
-        data: {
-          id: crypto.randomUUID(),
-          workspaceId: attWsId,
-          title: attFile.name,
-          content: null,
-          type: "knowledge",
-          status: parentEntry.status,
-          parentId: attKnowledgeId,
-          uploaderId: userId,
-          filePath: attRelPath,
-          originalName: attFile.name,
-          fileSize: attBuffer.length,
-          fileExt: attExt,
-          mimeType: attFile.type || "application/octet-stream",
-          visibility: "PUBLIC",
-          updatedAt: new Date(),
-        },
-      });
       return NextResponse.json({
         success: true,
         data: { id: attDoc.id, title: attDoc.originalName, fileSize: attDoc.fileSize },
@@ -7230,6 +7836,11 @@ export async function runStudioPost(request: NextRequest, deps: StudioExecutionD
         error: "系统默认组件策略缺少已批准数据源",
         code: "DEFAULT_COMPONENT_SOURCE_MISSING",
       }, { status: 500 });
+    }
+    // [R0-K K04] 解析失败/超限/取消/未就绪：在通用 500 之前返回稳定 code，
+    // 不泄露原文或堆栈；此时模型调用、扣点与 hold 均未开始。
+    if (error instanceof ParseResourceError) {
+      return NextResponse.json(parseErrorBody(error), { status: error.status });
     }
     return NextResponse.json({ 
       success: false, 

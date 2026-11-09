@@ -30,6 +30,7 @@ export default function WorkspaceSettingsPage() {
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
   const [deleting, setDeleting] = useState(false);
 
+  const [canEditSettings, setCanEditSettings] = useState(false);
   const [workspace, setWorkspace] = useState<any>({
     id: "",
     name: "",
@@ -90,6 +91,21 @@ export default function WorkspaceSettingsPage() {
             contactEmail: data.workspace.contactEmail || data.workspace.ownerEmail || "",
             contactPhone: data.workspace.contactPhone || data.workspace.ownerPhone || "",
           });
+          // KN-SEC：真实角色门禁（自查清单：前端隐藏+后端双校验）——仅空间所有者/管理员可编辑设置
+          const myId = localStorage.getItem("userId") || "";
+          const roleRes = await fetch(`/api/workspace/members?workspaceId=${workspaceId}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          let canEdit = data.workspace.ownerId === myId;
+          if (!canEdit && roleRes.ok) {
+            const roleData = await roleRes.json().catch(() => ({}));
+            const me = (roleData.members || roleData.data?.members || []).find(
+              (x: { userId?: string }) => x.userId === myId
+            );
+            const myRole = (me?.role || "").toUpperCase();
+            canEdit = myRole === "ADMIN" || myRole === "OWNER";
+          }
+          setCanEditSettings(canEdit);
         }
       } else {
         const err = await res.json();
@@ -292,6 +308,11 @@ export default function WorkspaceSettingsPage() {
   return (
     <WorkspaceInternalLayout>
       <div className="max-w-4xl mx-auto space-y-6 pb-12">
+        {!loading && !canEditSettings && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs font-bold text-amber-800">
+            🔒 你不是本空间的所有者/管理员，以下设置仅可查看，编辑权限仅限空间所有者与管理员。
+          </div>
+        )}
         
         {/* 顶部标题 */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-200">
@@ -605,7 +626,7 @@ export default function WorkspaceSettingsPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={saving || !canEditSettings}
                   className="zg-btn zg-btn-primary flex items-center gap-1.5 shadow-md shadow-[#3182ce]/20"
                 >
                   <Save className="w-4 h-4" />

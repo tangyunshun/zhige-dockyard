@@ -1,6 +1,14 @@
 import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { extractTextFromBuffer, extractTextFromBufferWithTimeout, __setOcrTestHooks, type OcrWorker } from "../text-extract";
+import { ParseResourceError, PARSE_CODES } from "../parse-policy";
+
+/**
+ * [R0-K] 语义变化说明：统一入口不再把「超时/取消/解析失败」吞成空字符串，
+ * 而是抛稳定 ParseResourceError(PARSE_TIMEOUT/PARSE_CANCELLED/PARSE_FAILED)。
+ * 「无文字/空文本」仍诚实返回空串。以下断言保留了原有的终止目标与正常格式目标，
+ * 只把「超时返回空串」改为「超时抛稳定错误且后台工作确已终止」，不删测试掩盖回归。
+ */
 
 const PNG_BUFFER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 
@@ -132,10 +140,15 @@ describe("extractTextFromBufferWithTimeout（统一可取消超时入口）", ()
     __setOcrTestHooks({ factory: slowFactory, timeoutMs: 30 });
     try {
       const started = Date.now();
-      const result = await extractTextFromBufferWithTimeout(PNG_BUFFER, "image.png", "image/png", 30);
-      assert.equal(result, "");
+      // [R0-K] 语义：超时不吞成空串，而是依据实际停止事实抛稳定错误；
+      // 创建延迟导致超时瞬间 worker 尚未创建（created=false），此时无法确认停止，按 STOP_UNCONFIRMED 保守保护；
+      // 已创建但终止未确认则为 TIMEOUT。两者均保留“迟到创建被终止、不再识别”的核心验证。
+      await assert.rejects(
+        extractTextFromBufferWithTimeout(PNG_BUFFER, "image.png", "image/png", 30),
+        (e: unknown) => e instanceof ParseResourceError && (e.code === PARSE_CODES.TIMEOUT || e.code === PARSE_CODES.STOP_UNCONFIRMED),
+      );
       assert.ok(Date.now() - started < 1000, "超时应尽快结束等待");
-      // 等待延迟创建的 worker 真正完成创建并被终止
+      // 等待延迟创建的 worker 真正完成创建并被终止（终止目标保持不变）
       await new Promise((r) => setTimeout(r, 220));
       assert.ok(calls.terminate >= 1, "延迟创建的 worker 也必须被终止，不得继续后台运行");
       assert.equal(calls.recognize, 0, "取消后不应开始 recognize");

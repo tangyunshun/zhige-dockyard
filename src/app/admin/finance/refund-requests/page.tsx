@@ -4,10 +4,14 @@
  * 退款申请审批（管理员 / 超级管理员）
  *
  * 职责：处理用户对「已扣点但不满意」任务提交的退款申请。
- * 「同意退款」会调用账务层真实退点并写入 REFUND 流水，申请单上会留下流水号可追溯；
  * 「驳回」必须填写理由并原样展示给申请人。
  * 本页只退「算力点」，不涉及任何真实资金退款。
+ *
+ * [R0-D / 原方案 F07 止损] 人工批准退点已暂停：当前无法证明净可退额度与原扣款来源，
+ * 批准控件禁用、handler 不发批准请求；列表/筛选/导出/驳回及历史已批准记录保持原状。
  */
+const MANUAL_APPROVAL_PAUSED_MESSAGE =
+  "人工批准退点暂不可用，申请保留待核查；不会因此重复退点或转入个人钱包";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { getAuthToken } from "@/utils/auth";
 import { useEscapeKey } from "@/hooks/useEscapeKey";
@@ -195,17 +199,19 @@ export default function AdminRefundRequestsPage() {
   );
 
   const resolve = async (row: RefundRequestRow, action: "APPROVE" | "REJECT", remark: string) => {
+    // [R0-D] 防御：人工批准已暂停，即使旧入口/残留事件被触发也不发批准请求、不显示到账
+    if (action === "APPROVE") {
+      toast.info(MANUAL_APPROVAL_PAUSED_MESSAGE);
+      setModal(null);
+      return;
+    }
     setBusyId(row.id);
     try {
       await authFetch(`/api/admin/refund-requests/${row.id}/resolve`, {
         method: "POST",
-        body: JSON.stringify({ action, remark: remark || undefined }),
+        body: JSON.stringify({ action: "REJECT", remark: remark || undefined }),
       });
-      toast.success(
-        action === "APPROVE"
-          ? `已同意退款，${row.points} 算力点（${formatYuanFromPoints(row.points)}）已退回用户钱包`
-          : "已驳回该退款申请",
-      );
+      toast.success("已驳回该退款申请");
       setModal(null);
       await load();
       if (typeof window !== "undefined") {
@@ -233,14 +239,14 @@ export default function AdminRefundRequestsPage() {
       <div>
         <h1 className="text-2xl font-black text-slate-900">退款申请审批</h1>
         <p className="text-sm text-slate-500 mt-1">
-          处理用户提交的算力点退款申请。同意退款会真实退点并写入退款流水；驳回需填写理由。本流程只涉及「算力点」，不涉及任何真实资金。
+          处理用户提交的算力点退款申请。人工批准退点暂不可用，申请保留待核查；有专用审批权限者仍可按原规则驳回。本流程只涉及「算力点」，不涉及任何真实资金。
         </p>
       </div>
 
       {/* 汇总统计 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="待审批" value={counts.PENDING} sub={`${counts.pendingPoints} 点待退`} tone="amber" />
-        <StatCard label="已退款" value={counts.APPROVED} sub={`${counts.approvedPoints} 点已退`} tone="emerald" />
+        <StatCard label="待核查" value={counts.PENDING} sub={`${counts.pendingPoints} 点申请参考值`} tone="amber" />
+        <StatCard label="已退款" value={counts.APPROVED} sub={`${counts.approvedPoints} 点（历史记录）`} tone="emerald" />
         <StatCard label="已驳回" value={counts.REJECTED} sub="已完成" tone="slate" />
         <StatCard label="全部申请" value={rows.length} sub="含各状态" tone="indigo" />
       </div>
@@ -395,23 +401,31 @@ export default function AdminRefundRequestsPage() {
                 )}
 
                 {r.status === "PENDING" && (
-                  <div className="flex gap-2">
-                    <button
-                      className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-black hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-1"
-                      disabled={busyId === r.id}
-                      onClick={() => setModal({ type: "approve", row: r })}
-                    >
-                      {busyId === r.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
-                      同意退款
-                    </button>
-                    <button
-                      className="px-4 py-1.5 border border-slate-200 rounded-lg text-xs font-black hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1"
-                      disabled={busyId === r.id}
-                      onClick={() => setModal({ type: "reject", row: r })}
-                    >
-                      <X className="w-3.5 h-3.5" />
-                      驳回
-                    </button>
+                  <div className="space-y-1.5">
+                    {/* [R0-D] 批准退点暂停：不显示可点击的批准控件，明确说明原因 */}
+                    <div className="text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 flex items-start gap-1.5">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>{MANUAL_APPROVAL_PAUSED_MESSAGE}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="px-4 py-1.5 bg-slate-100 text-slate-400 rounded-lg text-xs font-black disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1"
+                        disabled
+                        title={MANUAL_APPROVAL_PAUSED_MESSAGE}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        批准退点（暂不可用）
+                      </button>
+                      <button
+                        className="px-4 py-1.5 border border-slate-200 rounded-lg text-xs font-black hover:bg-slate-50 disabled:opacity-50 flex items-center gap-1"
+                        disabled={busyId === r.id}
+                        onClick={() => setModal({ type: "reject", row: r })}
+                      >
+                        <X className="w-3.5 h-3.5" />
+                        驳回
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -512,7 +526,7 @@ function ResolveModal({
               <AlertTriangle className="w-4 h-4 text-rose-600" />
             </span>
           )}
-          <h2 className="text-base font-black text-slate-800">{isApprove ? "确认同意退款" : "驳回退款申请"}</h2>
+          <h2 className="text-base font-black text-slate-800">{isApprove ? "人工批准退点暂不可用" : "驳回退款申请"}</h2>
         </div>
 
         <div className="text-xs text-slate-500 space-y-1 rounded-lg bg-slate-50 border border-slate-100 p-3">
@@ -520,13 +534,14 @@ function ResolveModal({
           <div>任务：{row.taskName || row.taskId}</div>
           <div>申请人：{row.applicant?.email ? maskEmail(row.applicant.email) : row.userId}</div>
           <div className="font-bold text-slate-700">
-            退款金额：<span className="text-indigo-700">{row.points} 算力点</span>（{formatYuanFromPoints(row.points)}）
+            申请参考值：<span className="text-indigo-700">{row.points} 算力点</span>（{formatYuanFromPoints(row.points)}）
+            <span className="font-normal text-slate-500">（历史累计扣点，非已核准净可退金额）</span>
           </div>
         </div>
 
         {isApprove ? (
-          <p className="text-[11px] text-slate-500 leading-relaxed">
-            确认后平台将真实退点并写入一条 REFUND 流水，流水号会回写至此申请单，可在算力总账按该流水号追溯。该操作不可撤销。
+          <p className="text-[11px] text-amber-800 font-bold leading-relaxed rounded-lg bg-amber-50 border border-amber-200 p-2.5">
+            {MANUAL_APPROVAL_PAUSED_MESSAGE}。历史累计扣点仅作为核查参考，不代表净可退额度或原扣款来源核验结果。
           </p>
         ) : (
           <div>
@@ -554,14 +569,15 @@ function ResolveModal({
             取消
           </button>
           <button
-            className={`px-4 py-1.5 rounded-lg text-xs font-black text-white disabled:opacity-50 flex items-center gap-1 ${
-              isApprove ? "bg-emerald-600 hover:bg-emerald-700" : "bg-rose-600 hover:bg-rose-700"
+            type="button"
+            className={`px-4 py-1.5 rounded-lg text-xs font-black disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-1 ${
+              isApprove ? "bg-slate-100 text-slate-400" : "bg-rose-600 hover:bg-rose-700 text-white"
             }`}
-            disabled={busy || rejectInvalid}
+            disabled={busy || rejectInvalid || isApprove}
             onClick={() => onConfirm(row, isApprove ? "APPROVE" : "REJECT", remark)}
           >
-            {busy && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-            {isApprove ? "确认退款" : "确认驳回"}
+            {busy && !isApprove && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+            {isApprove ? "暂不可用" : "确认驳回"}
           </button>
         </div>
       </div>

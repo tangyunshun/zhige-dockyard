@@ -6,6 +6,7 @@ import { inheritFreeDefaultModelsForNewWorkspace } from "@/lib/platform-default-
 import { grantNewSpaceTrialQuota } from "@/lib/new-space-trial-quota";
 import { hashPassword } from "@/lib/auth";
 import { verifySmsCode, deleteSmsCode } from "@/lib/sms-store";
+import { verifyEmailCode, deleteEmailCode } from "@/lib/email-code-store";
 import { seedDefaultWelcomeNotifications } from "@/lib/notifications-store";
 import crypto from "crypto";
 
@@ -82,7 +83,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 验证验证码
-      const smsVerification = verifySmsCode(phone, smsCode);
+      const smsVerification = await verifySmsCode(phone, smsCode, "register");
       if (!smsVerification.valid) {
         return NextResponse.json(
           {
@@ -137,7 +138,7 @@ export async function POST(request: NextRequest) {
       });
 
       // 删除验证码
-      deleteSmsCode(phone);
+      await deleteSmsCode(phone, "register");
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(
@@ -177,7 +178,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 验证验证码
-      const smsVerification = verifySmsCode(phone, smsCode);
+      const smsVerification = await verifySmsCode(phone, smsCode, "register");
       if (!smsVerification.valid) {
         return NextResponse.json(
           {
@@ -242,7 +243,7 @@ export async function POST(request: NextRequest) {
       });
 
       // 删除验证码
-      deleteSmsCode(phone);
+      await deleteSmsCode(phone, "register");
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(
@@ -278,12 +279,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // 验证验证码
-      const smsVerification = verifySmsCode(phone, smsCode);
-      if (!smsVerification.valid) {
+      // 验证邮箱验证码（邮箱注册走邮箱验证码，而非手机号短信验证码）
+      const emailVerification = await verifyEmailCode(email, smsCode, "register");
+      if (!emailVerification.valid) {
         return NextResponse.json(
           {
-            message: smsVerification.error || "验证码错误",
+            message: emailVerification.error || "验证码错误",
             field: "smsCode",
           },
           { status: 400 },
@@ -341,8 +342,8 @@ export async function POST(request: NextRequest) {
         console.error("[register] 注入默认通知失败:", e);
       });
 
-      // 删除验证码
-      deleteSmsCode(phone);
+      // 删除邮箱验证码
+      await deleteEmailCode(email, "register");
 
       // 注册成功响应并记录新用户注册审计日志（保持未登录态，交由登录中心签发真正会话）
       return await respondRegistrationSuccess(

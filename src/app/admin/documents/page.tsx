@@ -254,6 +254,8 @@ export default function AdminDocumentsPage() {
   const [filterPublished, setFilterPublished] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
   const [totalPages, setTotalPages] = useState(1);
@@ -1429,7 +1431,7 @@ export default function AdminDocumentsPage() {
                 <input
                   type="date"
                   value={startDate}
-                  max={endDate || undefined}
+                  max={endDate || today}
                   onChange={(e) => {
                     const v = e.target.value;
                     setStartDate(v);
@@ -1444,6 +1446,7 @@ export default function AdminDocumentsPage() {
                   type="date"
                   value={endDate}
                   min={startDate || undefined}
+                  max={today}
                   onChange={(e) => {
                     const v = e.target.value;
                     if (v && startDate && v < startDate) return;

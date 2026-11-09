@@ -1000,6 +1000,8 @@ export default function OperationLogsPage() {
   const [resource, setResource] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
+  // 原生 min/max 置灰：结束不早于开始、不晚于今天
+  const today = new Date().toISOString().slice(0, 10);
 
   // 复选框批量选择
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -1588,7 +1590,7 @@ export default function OperationLogsPage() {
                 <input
                   type="date"
                   value={startDate}
-                  max={endDate || undefined}
+                  max={endDate || today}
                   onChange={(e) => setStartDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                 />
@@ -1596,6 +1598,7 @@ export default function OperationLogsPage() {
                   type="date"
                   value={endDate}
                   min={startDate || undefined}
+                  max={today}
                   onChange={(e) => setEndDate(e.target.value)}
                   className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                 />
@@ -1717,7 +1720,7 @@ export default function OperationLogsPage() {
                   <input
                     type="date"
                     value={loginStartDate}
-                    max={loginEndDate || undefined}
+                    max={loginEndDate || today}
                     onChange={(e) => setLoginStartDate(e.target.value)}
                     className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                   />
@@ -1725,6 +1728,7 @@ export default function OperationLogsPage() {
                     type="date"
                     value={loginEndDate}
                     min={loginStartDate || undefined}
+                  max={today}
                     onChange={(e) => setLoginEndDate(e.target.value)}
                     className="border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-medium text-slate-700 bg-slate-50/60 focus:bg-white focus:border-[#3182ce] outline-none"
                   />

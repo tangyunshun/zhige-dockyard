@@ -1,0 +1,35 @@
+{
+  "src/lib/storage-quota.ts": {
+    "sha256After": "de7f954af9f42db499c305e1b8cb836d4779641093ce399611d6bea8652516d9",
+    "bytes": 26518,
+    "sha256Start": "898c6e174e3ece7ffcce11a5f6118fde4d540f562ddbdd3a4a61f88f3882657d"
+  },
+  "src/lib/file-store.ts": {
+    "sha256After": "f53ff936c4b29d48b93082c4e78129d24e394c852f3219da5244e138fa045ba2",
+    "bytes": 9501,
+    "sha256Start": "a3d07e2a50b4116a1b57dff3a009fcf657a90c596d4614b4c444792b857547fd"
+  },
+  "src/app/api/studio/handler.ts": {
+    "sha256After": "4fc881ad66a7f40c5d96365d699a8f6918568eb61eb54fb8fa9972aefb693b21",
+    "bytes": 344123,
+    "sha256Start": "ee4b5ee7f94873a11440b3138c78694168c7752bfe0f42cfaca211d25cee8a66"
+  },
+  "src/app/api/workspace/clear-data/route.ts": {
+    "sha256After": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d",
+    "bytes": 6092,
+    "sha256Start": "e4b3b2def440f3e6fa29a0a9a8def7de191e0c359c1a97e2f4c5530f5ce2588d"
+  },
+  "src/components/WorkspaceInternalLayoutV3.tsx": {
+    "sha256After": "fc23f4e02bea0b24658ffbd8e5a0002e5b85dc23fcdffa1b0228127394980e35",
+    "bytes": 469946
+  },
+  "prisma/schema.prisma": {
+    "sha256After": "09167a479e7ce7b4fd5b0d761da76b93f8c5a1430dd0a5ee28cc563af7f0a2b7",
+    "bytes": 98439
+  },
+  "src/app/api/__tests__/r0j-storage.test.ts": {
+    "sha256After": "0bbb3504cdd6b1c1e8ba90d9f5c8f10bea083676dc6ddbb44af3709777161c3c",
+    "bytes": 44664,
+    "sha256Start": "477e5f04797965ba872e12ff87d6fc75f0cf7b0ba5ea007d1f56e6ebbbfe07bb"
+  }
+}

@@ -1,0 +1,564 @@
+{
+  "capturedAt": "2026-11-08T06:06:48.731Z",
+  "mode": "actual current handlers/services; memory Prisma/fs; explicit IO and post-delete barriers; no live database/cloud/model/fees",
+  "observations": [
+    {
+      "name": "clear-shared-positive",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：3 个对象因共享引用保留（文件/记录/计量均保留）。",
+        "resetAt": "2026-11-08T06:06:46.846Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 3,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "docs": 2,
+      "files": 1,
+      "used": 30
+    },
+    {
+      "name": "remove-remove-concurrency-positive",
+      "a": 200,
+      "b": 404,
+      "used": 0,
+      "docs": 0,
+      "files": 0
+    },
+    {
+      "name": "single-size-protection-positive",
+      "nullStatus": 500,
+      "conflictStatus": 500,
+      "used": 30,
+      "docs": 1,
+      "files": 1
+    },
+    {
+      "name": "recovery-commit-positive",
+      "failures": [
+        {
+          "success": true,
+          "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 条历史待清理认领仍未完成（占用保持计量）。",
+          "resetAt": "2026-11-08T06:06:48.648Z",
+          "storage": {
+            "clearedCount": 0,
+            "failedCount": 0,
+            "failedObjects": [],
+            "sharedRefKept": 0,
+            "concurrentSkipped": 0,
+            "driftSkipped": 0,
+            "pendingRecovered": 0,
+            "pendingStill": 1,
+            "recoveryCheckFailed": false,
+            "recoveryCheckFailureCount": 0,
+            "pendingCountKnown": true,
+            "pendingCount": 1,
+            "claimFailureCount": 0
+          }
+        },
+        {
+          "success": true,
+          "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 条历史待清理认领仍未完成（占用保持计量）。",
+          "resetAt": "2026-11-08T06:06:48.651Z",
+          "storage": {
+            "clearedCount": 0,
+            "failedCount": 0,
+            "failedObjects": [],
+            "sharedRefKept": 0,
+            "concurrentSkipped": 0,
+            "driftSkipped": 0,
+            "pendingRecovered": 0,
+            "pendingStill": 1,
+            "recoveryCheckFailed": false,
+            "recoveryCheckFailureCount": 0,
+            "pendingCountKnown": true,
+            "pendingCount": 1,
+            "claimFailureCount": 0
+          }
+        }
+      ],
+      "success": {
+        "success": true,
+        "message": "个人空间已成功物理重置为纯净出厂状态，5 个出厂默认组件已重新装配。本次已恢复完成 1 条历史待清理认领。",
+        "resetAt": "2026-11-08T06:06:48.653Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 1,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "used": 0
+    },
+    {
+      "name": "same-delete-retry-positive",
+      "first": 500,
+      "retry": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "assetId": "d1",
+          "notifiedCount": 0,
+          "recovered": true,
+          "pendingCleared": true,
+          "releasedBytes": true
+        },
+        "message": "已恢复完成历史待清理认领"
+      },
+      "again": 200,
+      "used": 20,
+      "otherPreserved": true
+    },
+    {
+      "name": "type-and-unique-race-positive",
+      "P2002Triggered": true,
+      "creates": 1,
+      "used": 40,
+      "replay": {
+        "unlimited": false,
+        "deduped": true,
+        "opConflict": false
+      }
+    },
+    {
+      "name": "missing-column-upload-positive-upload_doc",
+      "status": 503,
+      "body": {
+        "success": false,
+        "code": "STORAGE_OP_UNAVAILABLE",
+        "error": "存储操作记录表结构校验失败（缺失列），存储计量暂时不可用，请稍后重试。",
+        "storageOpId": "673c65d4-1038-4b43-b0a6-2938e1c583de"
+      },
+      "used": 0,
+      "files": 0
+    },
+    {
+      "name": "missing-column-upload-positive-upload_knowledge_attachment",
+      "status": 503,
+      "body": {
+        "success": false,
+        "code": "STORAGE_OP_UNAVAILABLE",
+        "error": "存储操作记录表结构校验失败（缺失列），存储计量暂时不可用，请稍后重试。",
+        "storageOpId": "fb4d6055-6b4c-4bfe-b4e8-cf0d21e33572"
+      },
+      "used": 0,
+      "files": 0
+    },
+    {
+      "name": "single-recovery-shared-repaired",
+      "status": 200,
+      "body": {
+        "success": true,
+        "data": {
+          "assetId": "d1",
+          "notifiedCount": 0,
+          "recovered": false,
+          "pendingCleared": false,
+          "sharedRefKept": true
+        },
+        "message": "共享引用保留：该对象仍被其他资料引用，已保留文件、资料与占用，清理认领保持待处理（容量不释放）"
+      },
+      "docs": [
+        {
+          "id": "remaining",
+          "workspaceId": "w1",
+          "title": "remaining",
+          "status": "APPROVED",
+          "visibility": "PRIVATE",
+          "filePath": "assets/w1/x.bin",
+          "fileSize": 30,
+          "uploaderId": "u1",
+          "type": "doc"
+        }
+      ],
+      "files": 1,
+      "used": 30
+    },
+    {
+      "name": "private-recovery-authority-repaired",
+      "normal": 403,
+      "recovery": 403,
+      "body": {
+        "success": false,
+        "code": "ASSET_RECOVERY_FORBIDDEN",
+        "error": "权限不足：该历史清理认领仅原发起者可重试，资料、文件、占用与认领状态均未变更",
+        "data": {
+          "id": "d1"
+        }
+      },
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u2",
+        "opType": "RELEASE",
+        "status": "RELEASED",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30,
+        "note": "物理对象已确认删除，占用已原子释放（终态）",
+        "updatedAt": "2026-11-08T06:06:48.696Z"
+      },
+      "used": 0,
+      "files": 0
+    },
+    {
+      "name": "clear-unknown-size-repaired",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 个对象物理删除失败（记录与计量已保留，可重试）。",
+        "resetAt": "2026-11-08T06:06:48.699Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 1,
+          "failedObjects": [
+            {
+              "id": "d1",
+              "title": "d1",
+              "reason": "清理大小未知或与历史认领矛盾（unknown-size）：资料、文件、占用与认领均已保留，请人工核实"
+            }
+          ],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "used": 30,
+      "docs": 1,
+      "files": 1
+    },
+    {
+      "name": "clear-blocked-ignored-repaired",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 个对象物理删除失败（记录与计量已保留，可重试）；1 个对象因共享引用保留（文件/记录/计量均保留）。",
+        "resetAt": "2026-11-08T06:06:48.702Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 1,
+          "failedObjects": [
+            {
+              "id": "d1",
+              "title": "d1",
+              "reason": "清理大小未知或与历史认领矛盾（fact-mismatch）：资料、文件、占用与认领均已保留，请人工核实"
+            }
+          ],
+          "sharedRefKept": 1,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "used": 30,
+      "docs": 1,
+      "files": 1,
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "PENDING_CLEANUP",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30
+      }
+    },
+    {
+      "name": "cancelled-size-conflict-repaired",
+      "status": 500,
+      "body": {
+        "success": false,
+        "code": "STORAGE_SIZE_UNKNOWN",
+        "error": "该资料的存储大小未知或与历史记录不一致，已保留文件与占用，请核实后重试。",
+        "data": {
+          "id": "d1"
+        }
+      },
+      "used": 30,
+      "docs": 1,
+      "files": 1,
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "CANCELLED",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30
+      }
+    },
+    {
+      "name": "clear-remove-concurrency-repaired",
+      "clear": 200,
+      "clearBody": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 个对象因并发删除跳过（共用认领完成状态待核实，占用保持计量）；1 条历史待清理认领仍未完成（占用保持计量）。",
+        "resetAt": "2026-11-08T06:06:48.709Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 1,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 1,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 1,
+          "claimFailureCount": 0
+        }
+      },
+      "remove": 200,
+      "used": 0,
+      "docs": 0,
+      "files": 0,
+      "op": {
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "RELEASED",
+        "filePath": "w1/x.bin",
+        "bytes": 30,
+        "documentId": "d1",
+        "note": "物理对象已确认删除，占用已原子释放（终态）",
+        "updatedAt": "2026-11-08T06:06:48.709Z",
+        "id": "auto_ha9kronuvh"
+      }
+    },
+    {
+      "name": "released-replay-repaired",
+      "first": {
+        "released": true,
+        "drift": false,
+        "finalized": true,
+        "alreadyReleased": false,
+        "conflicted": false
+      },
+      "replay": {
+        "released": false,
+        "drift": false,
+        "finalized": true,
+        "alreadyReleased": true,
+        "conflicted": false
+      },
+      "used": 0,
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "RELEASED",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30,
+        "note": "物理对象已确认删除，占用已原子释放（终态）",
+        "updatedAt": "2026-11-08T06:06:48.710Z"
+      }
+    },
+    {
+      "name": "unknown-count-repaired",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：恢复检查失败，待清理数量未知（占用保持计量，请稍后核对）。",
+        "resetAt": "2026-11-08T06:06:48.714Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": true,
+          "recoveryCheckFailureCount": 1,
+          "pendingCountKnown": false,
+          "pendingCount": null,
+          "claimFailureCount": 0
+        }
+      },
+      "actualPendingInFixture": 0
+    },
+    {
+      "name": "missing-schema-recovery-repaired-P2021",
+      "status": 503,
+      "body": {
+        "success": false,
+        "code": "STORAGE_QUOTA_NOT_READY",
+        "error": "存储操作记录表未就绪（需先执行数据库迁移），暂无法恢复清理。请联系管理员完成部署。",
+        "data": {
+          "id": "d1"
+        }
+      },
+      "used": 30,
+      "files": 1
+    },
+    {
+      "name": "missing-schema-recovery-repaired-P2022",
+      "status": 503,
+      "body": {
+        "success": false,
+        "code": "STORAGE_OP_UNAVAILABLE",
+        "error": "存储操作记录表结构校验失败（缺失列），存储计量暂时不可用，请稍后重试。",
+        "data": {
+          "id": "d1"
+        }
+      },
+      "used": 30,
+      "files": 1
+    },
+    {
+      "name": "capacity-paths-positive",
+      "status": 500,
+      "used": 30,
+      "ambiguous": {
+        "ok": false,
+        "notExists": false,
+        "ambiguous": true,
+        "error": "同一对象键存在 2 个候选位置（w1/x.bin、assets/w1/x.bin），为避免误删已拒绝，请人工核实后处理"
+      },
+      "cross": {
+        "ok": false,
+        "notExists": false,
+        "error": "对象键不在授权空间内（w2 ≠ w1），已拒绝"
+      },
+      "files": 2
+    },
+    {
+      "name": "overlapping-finalizers-characterization",
+      "a": {
+        "status": 200,
+        "body": {
+          "success": true,
+          "data": {
+            "assetId": "d1",
+            "notifiedCount": 0,
+            "recovered": true,
+            "pendingCleared": true,
+            "releasedBytes": true
+          },
+          "message": "已恢复完成历史待清理认领"
+        }
+      },
+      "b": {
+        "status": 500,
+        "body": {
+          "success": false,
+          "code": "STORAGE_RELEASE_DRIFT",
+          "error": "存储历史漂移，已保留占用与待清理认领，请人工核对"
+        }
+      },
+      "used": 0,
+      "op": {
+        "id": "claim",
+        "opId": "del-w1-w1/x.bin",
+        "workspaceId": "w1",
+        "userId": "u1",
+        "opType": "RELEASE",
+        "status": "RELEASED",
+        "filePath": "w1/x.bin",
+        "documentId": "d1",
+        "bytes": 30,
+        "note": "物理对象已确认删除，占用已原子释放（终态）",
+        "updatedAt": "2026-11-08T06:06:48.723Z"
+      },
+      "limits": "Actual requests both read old PENDING; final database writes are serialized by the barrier, no concurrent rollback is simulated."
+    },
+    {
+      "name": "shared-pending-count-characterization",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：3 个对象因共享引用保留（文件/记录/计量均保留）。",
+        "resetAt": "2026-11-08T06:06:48.727Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 3,
+          "concurrentSkipped": 0,
+          "driftSkipped": 0,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "actualPendingClaims": 1,
+      "used": 30
+    },
+    {
+      "name": "drift-pending-count-characterization",
+      "status": 200,
+      "body": {
+        "success": true,
+        "message": "空间已重置：0 个资料对象已彻底清除，但尚有未完成清理项。注意：1 个对象释放漂移（占用保留待人工核对，待清理认领已登记）。",
+        "resetAt": "2026-11-08T06:06:48.730Z",
+        "storage": {
+          "clearedCount": 0,
+          "failedCount": 0,
+          "failedObjects": [],
+          "sharedRefKept": 0,
+          "concurrentSkipped": 0,
+          "driftSkipped": 1,
+          "pendingRecovered": 0,
+          "pendingStill": 0,
+          "recoveryCheckFailed": false,
+          "recoveryCheckFailureCount": 0,
+          "pendingCountKnown": true,
+          "pendingCount": 0,
+          "claimFailureCount": 0
+        }
+      },
+      "actualPendingClaims": 1,
+      "used": 10
+    }
+  ]
+}

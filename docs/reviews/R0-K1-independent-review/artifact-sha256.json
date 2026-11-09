@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-11-08T09:31:13.307Z",
+  "artifacts": {
+    "admission-evidence.json": "b2fd5664c44ad504c18924c59fc7b9e000a5808116c6bacb59b35c579c2ec854",
+    "admission-review.test.ts": "5513a53d0431cd92bfde83bd01492ec909bc398b91312e8bdeda273d533bd162",
+    "finalize-review.cjs": "e3c9c71bfa456c97947880a80af8ccff668069e297c78fefd922283b438fbee9",
+    "handler-evidence.json": "e2f88f278209ef7ce1a631a8a18d1d541fbe919510122bcb8874e2b45e51d6e8",
+    "handler-review.test.ts": "90e151238fc5256fd7a5863c814062e5ded3acaef487218390deead1b6304137",
+    "IDE-R0-K1-IMPLEMENTATION-PROMPT.md": "56c0f38390a400f9c6d4649704e0625c1a5a97547cb679b59eb4aa231bad457e",
+    "independent-results.json": "20b80f347a6e90061c5119d09446d2683417a758036d81767fee6f65d546fe21",
+    "parser-evidence.json": "8178646c642a4805be9605cb070beaf424481101d3e6ba8f87195865271bc204",
+    "parser-review.test.ts": "0df1952618beae93ed844ea295e76e1e7c57daefd84814081347c20ba407dc2b",
+    "prepare-review.cjs": "15f30b00ad24df4f742585288145520b47c05e7716543b825662a50f0d940fbf",
+    "REVIEW.md": "d5da0fb45540220b1cf2d1527d050fc85e28cfc7612a3d8fe11d5c882c95ac7e",
+    "validation-results.json": "8e3b24750f10898377dce1e7f764063a87c85756946584c202f5e6fff5079176",
+    "version-comparison.json": "b433258bd3ad39ba65878170ac5fb1502c84d766feac35403cd064a8ad8d8f38",
+    "vitest.review.config.ts": "694eedc7cd4531e0608d3f29b79df3dcc596613caec73f3c8fa186cb1c84652a"
+  }
+}

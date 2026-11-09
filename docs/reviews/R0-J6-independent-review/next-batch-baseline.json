@@ -1,0 +1,19 @@
+{
+  "capturedAt": "2026-11-08T07:19:30.747Z",
+  "batch": "R0-K",
+  "originalPlan": "F14 only; F13 accepted and frozen",
+  "sha256": {
+    "src/lib/text-extract.ts": "07be5f5d1d167c88fec1c0fde557b60d88356ed089296e547e23632bff719e0c",
+    "src/app/api/studio/extract-text/route.ts": "0fb1e878659595907e597e44c75c95aba849ec0920374a145fecee6ab6dd1a09",
+    "src/app/api/studio/handler.ts": "e67ed7224623288ea88dc07f9b2228a370eeecbbd3f0643ab2a092e9888e0ea4",
+    "src/app/api/workspace/assets/[assetId]/preview/route.ts": "6d3bd0c5a4071a55110191fdf28dea3bddf20b4bc70e042e21f56a0335d5d3f8",
+    "src/lib/file-store.ts": "2d649aab084b107f51fc5aa8d1b80a79a3c73ba7815b2aac14898a2c17975d6a",
+    "src/lib/security.ts": "dff5dbce089335848c8df87998d59b6d9693dc1097690b8a28711d6201fa9e7e",
+    "prisma/schema.prisma": "dd5955984bbe35f8db4e214d618a25722401db19930ab33044ab3bef0e692905",
+    "package.json": "d5bc5425bee1ee3823d7cbffc7124c76e1c589f54cbd509941c9d8f68387a650",
+    "tsconfig.json": "ccda8316493480e173130764cc13a232ca397753e59f65a1cb1192033a75d329",
+    "src/lib/__tests__/text-extract.test.ts": "47a3760a039fafff05a8edce04fd414f68fa69b65ca774c2e33e6baa35630344",
+    "src/lib/__tests__/text-extract-paths.test.ts": "1f49b9d7d743c2a23818ce54bfda7322209539376d97fc8d7e7ca35682a61985"
+  },
+  "policy": "Current local source baseline for next IDE batch; no live database/config/secret reads. Preserve start full copies before edits."
+}

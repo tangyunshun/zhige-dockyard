@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-11-07T08:36:04.272Z",
+  "cases": [
+    {
+      "status": 422,
+      "code": "MODEL_COST_NOT_TRUSTWORTHY",
+      "busy": [
+        true,
+        false
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "当前费用预算无法确认，本次未扣点。"
+        }
+      ],
+      "fetches": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1",
+          "method": "GET"
+        },
+        {
+          "url": "/api/studio",
+          "method": "POST"
+        }
+      ],
+      "successStateWrites": 0
+    },
+    {
+      "status": 400,
+      "code": "MODEL_COST_EXCEEDS_BUDGET",
+      "busy": [
+        true,
+        false
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "当前费用预算无法确认，本次未扣点。"
+        }
+      ],
+      "fetches": [
+        {
+          "url": "/api/billing/estimate?componentId=comp-1&workspaceId=w1",
+          "method": "GET"
+        },
+        {
+          "url": "/api/studio",
+          "method": "POST"
+        }
+      ],
+      "successStateWrites": 0
+    }
+  ],
+  "sourceSha256": "97943f90ecf5fe4610dc526ac272141492ae54caa933d91ce50ba83680959c02",
+  "limits": "Actual handleExecuteSimulation callback via AST extraction; fetch/state bindings isolated. Not full component mounting, browser DOM or network."
+}

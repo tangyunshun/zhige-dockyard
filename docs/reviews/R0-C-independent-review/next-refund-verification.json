@@ -1,0 +1,213 @@
+{
+  "capturedAt": "2026-11-06T16:23:53.143Z",
+  "originalIssue": "F07 manual refunds + original write permission requirement",
+  "observations": [
+    {
+      "options": {
+        "scope": "WORKSPACE",
+        "automaticallyRefunded": false
+      },
+      "initial": {
+        "wallet": "0",
+        "pool": "0",
+        "originalRefunded": 0
+      },
+      "userPostStatus": 200,
+      "requestedPoints": 100,
+      "adminPostStatus": 200,
+      "requiredPermission": [
+        "order:read"
+      ],
+      "finalWallet": "100",
+      "finalPool": "0",
+      "newGrant": {
+        "id": "c74aaaf0-16e7-451b-9bd1-6e3039bad479",
+        "scope": "WALLET",
+        "userId": "u1",
+        "workspaceId": null,
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "REFUND",
+        "sourceId": null,
+        "expiresAt": null,
+        "status": "ACTIVE",
+        "operatorId": "read-only-admin",
+        "title": "退款申请通过：组件任务",
+        "remark": "用户退款申请 ee4ca216-0648-4fcc-8e09-0f6b99c36f90 审批通过，退回钱包",
+        "updatedAt": "2026-11-06T16:23:52.691Z"
+      },
+      "taskRefundLedgerSum": "100",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "table": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "update"
+        }
+      ],
+      "requestStatus": "APPROVED"
+    },
+    {
+      "options": {
+        "scope": "WORKSPACE",
+        "automaticallyRefunded": true
+      },
+      "initial": {
+        "wallet": "0",
+        "pool": "100",
+        "originalRefunded": 100
+      },
+      "userPostStatus": 200,
+      "requestedPoints": 100,
+      "adminPostStatus": 200,
+      "requiredPermission": [
+        "order:read"
+      ],
+      "finalWallet": "100",
+      "finalPool": "100",
+      "newGrant": {
+        "id": "0e5fdc21-08f6-4989-8b48-56981124131d",
+        "scope": "WALLET",
+        "userId": "u1",
+        "workspaceId": null,
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "REFUND",
+        "sourceId": null,
+        "expiresAt": null,
+        "status": "ACTIVE",
+        "operatorId": "read-only-admin",
+        "title": "退款申请通过：组件任务",
+        "remark": "用户退款申请 4994f6f2-69b0-4828-aba2-c87b69075c94 审批通过，退回钱包",
+        "updatedAt": "2026-11-06T16:23:52.868Z"
+      },
+      "taskRefundLedgerSum": "200",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "table": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "update"
+        }
+      ],
+      "requestStatus": "APPROVED"
+    },
+    {
+      "options": {
+        "scope": "WALLET",
+        "automaticallyRefunded": true
+      },
+      "initial": {
+        "wallet": "100",
+        "pool": "0",
+        "originalRefunded": 100
+      },
+      "userPostStatus": 200,
+      "requestedPoints": 100,
+      "adminPostStatus": 200,
+      "requiredPermission": [
+        "order:read"
+      ],
+      "finalWallet": "200",
+      "finalPool": "0",
+      "newGrant": {
+        "id": "3b34c8bf-03a3-4ab5-ba35-826742527a60",
+        "scope": "WALLET",
+        "userId": "u1",
+        "workspaceId": null,
+        "points": "100",
+        "remaining": "100",
+        "sourceType": "REFUND",
+        "sourceId": null,
+        "expiresAt": null,
+        "status": "ACTIVE",
+        "operatorId": "read-only-admin",
+        "title": "退款申请通过：组件任务",
+        "remark": "用户退款申请 a9e35b25-cfb6-41f4-a3bd-9a4367c6826c 审批通过，退回钱包",
+        "updatedAt": "2026-11-06T16:23:53.019Z"
+      },
+      "taskRefundLedgerSum": "200",
+      "writes": [
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "pointgrant",
+          "method": "create"
+        },
+        {
+          "kind": "TX",
+          "table": "userwallet",
+          "method": "upsert"
+        },
+        {
+          "kind": "TX",
+          "table": "pointledger",
+          "method": "create"
+        },
+        {
+          "kind": "ROOT",
+          "table": "refundrequest",
+          "method": "update"
+        }
+      ],
+      "requestStatus": "APPROVED"
+    }
+  ],
+  "permissionDeniedControl": {
+    "status": 403,
+    "writes": []
+  },
+  "isolation": "Actual user POST, actual manual resolve POST and actual grantPoints loaded with closed memory persistence, authentication/permission, notification/audit IO fixtures. No DB, model, payment or external messaging.",
+  "limits": "Permission fixture grants only the key requested by route; this proves route asks order:read, not actual deployed RBAC/middleware state. Refund ledger and prior automatic refund are synthetic, not production balance or loss evidence. Does not execute or modify automatic refund engine.",
+  "sha256": {
+    "src/lib/credit-service.ts": "1ad8a8e3c17b47e8eaecbf29f2412b89ba43151f392921ec42245cfbddbff9de",
+    "src/app/api/user/refund-requests/route.ts": "b9513aff0e422794710fc2fab600b6aa0c6807e05e748fd2b8aec074739dc04c",
+    "src/app/api/admin/refund-requests/[id]/resolve/route.ts": "61c31ee193dc189ae98e2bb4d9b8d478302cc968b551079d8ced3c61aa3e9a2b",
+    "src/app/api/admin/permissions/route.ts": "00c72e11da2a2f8eaa3c5deac6829f9a38e11d1834234c3b521b58e6db81f8e2",
+    "src/app/admin/finance/refund-requests/page.tsx": "a9e97fb623a44cfcb78f3764c666d84ccdf4aa918471abb79cc6ab871b26d623",
+    "src/components/UserRefundRequests.tsx": "b51c14ad9be5bff5f75084ac1ed4a254378215c707ac5915f5988c5d8867bfae",
+    "src/app/api/admin/refund-requests/route.ts": "24c2fc56bdcf80eef5c26d6a7108170df872ac71731595ff5ca62e57306312cd"
+  }
+}

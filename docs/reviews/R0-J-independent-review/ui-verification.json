@@ -1,0 +1,59 @@
+{
+  "capturedAt": "2026-11-07T16:49:02.319Z",
+  "observations": [
+    {
+      "name": "handleBatchDeleteAssets",
+      "response": {
+        "success": false,
+        "count": 1,
+        "failedCount": 1,
+        "failed": [
+          {
+            "id": "failed",
+            "reason": "synthetic failure"
+          }
+        ],
+        "error": "部分资料删除失败"
+      },
+      "stateUpdateCalls": 0,
+      "visibleIds": [
+        "deleted",
+        "failed"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "部分资料删除失败"
+        }
+      ]
+    },
+    {
+      "name": "handleBatchRemoveAssets",
+      "response": {
+        "success": false,
+        "data": {
+          "removedCount": 1,
+          "failedCount": 1,
+          "failed": [
+            {
+              "id": "failed",
+              "reason": "synthetic failure"
+            }
+          ]
+        }
+      },
+      "stateUpdateCalls": 0,
+      "visibleIds": [
+        "deleted",
+        "failed"
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "批量移除资料失败，请稍后重试"
+        }
+      ]
+    }
+  ],
+  "limits": "Actual two component callbacks extracted via AST, synthetic fetch/state/toast; no DOM/browser or actual deletions. Partial successes leave already-deleted rows stale."
+}

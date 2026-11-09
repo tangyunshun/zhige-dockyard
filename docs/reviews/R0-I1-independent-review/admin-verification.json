@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-11-07T14:02:13.493Z",
+  "sourceSha256": "ae5a74a5cf3c652ebc74e8c02fcc3852583dec68bc8eb7921c30ecc986a8e545",
+  "observations": [
+    {
+      "case": "save success",
+      "badge": [
+        "任务暂停 · 仅保存配置"
+      ],
+      "confirmMessage": "仅保存费率配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权。",
+      "warnings": [
+        "服务费率：15.00% → 20.00%",
+        "保存不会恢复自带模型任务调用或启动收费；费率数值仅作为已存配置保留"
+      ],
+      "requests": [
+        {
+          "url": "/api/admin/model-pricing/byok-service-rate",
+          "method": "POST"
+        },
+        {
+          "url": "/api/admin/model-pricing/byok-service-rate",
+          "method": "GET"
+        }
+      ],
+      "toasts": [
+        {
+          "kind": "success",
+          "message": "BYO 平台服务费率已保存为 20.00%（仅保存配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权）"
+        }
+      ]
+    },
+    {
+      "case": "save failure",
+      "badge": [
+        "任务暂停 · 仅保存配置"
+      ],
+      "confirmMessage": "仅保存费率配置；Studio 自带模型任务调用仍暂停，保存不会恢复调用或启动收费，恢复需单独授权。",
+      "warnings": [
+        "服务费率：15.00% → 20.00%",
+        "保存不会恢复自带模型任务调用或启动收费；费率数值仅作为已存配置保留"
+      ],
+      "requests": [
+        {
+          "url": "/api/admin/model-pricing/byok-service-rate",
+          "method": "POST"
+        }
+      ],
+      "toasts": [
+        {
+          "kind": "error",
+          "message": "Synthetic save failure"
+        }
+      ]
+    }
+  ],
+  "limits": "Actual component JSX/confirmation callbacks with synthetic hooks/fetch; no browser DOM or real configuration write."
+}

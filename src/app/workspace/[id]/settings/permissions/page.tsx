@@ -26,6 +26,7 @@ import {
 import type { ComponentCategory } from "@/constants/components";
 import { useAppContext } from "@/contexts/AppContext";
 import { getAuthToken } from "@/utils/auth";
+import LoadErrorBanner from "@/components/admin/LoadErrorBanner";
 
 // 数据模型定义
 interface EnterprisePost {
@@ -69,6 +70,7 @@ export default function WorkspacePermissionsPage() {
   const [userRole, setUserRole] = useState<'Owner' | 'Admin' | 'Member' | 'Viewer'>('Owner');
   // 个人空间门禁：岗位权限矩阵仅企业空间可用
   const [isPersonalSpace, setIsPersonalSpace] = useState(false);
+  const [loadErrorPosts, setLoadErrorPosts] = useState<string | null>(null);
 
   // 新建岗位模态框状态
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -146,6 +148,7 @@ export default function WorkspacePermissionsPage() {
       }
     } catch (err) {
       console.warn("读取空间专属岗位列表失败，使用默认岗位集:", err);
+      setLoadErrorPosts("空间岗位列表加载失败，当前展示默认岗位集");
     }
     // 回退到默认岗位
     setPosts(fallbackPosts);
@@ -160,15 +163,40 @@ export default function WorkspacePermissionsPage() {
         const typeRes = await fetch(`/api/workspace/update?workspaceId=${workspaceId}`, {
           headers: { Authorization: `Bearer ${getAuthToken()}` },
         });
+        let isOwnerOrAdmin = false;
         if (typeRes.ok) {
           const typeData = await typeRes.json();
           if (typeData?.workspace?.type === "PERSONAL") {
             setIsPersonalSpace(true);
             return;
           }
+          // KN-SEC：真实角色门禁——仅空间所有者/管理员可编辑岗位权限（自查清单：前端隐藏+后端双校验）
+          const wsOwnerId = typeData?.workspace?.ownerId;
+          const meRes = await fetch(`/api/workspace/members?workspaceId=${workspaceId}`, {
+            headers: { Authorization: `Bearer ${getAuthToken()}` },
+          });
+          if (meRes.ok) {
+            const meData = await meRes.json().catch(() => ({}));
+            const me = (meData.members || meData.data?.members || []).find(
+              (x: { userId?: string }) => x.userId === (typeData?.user?.id || localStorage.getItem("userId"))
+            );
+            const myRole = (me?.role || "").toUpperCase();
+            isOwnerOrAdmin = wsOwnerId === localStorage.getItem("userId") || myRole === "ADMIN" || myRole === "OWNER";
+            setUserRole(
+              wsOwnerId === localStorage.getItem("userId")
+                ? 'Owner'
+                : myRole === "ADMIN"
+                  ? 'Admin'
+                  : 'Member'
+            );
+          }
         }
         setWorkspaceType('enterprise');
-        setUserRole('Owner');
+        if (!isOwnerOrAdmin) {
+          // KN-SEC：普通成员不渲染编辑矩阵与保存入口（只读提示）
+          setIsPersonalSpace(true);
+          return;
+        }
         await loadWorkspacePosts();
       } catch (error) {
         console.error("权限检查失败:", error);
@@ -512,8 +540,8 @@ export default function WorkspacePermissionsPage() {
     return (
       <div className="min-h-screen bg-[#f0f8ff] flex items-center justify-center">
         <div className="text-center space-y-3">
-          <p className="text-sm font-black text-slate-700">个人空间不支持岗位权限配置</p>
-          <p className="text-xs text-slate-400">岗位与组件权限矩阵是企业空间专属功能，可升级为企业空间后使用。</p>
+          <p className="text-sm font-black text-slate-700">当前账号无岗位权限配置权限</p>
+          <p className="text-xs text-slate-400">个人空间不支持岗位权限配置；企业空间的岗位与权限矩阵仅空间所有者/管理员可编辑。</p>
         </div>
       </div>
     );
@@ -521,6 +549,11 @@ export default function WorkspacePermissionsPage() {
 
   return (
     <div className="min-h-screen bg-[#f0f8ff] flex flex-col">
+      {loadErrorPosts && (
+        <div className="px-6 pt-4">
+          <LoadErrorBanner message={loadErrorPosts} onRetry={() => { setLoadErrorPosts(null); loadWorkspacePosts(); }} />
+        </div>
+      )}
       {/* 顶部导航栏 */}
       <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between z-20">
         <div className="flex items-center gap-4">

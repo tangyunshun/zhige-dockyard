@@ -1,0 +1,54 @@
+{
+  "capturedAtReal": "2026-11-08T02:59:25+08:00",
+  "purpose": "R0-J3 batch start baseline (before claim/finalize release protocol, path boundary, upload pre-bound keys, clear-data claim persistence)",
+  "files": {
+    "src/lib/storage-quota.ts": {
+      "sha256Start": "bd674807ddec52534ea3593331ecc86c925d95e1ef8af9b778c170196a1f8c02",
+      "bytes": 32213,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__lib__storage-quota.ts.snapshot.txt",
+      "isNew": false
+    },
+    "src/lib/file-store.ts": {
+      "sha256Start": "f53ff936c4b29d48b93082c4e78129d24e394c852f3219da5244e138fa045ba2",
+      "bytes": 9501,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__lib__file-store.ts.snapshot.txt",
+      "isNew": false
+    },
+    "src/app/api/studio/handler.ts": {
+      "sha256Start": "a5b69ab74dfa2b0fdb01fd418fa2fb691bafb2e98b11d692fa9b9b8f3729d09b",
+      "bytes": 350250,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__app__api__studio__handler.ts.snapshot.txt",
+      "isNew": false
+    },
+    "src/app/api/workspace/clear-data/route.ts": {
+      "sha256Start": "86377e12c6627febb0f6ba726c3b2d579532f1c472d02628117953e1fbb8be81",
+      "bytes": 8229,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__app__api__workspace__clear-data__route.ts.snapshot.txt",
+      "isNew": false
+    },
+    "src/components/WorkspaceInternalLayoutV3.tsx": {
+      "sha256Start": "8c1e17b358b8dfcd37d6a269c7989ce9245771ce9eaf8ff5ba2dd608bbe6f926",
+      "bytes": 470982,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__components__WorkspaceInternalLayoutV3.tsx.snapshot.txt",
+      "isNew": false
+    },
+    "prisma/schema.prisma": {
+      "sha256Start": "7665df42d13faf1e5327f63a1e29796570dd8c559c276ef2a4d0e9382ce26cb9",
+      "bytes": 98456,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/prisma__schema.prisma.snapshot.txt",
+      "isNew": false
+    },
+    "src/app/api/__tests__/r0j-storage.test.ts": {
+      "sha256Start": "ad0046d8403ac9734e859739ba97bda50d3c5d8df36dd57e8c60c95fdda9c233",
+      "bytes": 46687,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__app__api____tests____r0j-storage.test.ts.snapshot.txt",
+      "isNew": false
+    },
+    "src/app/api/__tests__/r0j2-storage-close.test.ts": {
+      "sha256Start": "ac854b55da38362d6a856ae22aeb19ede1064ed782887f52cbcb62d5098d7f18",
+      "bytes": 37301,
+      "snapshotCopy": "docs/reviews/R0-J3-fix-snapshot/frozen-source/src__app__api____tests____r0j2-storage-close.test.ts.snapshot.txt",
+      "isNew": false
+    }
+  }
+}
